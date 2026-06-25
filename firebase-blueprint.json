@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "Box": {
+      "title": "Box",
+      "description": "A physical carton or box containing steering wheel components",
+      "type": "object",
+      "properties": {
+        "barcode": { "type": "string", "description": "Unique box barcode" },
+        "reference": { "type": "string", "description": "Part Reference code (e.g. STR-WH-L4)" },
+        "expectedQty": { "type": "number", "description": "The system expected quantity of pieces in the box" },
+        "location": { "type": "string", "description": "Warehouse physical location coordinate" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last update timestamp" }
+      },
+      "required": ["barcode", "reference", "expectedQty", "location"]
+    },
+    "Adjustment": {
+      "title": "Adjustment",
+      "description": "A record of an inventory count and stock adjustment, providing traceability",
+      "type": "object",
+      "properties": {
+        "barcode": { "type": "string", "description": "The scanned barcode of the box" },
+        "reference": { "type": "string", "description": "The part reference code" },
+        "expectedQty": { "type": "number", "description": "The expected quantity before count" },
+        "actualQty": { "type": "number", "description": "The counted physical quantity" },
+        "difference": { "type": "number", "description": "Difference: actualQty - expectedQty" },
+        "operatorName": { "type": "string", "description": "Name of the operator who counted the box" },
+        "timestamp": { "type": "string", "description": "Date and time of the count" },
+        "comment": { "type": "string", "description": "Optional reason or comment for discrepancy" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Validation status" },
+        "validatedBy": { "type": "string", "description": "Supervisor name who validated the adjustment" },
+        "validatedAt": { "type": "string", "description": "Validation timestamp" }
+      },
+      "required": ["barcode", "reference", "expectedQty", "actualQty", "difference", "operatorName", "timestamp", "status"]
+    },
+    "User": {
+      "title": "User",
+      "description": "System user with specific permissions and roles",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "description": "Unique username" },
+        "fullName": { "type": "string", "description": "User's full name" },
+        "role": { "type": "string", "enum": ["operator", "supervisor", "admin"], "description": "Access control role" },
+        "pin": { "type": "string", "description": "4-digit numeric PIN for touchscreen authentication" }
+      },
+      "required": ["username", "fullName", "role", "pin"]
+    }
+  },
+  "firestore": {
+    "/boxes/{boxId}": {
+      "schema": "Box",
+      "description": "Collection of steering wheel boxes in storage"
+    },
+    "/adjustments/{adjustmentId}": {
+      "schema": "Adjustment",
+      "description": "Log of stock adjustments and counts"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of system operators, supervisors, and admins"
+    }
+  }
+}
