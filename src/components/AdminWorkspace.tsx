@@ -224,7 +224,7 @@ export default function AdminWorkspace({
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. STR-WH-L4-BLK"
+                    placeholder="e.g. 34340681C"
                     value={newReference}
                     id="admin-box-reference-input"
                     onChange={(e) => setNewReference(e.target.value)}

@@ -6,7 +6,7 @@
       "type": "object",
       "properties": {
         "barcode": { "type": "string", "description": "Unique box barcode" },
-        "reference": { "type": "string", "description": "Part Reference code (e.g. STR-WH-L4)" },
+        "reference": { "type": "string", "description": "Part Reference code (e.g. 34340681C)" },
         "expectedQty": { "type": "number", "description": "The system expected quantity of pieces in the box" },
         "location": { "type": "string", "description": "Warehouse physical location coordinate" },
         "createdAt": { "type": "string", "description": "Creation timestamp" },

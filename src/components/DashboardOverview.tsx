@@ -72,7 +72,7 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
       discrepancy: data.diff,
       absDiscrepancy: Math.abs(data.diff),
       expected: data.expected,
-      name: ref.replace("STR-WH-", "") // shorten name for chart
+      name: ref
     })).sort((a, b) => b.absDiscrepancy - a.absDiscrepancy);
   }, [boxes, adjustments]);
 

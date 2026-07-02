@@ -2,157 +2,157 @@ import { collection, getDocs, setDoc, doc, writeBatch } from "firebase/firestore
 import { db } from "./firebase";
 import { User, Box, Adjustment, Reference } from "./types";
 
-export const DEFAULT_REFERENCES: Omit<Reference, "">[] = [
+export const DEFAULT_REFERENCES: Reference[] = [
   {
-    id: "PL-MSH-01-K9",
-    code: "PL-MSH-01-K9",
-    description: "PLANTILLAS S/PREC MESH TOP K9",
+    id: "34340681C",
+    code: "34340681C",
+    description: "MALLA CALEFACTADA CUERO SINTETICO C519",
     materialType: "Mesh",
-    associatedLeather: "PL-LTH-01-K9",
+    associatedLeather: "34340664A",
     currentStock: 0,
     lastUpdate: new Date().toISOString()
   },
   {
-    id: "PL-MSH-02-K9",
-    code: "PL-MSH-02-K9",
-    description: "PLANTILLAS MESH COR TOP K9",
+    id: "34340689D",
+    code: "34340689D",
+    description: "HEATING ELEMENT ASSY B479 STLINE FOR TEP",
     materialType: "Mesh",
-    associatedLeather: "PL-LTH-02-K9",
+    associatedLeather: "34340675B",
     currentStock: 0,
     lastUpdate: new Date().toISOString()
   },
   {
-    id: "PL-MSH-03-K9",
-    code: "PL-MSH-03-K9",
-    description: "PLANTILLAS S/PREC MESH COUPE K9",
+    id: "34316011B",
+    code: "34316011B",
+    description: "HEATING ELEMENT ASSY P33B SW",
     materialType: "Mesh",
-    associatedLeather: "PL-LTH-03-K9",
+    associatedLeather: "R002A631A",
     currentStock: 0,
     lastUpdate: new Date().toISOString()
   },
   {
-    id: "PL-SFT-01-K9",
-    code: "PL-SFT-01-K9",
-    description: "PLANTILLAS S/PREC SOFT BASE K9",
+    id: "R000B629B",
+    code: "R000B629B",
+    description: "HEATING-HOD PZ1D",
+    materialType: "Mesh",
+    associatedLeather: "R000E487A, R000G739A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "R000B630A",
+    code: "R000B630A",
+    description: "HOD PZ1D",
+    materialType: "Mesh",
+    associatedLeather: "R000E487A, R000G739A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "A025M750B",
+    code: "A025M750B",
+    description: "OV64/OV85 HEATING MATERIAL",
+    materialType: "Mesh",
+    associatedLeather: "A028J493A, R001F923A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "A025M751B",
+    code: "A025M751B",
+    description: "HEATING-HOD MAT OV64",
+    materialType: "Mesh",
+    associatedLeather: "R001F928A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "R001W189B",
+    code: "R001W189B",
+    description: "HEATING MAT HES+HOD L74 SW",
+    materialType: "Mesh",
+    associatedLeather: "R002J088A, R002G542A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "R000J601B",
+    code: "R000J601B",
+    description: "HEATING-HOD MAT CR3 SW",
+    materialType: "Mesh",
+    associatedLeather: "R000R523A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "R000J600C",
+    code: "R000J600C",
+    description: "HEATING MAT CR3 SW",
+    materialType: "Mesh",
+    associatedLeather: "R000R523A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "A026K122B",
+    code: "A026K122B",
+    description: "Heating Mat HES K9 MCM SW OVCTF",
+    materialType: "Mesh",
+    associatedLeather: "A026K160B",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "R002W094A",
+    code: "R002W094A",
+    description: "HEATING MAT HES, K9 MCM SW OVCTF",
+    materialType: "Mesh",
+    associatedLeather: "R003A180A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "A026L577A",
+    code: "A026L577A",
+    description: "Heat Mat BJA ph2 Alpine",
+    materialType: "Mesh",
+    associatedLeather: "A026F717A, A026F718A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "34364719C",
+    code: "34364719C",
+    description: "XJF HEATING MAT",
+    materialType: "Mesh",
+    associatedLeather: "A026L148A, A026L137A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "34340679A",
+    code: "34340679A",
+    description: "SOFT PARA CUERO SINTETICO C519",
     materialType: "Soft",
-    associatedLeather: "PL-LTH-04-K9",
+    associatedLeather: "34340664A",
     currentStock: 0,
     lastUpdate: new Date().toISOString()
   },
   {
-    id: "PL-SFT-02-K9",
-    code: "PL-SFT-02-K9",
-    description: "PLANTILLAS SOFT COMFORT K9",
+    id: "34340687B",
+    code: "34340687B",
+    description: "FOAM PAD SOFT B479 STLINE FOR TEP",
     materialType: "Soft",
-    associatedLeather: "PL-LTH-05-K9",
+    associatedLeather: "34340675B",
     currentStock: 0,
     lastUpdate: new Date().toISOString()
   },
   {
-    id: "PL-MSH-04-M8",
-    code: "PL-MSH-04-M8",
-    description: "PLANTILLAS S/PREC MESH TOP M8",
-    materialType: "Mesh",
-    associatedLeather: "PL-LTH-01-M8",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-MSH-05-M8",
-    code: "PL-MSH-05-M8",
-    description: "PLANTILLAS MESH COR TOP M8",
-    materialType: "Mesh",
-    associatedLeather: "PL-LTH-02-M8",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-MSH-06-M8",
-    code: "PL-MSH-06-M8",
-    description: "PLANTILLAS S/PREC MESH COUPE M8",
-    materialType: "Mesh",
-    associatedLeather: "PL-LTH-03-M8",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-SFT-03-M8",
-    code: "PL-SFT-03-M8",
-    description: "PLANTILLAS S/PREC SOFT BASE M8",
+    id: "R000J610A",
+    code: "R000J610A",
+    description: "SOFT-FOAM CR3 SW",
     materialType: "Soft",
-    associatedLeather: "PL-LTH-04-M8",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-SFT-04-M8",
-    code: "PL-SFT-04-M8",
-    description: "PLANTILLAS SOFT COMFORT M8",
-    materialType: "Soft",
-    associatedLeather: "PL-LTH-05-M8",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-MSH-07-G5",
-    code: "PL-MSH-07-G5",
-    description: "PLANTILLAS S/PREC MESH TOP G5",
-    materialType: "Mesh",
-    associatedLeather: "PL-LTH-01-G5",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-MSH-08-G5",
-    code: "PL-MSH-08-G5",
-    description: "PLANTILLAS MESH COR TOP G5",
-    materialType: "Mesh",
-    associatedLeather: "PL-LTH-02-G5",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-MSH-09-G5",
-    code: "PL-MSH-09-G5",
-    description: "PLANTILLAS S/PREC MESH COUPE G5",
-    materialType: "Mesh",
-    associatedLeather: "PL-LTH-03-G5",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-SFT-05-G5",
-    code: "PL-SFT-05-G5",
-    description: "PLANTILLAS S/PREC SOFT BASE G5",
-    materialType: "Soft",
-    associatedLeather: "PL-LTH-04-G5",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-SFT-06-G5",
-    code: "PL-SFT-06-G5",
-    description: "PLANTILLAS SOFT COMFORT G5",
-    materialType: "Soft",
-    associatedLeather: "PL-LTH-05-G5",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-MSH-10-X2",
-    code: "PL-MSH-10-X2",
-    description: "PLANTILLAS S/PREC MESH HIGH X2",
-    materialType: "Mesh",
-    associatedLeather: "PL-LTH-01-X2",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: "PL-SFT-07-X2",
-    code: "PL-SFT-07-X2",
-    description: "PLANTILLAS SOFT ERGO HIGH X2",
-    materialType: "Soft",
-    associatedLeather: "PL-LTH-02-X2",
+    associatedLeather: "R000M817A",
     currentStock: 0,
     lastUpdate: new Date().toISOString()
   }
@@ -180,7 +180,7 @@ const DEFAULT_BOXES: Box[] = [
   {
     id: "BOX-101",
     barcode: "BOX-101",
-    reference: "STR-WH-L4-BLK",
+    reference: "34340681C",
     expectedQty: 50,
     location: "Aisle A, Shelf 1, Bay 3",
     createdAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
@@ -189,7 +189,7 @@ const DEFAULT_BOXES: Box[] = [
   {
     id: "BOX-102",
     barcode: "BOX-102",
-    reference: "STR-WH-S3-RED",
+    reference: "34340679A",
     expectedQty: 40,
     location: "Aisle B, Shelf 2, Bay 1",
     createdAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
@@ -198,7 +198,7 @@ const DEFAULT_BOXES: Box[] = [
   {
     id: "BOX-103",
     barcode: "BOX-103",
-    reference: "STR-WH-A3-GRY",
+    reference: "R000J610A",
     expectedQty: 35,
     location: "Aisle C, Shelf 4, Bay 2",
     createdAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
@@ -207,7 +207,7 @@ const DEFAULT_BOXES: Box[] = [
   {
     id: "BOX-104",
     barcode: "BOX-104",
-    reference: "STR-WH-W4-BRW",
+    reference: "34340687B",
     expectedQty: 20,
     location: "Aisle D, Shelf 1, Bay 4",
     createdAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
@@ -216,7 +216,7 @@ const DEFAULT_BOXES: Box[] = [
   {
     id: "BOX-105",
     barcode: "BOX-105",
-    reference: "STR-WH-E3-SLV",
+    reference: "R000B629B",
     expectedQty: 100,
     location: "Aisle E, Shelf 3, Bay 2",
     createdAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
@@ -225,7 +225,7 @@ const DEFAULT_BOXES: Box[] = [
   {
     id: "BOX-106",
     barcode: "BOX-106",
-    reference: "STR-WH-L4-BLK",
+    reference: "34340681C",
     expectedQty: 65,
     location: "Aisle A, Shelf 3, Bay 1",
     createdAt: new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString(),
@@ -234,7 +234,7 @@ const DEFAULT_BOXES: Box[] = [
   {
     id: "BOX-107",
     barcode: "BOX-107",
-    reference: "STR-WH-S3-RED",
+    reference: "34340679A",
     expectedQty: 48,
     location: "Aisle B, Shelf 4, Bay 3",
     createdAt: new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString(),
@@ -243,7 +243,7 @@ const DEFAULT_BOXES: Box[] = [
   {
     id: "BOX-108",
     barcode: "BOX-108",
-    reference: "STR-WH-A3-GRY",
+    reference: "R000J610A",
     expectedQty: 30,
     location: "Aisle C, Shelf 1, Bay 1",
     createdAt: new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString(),
@@ -255,7 +255,7 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
   {
     id: "adj-001",
     barcode: "BOX-101",
-    reference: "STR-WH-L4-BLK",
+    reference: "34340681C",
     expectedQty: 50,
     actualQty: 48,
     difference: -2,
@@ -269,7 +269,7 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
   {
     id: "adj-002",
     barcode: "BOX-102",
-    reference: "STR-WH-S3-RED",
+    reference: "34340679A",
     expectedQty: 40,
     actualQty: 42,
     difference: 2,
@@ -283,7 +283,7 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
   {
     id: "adj-003",
     barcode: "BOX-104",
-    reference: "STR-WH-W4-BRW",
+    reference: "34340687B",
     expectedQty: 20,
     actualQty: 18,
     difference: -2,
@@ -297,7 +297,7 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
   {
     id: "adj-004",
     barcode: "BOX-105",
-    reference: "STR-WH-E3-SLV",
+    reference: "R000B629B",
     expectedQty: 100,
     actualQty: 100,
     difference: 0,
@@ -311,7 +311,7 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
   {
     id: "adj-005",
     barcode: "BOX-103",
-    reference: "STR-WH-A3-GRY",
+    reference: "R000J610A",
     expectedQty: 35,
     actualQty: 30,
     difference: -5,
@@ -323,7 +323,7 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
   {
     id: "adj-006",
     barcode: "BOX-106",
-    reference: "STR-WH-L4-BLK",
+    reference: "34340681C",
     expectedQty: 65,
     actualQty: 67,
     difference: 2,
@@ -336,6 +336,21 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
 
 export async function seedDatabaseIfNeeded() {
   try {
+    // Check if we have old placeholder references (e.g. starting with "PL-" or "STR-")
+    const refsSnapshotToCheck = await getDocs(collection(db, "references"));
+    let hasPlaceholderRefs = false;
+    refsSnapshotToCheck.forEach((doc) => {
+      if (doc.id.startsWith("PL-") || doc.id.startsWith("STR-")) {
+        hasPlaceholderRefs = true;
+      }
+    });
+
+    if (hasPlaceholderRefs) {
+      console.log("Old placeholder references detected (e.g. PL-MSH-01-K9). Performing auto-cleanup and resetting database to pristine state...");
+      await resetDatabaseToPristineState();
+      return;
+    }
+
     // Check users
     const usersSnapshot = await getDocs(collection(db, "users"));
     
@@ -374,7 +389,7 @@ export async function seedDatabaseIfNeeded() {
         {
           id: "A025P562A",
           barcode: "A025P562A",
-          reference: "PL-MSH-01-K9",
+          reference: "34340681C",
           expectedQty: 100,
           location: "GI-AREA (Dest 95A 910)",
           createdAt: new Date().toISOString(),
@@ -384,7 +399,7 @@ export async function seedDatabaseIfNeeded() {
         {
           id: "A020M334B",
           barcode: "A020M334B",
-          reference: "PL-MSH-02-K9",
+          reference: "R000B629B",
           expectedQty: 100,
           location: "GI-AREA (Dest 95A 910)",
           createdAt: new Date().toISOString(),
@@ -394,7 +409,7 @@ export async function seedDatabaseIfNeeded() {
         {
           id: "A026K122D",
           barcode: "A026K122D",
-          reference: "PL-MSH-01-K9",
+          reference: "A026K122B",
           expectedQty: 100,
           location: "GI-AREA (Dest 95A 910)",
           createdAt: new Date().toISOString(),
@@ -412,16 +427,19 @@ export async function seedDatabaseIfNeeded() {
       console.log("Database seed check completed. Carton inventory already exists.");
     }
 
-    // Seed 17 predefined references if completely empty
+    // Ensure all 17 predefined references are present in the collection
     const refsSnapshot = await getDocs(collection(db, "references"));
-    if (refsSnapshot.empty) {
-      console.log("Seeding initial 17 predefined references with 0 stock...");
+    const existingRefIds = new Set(refsSnapshot.docs.map(doc => doc.id));
+    const missingRefs = DEFAULT_REFERENCES.filter(ref => !existingRefIds.has(ref.id));
+    
+    if (missingRefs.length > 0) {
+      console.log(`Seeding missing predefined references (${missingRefs.length}):`, missingRefs.map(r => r.id));
       const batch = writeBatch(db);
-      DEFAULT_REFERENCES.forEach((ref) => {
+      missingRefs.forEach((ref) => {
         batch.set(doc(db, "references", ref.id), ref);
       });
       await batch.commit();
-      console.log("Database seeded with 17 predefined references successfully.");
+      console.log("Database seeded with missing predefined references successfully.");
     }
   } catch (error) {
     console.error("Database seeding failed:", error);
@@ -479,7 +497,7 @@ export async function resetDatabaseToPristineState() {
       {
         id: "A025P562A",
         barcode: "A025P562A",
-        reference: "PL-MSH-01-K9",
+        reference: "34340681C",
         expectedQty: 100,
         location: "GI-AREA (Dest 95A 910)",
         createdAt: new Date().toISOString(),
@@ -489,7 +507,7 @@ export async function resetDatabaseToPristineState() {
       {
         id: "A020M334B",
         barcode: "A020M334B",
-        reference: "PL-MSH-02-K9",
+        reference: "R000B629B",
         expectedQty: 100,
         location: "GI-AREA (Dest 95A 910)",
         createdAt: new Date().toISOString(),
@@ -499,7 +517,7 @@ export async function resetDatabaseToPristineState() {
       {
         id: "A026K122D",
         barcode: "A026K122D",
-        reference: "PL-MSH-01-K9",
+        reference: "A026K122B",
         expectedQty: 100,
         location: "GI-AREA (Dest 95A 910)",
         createdAt: new Date().toISOString(),

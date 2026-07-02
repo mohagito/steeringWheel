@@ -888,6 +888,63 @@ export default function OperatorWorkspace({
                     Keypad updating: {focusedField === "expected" ? "Expected Quantity" : "Real Counted Quantity"}
                   </div>
 
+                  {/* Quick-Quantity Presets for fast shopfloor tapping */}
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        ⚡ Quick Value Presets
+                      </span>
+                      <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono">Sets total</span>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[10, 20, 50, 100, 150].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          id={`preset-qty-${val}`}
+                          onClick={() => {
+                            if (focusedField === "expected") {
+                              setExpectedQtyStr(val.toString());
+                            } else {
+                              setActualQtyStr(val.toString());
+                            }
+                          }}
+                          className="py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors cursor-pointer"
+                        >
+                          {val}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/50">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        ➕ Quick Increments
+                      </span>
+                      <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono">Adds to total</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[+1, +5, +10, +25].map((inc) => (
+                        <button
+                          key={inc}
+                          type="button"
+                          id={`increment-qty-${inc}`}
+                          onClick={() => {
+                            if (focusedField === "expected") {
+                              const curr = parseInt(expectedQtyStr) || 0;
+                              setExpectedQtyStr((curr + inc).toString());
+                            } else {
+                              const curr = parseInt(actualQtyStr) || 0;
+                              setActualQtyStr((curr + inc).toString());
+                            }
+                          }}
+                          className="py-1 text-xs font-extrabold rounded-lg border border-blue-100 bg-blue-50/55 text-blue-700 hover:bg-blue-100 hover:border-blue-200 transition-colors cursor-pointer"
+                        >
+                          +{inc}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-3 gap-2" id="keypad-operator">
                     {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
                       <button

@@ -10,10 +10,11 @@ import DashboardOverview from "./components/DashboardOverview";
 import OperatorWorkspace from "./components/OperatorWorkspace";
 import SupervisorWorkspace from "./components/SupervisorWorkspace";
 import AdminWorkspace from "./components/AdminWorkspace";
+import StockWorkspace from "./components/StockWorkspace";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
-  RefreshCw, Layers, CheckSquare, Shield, HelpCircle 
+  RefreshCw, Layers, CheckSquare, Shield, HelpCircle, Database
 } from "lucide-react";
 
 export default function App() {
@@ -23,7 +24,7 @@ export default function App() {
   const [references, setReferences] = useState<Reference[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "operator" | "supervisor" | "admin">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin">("dashboard");
 
   // Sync state with Firestore on mount
   useEffect(() => {
@@ -300,6 +301,20 @@ export default function App() {
               </button>
             )}
 
+            {/* Stock Tab */}
+            <button
+              onClick={() => setActiveTab("stock")}
+              id="nav-tab-stock"
+              className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
+                activeTab === "stock"
+                  ? "bg-slate-800 text-white shadow-sm"
+                  : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
+              }`}
+            >
+              <Database className="w-4 h-4 shrink-0" />
+              <span>Stock</span>
+            </button>
+
             {/* Operator Tab */}
             <button
               onClick={() => setActiveTab("operator")}
@@ -386,6 +401,7 @@ export default function App() {
           <div className="flex items-center gap-3 sm:gap-4">
             <h1 className="text-base sm:text-lg font-bold text-slate-800 font-display">
               {activeTab === "dashboard" && "Operational Dashboard"}
+              {activeTab === "stock" && "Real-time Stock Inventory"}
               {activeTab === "operator" && "Inventory Count Workspace"}
               {activeTab === "supervisor" && "Supervisor Validation & Sign-offs"}
               {activeTab === "admin" && "Administrative Control Center"}
@@ -425,6 +441,15 @@ export default function App() {
                   adjustments={adjustments} 
                   references={references}
                   onTriggerScan={() => setActiveTab("operator")}
+                />
+              )}
+
+              {activeTab === "stock" && (
+                <StockWorkspace 
+                  boxes={boxes} 
+                  adjustments={adjustments} 
+                  references={references}
+                  currentUser={currentUser}
                 />
               )}
 
