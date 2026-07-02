@@ -24,7 +24,7 @@ export interface Adjustment {
   barcode: string;
   reference: string;
   expectedQty: number;
-  actualQty: number;
+  actualQty: number; // Real Counted Quantity
   difference: number;
   operatorName: string;
   timestamp: string;
@@ -32,7 +32,20 @@ export interface Adjustment {
   status: "pending" | "approved" | "rejected";
   validatedBy?: string;
   validatedAt?: string;
-  materialType?: "Mesh" | "Leather";
+  materialType?: "Mesh" | "Soft" | "Leather";
+  stockBefore?: number;
+  stockAdded?: number;
+  stockAfter?: number;
+}
+
+export interface Reference {
+  id: string; // Matches reference code
+  code: string;
+  description: string;
+  materialType: "Mesh" | "Soft";
+  associatedLeather: string;
+  currentStock: number;
+  lastUpdate: string;
 }
 
 export interface ReferenceSummary {

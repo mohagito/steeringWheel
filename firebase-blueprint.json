@@ -44,6 +44,20 @@
         "pin": { "type": "string", "description": "4-digit numeric PIN for touchscreen authentication" }
       },
       "required": ["username", "fullName", "role", "pin"]
+    },
+    "Reference": {
+      "title": "Reference",
+      "description": "Predefined product reference for stock control",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "The reference code" },
+        "description": { "type": "string", "description": "The description of the product" },
+        "materialType": { "type": "string", "enum": ["Mesh", "Soft"], "description": "Type of material" },
+        "associatedLeather": { "type": "string", "description": "Associated leather references" },
+        "currentStock": { "type": "number", "description": "The current stock quantity" },
+        "lastUpdate": { "type": "string", "description": "Timestamp of the last update" }
+      },
+      "required": ["code", "description", "materialType", "associatedLeather", "currentStock", "lastUpdate"]
     }
   },
   "firestore": {
@@ -58,6 +72,10 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "Collection of system operators, supervisors, and admins"
+    },
+    "/references/{referenceId}": {
+      "schema": "Reference",
+      "description": "Collection of predefined references and current stock levels"
     }
   }
 }

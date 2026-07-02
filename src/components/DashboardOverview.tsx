@@ -1,20 +1,24 @@
-import { useMemo } from "react";
-import { Box, Adjustment, ReferenceSummary } from "../types";
+import { useState, useMemo } from "react";
+import { Box, Adjustment, ReferenceSummary, Reference } from "../types";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend, AreaChart, Area 
 } from "recharts";
 import { 
-  Package, CheckCircle2, AlertTriangle, RefreshCw, Layers, TrendingUp, HelpCircle 
+  Package, CheckCircle2, AlertTriangle, RefreshCw, Layers, TrendingUp, HelpCircle, Search, Filter
 } from "lucide-react";
 
 interface DashboardOverviewProps {
   boxes: Box[];
   adjustments: Adjustment[];
+  references: Reference[];
   onTriggerScan?: () => void;
 }
 
-export default function DashboardOverview({ boxes, adjustments, onTriggerScan }: DashboardOverviewProps) {
+export default function DashboardOverview({ boxes, adjustments, references = [], onTriggerScan }: DashboardOverviewProps) {
+  const [refSearchQuery, setRefSearchQuery] = useState("");
+  const [refFilterType, setRefFilterType] = useState<"All" | "Mesh" | "Soft">("All");
+
   // 1. Calculate General Metrics
   const metrics = useMemo(() => {
     const totalBoxes = boxes.length;
@@ -189,6 +193,118 @@ export default function DashboardOverview({ boxes, adjustments, onTriggerScan }:
           </div>
         </div>
 
+      </div>
+
+      {/* 17 Predefined References Master Stock Board */}
+      <div className="bg-white p-6 rounded-2xl border border-brand-100 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="font-display font-bold text-brand-950 text-base">Predefined Master Stock Board</h3>
+            <p className="text-xs text-brand-500">Live stock levels of the 17 predefined master product references</p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search references..."
+                value={refSearchQuery}
+                onChange={(e) => setRefSearchQuery(e.target.value)}
+                className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-brand-500 focus:bg-white transition-all shadow-inner w-full sm:w-56"
+              />
+            </div>
+
+            {/* Filter buttons */}
+            <div className="flex gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
+              {(["All", "Mesh", "Soft"] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setRefFilterType(type)}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    refFilterType === type
+                      ? "bg-white text-brand-700 shadow-xs font-semibold"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* References Table */}
+        <div className="overflow-x-auto border border-slate-100 rounded-xl">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 font-bold">
+                <th className="py-3 px-4 uppercase font-bold text-[10px]">Reference Code</th>
+                <th className="py-3 px-4 uppercase font-bold text-[10px]">Description</th>
+                <th className="py-3 px-4 uppercase font-bold text-[10px]">Material Type</th>
+                <th className="py-3 px-4 uppercase font-bold text-[10px]">Leather Companion</th>
+                <th className="py-3 px-4 uppercase font-bold text-[10px] text-right">Current Stock</th>
+                <th className="py-3 px-4 uppercase font-bold text-[10px] text-right">Last Updated</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {references
+                .filter((ref) => {
+                  // Type filter
+                  if (refFilterType !== "All" && ref.materialType !== refFilterType) return false;
+                  // Search query
+                  const q = refSearchQuery.trim().toLowerCase();
+                  if (!q) return true;
+                  return ref.code.toLowerCase().includes(q) || ref.description.toLowerCase().includes(q);
+                })
+                .map((ref) => {
+                  const dateObj = new Date(ref.lastUpdate);
+                  const formattedTime = isNaN(dateObj.getTime()) 
+                    ? "Never" 
+                    : dateObj.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit"
+                      });
+
+                  return (
+                    <tr key={ref.code} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
+                      <td className="py-3.5 px-4 font-medium text-slate-600">{ref.description}</td>
+                      <td className="py-3.5 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          ref.materialType === "Mesh" 
+                            ? "bg-blue-50 text-blue-700 border border-blue-100" 
+                            : "bg-teal-50 text-teal-700 border border-teal-100"
+                        }`}>
+                          {ref.materialType}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-slate-400">{ref.associatedLeather}</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-sm text-slate-900">
+                        {ref.currentStock === 0 ? (
+                          <span className="text-slate-400">0 pcs</span>
+                        ) : (
+                          <span className="text-blue-600 font-extrabold">{ref.currentStock} pcs</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-right text-slate-400 font-medium">{formattedTime}</td>
+                    </tr>
+                  );
+                })}
+
+              {references.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                    No predefined references found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Main Charts & Discrepancies Grid */}

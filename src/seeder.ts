@@ -1,6 +1,162 @@
 import { collection, getDocs, setDoc, doc, writeBatch } from "firebase/firestore";
 import { db } from "./firebase";
-import { User, Box, Adjustment } from "./types";
+import { User, Box, Adjustment, Reference } from "./types";
+
+export const DEFAULT_REFERENCES: Omit<Reference, "">[] = [
+  {
+    id: "PL-MSH-01-K9",
+    code: "PL-MSH-01-K9",
+    description: "PLANTILLAS S/PREC MESH TOP K9",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-01-K9",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-MSH-02-K9",
+    code: "PL-MSH-02-K9",
+    description: "PLANTILLAS MESH COR TOP K9",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-02-K9",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-MSH-03-K9",
+    code: "PL-MSH-03-K9",
+    description: "PLANTILLAS S/PREC MESH COUPE K9",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-03-K9",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-SFT-01-K9",
+    code: "PL-SFT-01-K9",
+    description: "PLANTILLAS S/PREC SOFT BASE K9",
+    materialType: "Soft",
+    associatedLeather: "PL-LTH-04-K9",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-SFT-02-K9",
+    code: "PL-SFT-02-K9",
+    description: "PLANTILLAS SOFT COMFORT K9",
+    materialType: "Soft",
+    associatedLeather: "PL-LTH-05-K9",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-MSH-04-M8",
+    code: "PL-MSH-04-M8",
+    description: "PLANTILLAS S/PREC MESH TOP M8",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-01-M8",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-MSH-05-M8",
+    code: "PL-MSH-05-M8",
+    description: "PLANTILLAS MESH COR TOP M8",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-02-M8",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-MSH-06-M8",
+    code: "PL-MSH-06-M8",
+    description: "PLANTILLAS S/PREC MESH COUPE M8",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-03-M8",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-SFT-03-M8",
+    code: "PL-SFT-03-M8",
+    description: "PLANTILLAS S/PREC SOFT BASE M8",
+    materialType: "Soft",
+    associatedLeather: "PL-LTH-04-M8",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-SFT-04-M8",
+    code: "PL-SFT-04-M8",
+    description: "PLANTILLAS SOFT COMFORT M8",
+    materialType: "Soft",
+    associatedLeather: "PL-LTH-05-M8",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-MSH-07-G5",
+    code: "PL-MSH-07-G5",
+    description: "PLANTILLAS S/PREC MESH TOP G5",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-01-G5",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-MSH-08-G5",
+    code: "PL-MSH-08-G5",
+    description: "PLANTILLAS MESH COR TOP G5",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-02-G5",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-MSH-09-G5",
+    code: "PL-MSH-09-G5",
+    description: "PLANTILLAS S/PREC MESH COUPE G5",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-03-G5",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-SFT-05-G5",
+    code: "PL-SFT-05-G5",
+    description: "PLANTILLAS S/PREC SOFT BASE G5",
+    materialType: "Soft",
+    associatedLeather: "PL-LTH-04-G5",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-SFT-06-G5",
+    code: "PL-SFT-06-G5",
+    description: "PLANTILLAS SOFT COMFORT G5",
+    materialType: "Soft",
+    associatedLeather: "PL-LTH-05-G5",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-MSH-10-X2",
+    code: "PL-MSH-10-X2",
+    description: "PLANTILLAS S/PREC MESH HIGH X2",
+    materialType: "Mesh",
+    associatedLeather: "PL-LTH-01-X2",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  },
+  {
+    id: "PL-SFT-07-X2",
+    code: "PL-SFT-07-X2",
+    description: "PLANTILLAS SOFT ERGO HIGH X2",
+    materialType: "Soft",
+    associatedLeather: "PL-LTH-02-X2",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString()
+  }
+];
 
 // Seed data
 const DEFAULT_USERS: User[] = [
@@ -218,7 +374,7 @@ export async function seedDatabaseIfNeeded() {
         {
           id: "A025P562A",
           barcode: "A025P562A",
-          reference: "CJTD PLANTILLAS S/PREC TOP K9",
+          reference: "PL-MSH-01-K9",
           expectedQty: 100,
           location: "GI-AREA (Dest 95A 910)",
           createdAt: new Date().toISOString(),
@@ -228,7 +384,7 @@ export async function seedDatabaseIfNeeded() {
         {
           id: "A020M334B",
           barcode: "A020M334B",
-          reference: "CJTD PLANTILLAS S/PREC COR TOP K9",
+          reference: "PL-MSH-02-K9",
           expectedQty: 100,
           location: "GI-AREA (Dest 95A 910)",
           createdAt: new Date().toISOString(),
@@ -238,12 +394,12 @@ export async function seedDatabaseIfNeeded() {
         {
           id: "A026K122D",
           barcode: "A026K122D",
-          reference: "CJTD PLANTILLAS S/PREC TOP K9",
+          reference: "PL-MSH-01-K9",
           expectedQty: 100,
           location: "GI-AREA (Dest 95A 910)",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          materialType: "Leather"
+          materialType: "Mesh"
         }
       ];
 
@@ -254,6 +410,18 @@ export async function seedDatabaseIfNeeded() {
       console.log("Database seeded with photo cartons successfully.");
     } else {
       console.log("Database seed check completed. Carton inventory already exists.");
+    }
+
+    // Seed 17 predefined references if completely empty
+    const refsSnapshot = await getDocs(collection(db, "references"));
+    if (refsSnapshot.empty) {
+      console.log("Seeding initial 17 predefined references with 0 stock...");
+      const batch = writeBatch(db);
+      DEFAULT_REFERENCES.forEach((ref) => {
+        batch.set(doc(db, "references", ref.id), ref);
+      });
+      await batch.commit();
+      console.log("Database seeded with 17 predefined references successfully.");
     }
   } catch (error) {
     console.error("Database seeding failed:", error);
@@ -282,7 +450,17 @@ export async function resetDatabaseToPristineState() {
       await boxesBatch.commit();
     }
 
-    // 3. Reset users to DEFAULT_USERS in batches
+    // 3. Delete all references
+    const refsSnapshot = await getDocs(collection(db, "references"));
+    if (!refsSnapshot.empty) {
+      const refsBatch = writeBatch(db);
+      refsSnapshot.forEach((docSnap) => {
+        refsBatch.delete(docSnap.ref);
+      });
+      await refsBatch.commit();
+    }
+
+    // 4. Reset users to DEFAULT_USERS in batches
     const usersSnapshot = await getDocs(collection(db, "users"));
     const usersBatch = writeBatch(db);
     if (!usersSnapshot.empty) {
@@ -295,13 +473,13 @@ export async function resetDatabaseToPristineState() {
     });
     await usersBatch.commit();
 
-    // 4. Seed pristine photo cartons
+    // 5. Seed pristine photo cartons
     const seedBatch = writeBatch(db);
     const ACTUAL_PHOTOS_CARTONS: Box[] = [
       {
         id: "A025P562A",
         barcode: "A025P562A",
-        reference: "CJTD PLANTILLAS S/PREC TOP K9",
+        reference: "PL-MSH-01-K9",
         expectedQty: 100,
         location: "GI-AREA (Dest 95A 910)",
         createdAt: new Date().toISOString(),
@@ -311,7 +489,7 @@ export async function resetDatabaseToPristineState() {
       {
         id: "A020M334B",
         barcode: "A020M334B",
-        reference: "CJTD PLANTILLAS S/PREC COR TOP K9",
+        reference: "PL-MSH-02-K9",
         expectedQty: 100,
         location: "GI-AREA (Dest 95A 910)",
         createdAt: new Date().toISOString(),
@@ -321,18 +499,24 @@ export async function resetDatabaseToPristineState() {
       {
         id: "A026K122D",
         barcode: "A026K122D",
-        reference: "CJTD PLANTILLAS S/PREC TOP K9",
+        reference: "PL-MSH-01-K9",
         expectedQty: 100,
         location: "GI-AREA (Dest 95A 910)",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        materialType: "Leather"
+        materialType: "Mesh"
       }
     ];
 
     ACTUAL_PHOTOS_CARTONS.forEach((box) => {
       seedBatch.set(doc(db, "boxes", box.id), box);
     });
+
+    // 6. Seed pristine 17 predefined references with 0 stock
+    DEFAULT_REFERENCES.forEach((ref) => {
+      seedBatch.set(doc(db, "references", ref.id), ref);
+    });
+
     await seedBatch.commit();
     console.log("Database reset to pristine state successfully.");
   } catch (error) {

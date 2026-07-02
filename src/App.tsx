@@ -4,7 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState } from "./seeder";
-import { Box, Adjustment, User } from "./types";
+import { Box, Adjustment, User, Reference } from "./types";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
 import OperatorWorkspace from "./components/OperatorWorkspace";
@@ -20,6 +20,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+  const [references, setReferences] = useState<Reference[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"dashboard" | "operator" | "supervisor" | "admin">("dashboard");
@@ -28,6 +29,7 @@ export default function App() {
   useEffect(() => {
     let unsubBoxes: (() => void) | null = null;
     let unsubAdjustments: (() => void) | null = null;
+    let unsubReferences: (() => void) | null = null;
     let unsubUsers: (() => void) | null = null;
 
     async function initApp() {
@@ -71,6 +73,21 @@ export default function App() {
         }
       );
 
+      unsubReferences = onSnapshot(
+        collection(db, "references"),
+        (snapshot) => {
+          const refList: Reference[] = [];
+          snapshot.forEach((doc) => {
+            refList.push({ id: doc.id, ...doc.data() } as Reference);
+          });
+          refList.sort((a, b) => a.code.localeCompare(b.code));
+          setReferences(refList);
+        },
+        (error) => {
+          console.error("Error subscribing to references:", error);
+        }
+      );
+
       unsubUsers = onSnapshot(
         collection(db, "users"), 
         (snapshot) => {
@@ -93,38 +110,58 @@ export default function App() {
     return () => {
       if (unsubBoxes) unsubBoxes();
       if (unsubAdjustments) unsubAdjustments();
+      if (unsubReferences) unsubReferences();
       if (unsubUsers) unsubUsers();
     };
   }, []);
 
   // Action: Operator submits a physical count adjustment
   const handleSubmitAdjustment = async (adjustmentData: Omit<Adjustment, "id" | "timestamp" | "status">) => {
+    const refCode = adjustmentData.reference;
+    const refDocRef = doc(db, "references", refCode);
+    const refSnap = await getDoc(refDocRef);
+    
+    let currentStock = 0;
+    if (refSnap.exists()) {
+      currentStock = refSnap.data().currentStock || 0;
+    }
+    
+    const stockBefore = currentStock;
+    const stockAdded = adjustmentData.actualQty; // Real Counted Quantity added
+    const stockAfter = stockBefore + stockAdded;
+
+    // Save adjustment record to Firestore with stock tracking info
     const newId = `adj-${Date.now()}`;
     const newAdjustment: Adjustment = {
       ...adjustmentData,
       id: newId,
       timestamp: new Date().toISOString(),
-      status: "pending"
+      status: "approved", // Automatically approved/added on operators save
+      stockBefore,
+      stockAdded,
+      stockAfter
     };
 
-    // Save adjustment record to Firestore
     await setDoc(doc(db, "adjustments", newId), newAdjustment);
 
-    // If the box record doesn't exist yet, create it on-the-fly!
+    // Update reference currentStock
+    await setDoc(refDocRef, {
+      currentStock: stockAfter,
+      lastUpdate: new Date().toISOString()
+    }, { merge: true });
+
+    // Save/update the carton (box) record as well
     const boxRef = doc(db, "boxes", adjustmentData.barcode);
-    const boxSnap = await getDoc(boxRef);
-    if (!boxSnap.exists()) {
-      await setDoc(boxRef, {
-        id: adjustmentData.barcode,
-        barcode: adjustmentData.barcode,
-        reference: adjustmentData.reference || (adjustmentData.materialType === "Mesh" ? "Mesh" : "Leather"),
-        expectedQty: adjustmentData.expectedQty,
-        location: "Zone A",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        materialType: adjustmentData.materialType || "Mesh"
-      });
-    }
+    await setDoc(boxRef, {
+      id: adjustmentData.barcode,
+      barcode: adjustmentData.barcode,
+      reference: refCode,
+      expectedQty: adjustmentData.actualQty, // Baseline is updated
+      location: "Zone A",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      materialType: adjustmentData.materialType || "Mesh"
+    });
   };
 
   // Action: Supervisor approves count adjustment
@@ -210,7 +247,18 @@ export default function App() {
 
   // If no user is logged in, show the RoleGate PIN Authenticator!
   if (!currentUser) {
-    return <RoleGate onLogin={(user) => setCurrentUser(user)} />;
+    return (
+      <RoleGate 
+        onLogin={(user) => {
+          setCurrentUser(user);
+          if (user.role === "operator") {
+            setActiveTab("operator");
+          } else {
+            setActiveTab("dashboard");
+          }
+        }} 
+      />
+    );
   }
 
   return (
@@ -237,18 +285,20 @@ export default function App() {
           <nav className="flex md:flex-col flex-row flex-wrap md:space-y-1 gap-1" id="primary-navigation-tabs">
             
             {/* Dashboard Tab */}
-            <button
-              onClick={() => setActiveTab("dashboard")}
-              id="nav-tab-dashboard"
-              className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
-                activeTab === "dashboard"
-                  ? "bg-slate-800 text-white shadow-sm"
-                  : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4 shrink-0" />
-              <span>Analytics</span>
-            </button>
+            {currentUser.role !== "operator" && (
+              <button
+                onClick={() => setActiveTab("dashboard")}
+                id="nav-tab-dashboard"
+                className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
+                  activeTab === "dashboard"
+                    ? "bg-slate-800 text-white shadow-sm"
+                    : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4 shrink-0" />
+                <span>Analytics</span>
+              </button>
+            )}
 
             {/* Operator Tab */}
             <button
@@ -373,6 +423,7 @@ export default function App() {
                 <DashboardOverview 
                   boxes={boxes} 
                   adjustments={adjustments} 
+                  references={references}
                   onTriggerScan={() => setActiveTab("operator")}
                 />
               )}
@@ -381,6 +432,7 @@ export default function App() {
                 <OperatorWorkspace 
                   boxes={boxes} 
                   adjustments={adjustments} 
+                  references={references}
                   currentUser={currentUser} 
                   onSubmitAdjustment={handleSubmitAdjustment}
                 />

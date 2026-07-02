@@ -1,15 +1,16 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { Box, Adjustment, User } from "../types";
+import { Box, Adjustment, User, Reference } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Scan, Package, MapPin, Calculator, FileText, AlertCircle, 
   Check, ArrowRight, RefreshCw, Layers, HelpCircle, Laptop, Settings,
-  Camera, CameraOff, X
+  Camera, CameraOff, X, Search, CheckCircle2
 } from "lucide-react";
 
 interface OperatorWorkspaceProps {
   boxes: Box[];
   adjustments: Adjustment[];
+  references: Reference[];
   currentUser: User;
   onSubmitAdjustment: (adjustmentData: Omit<Adjustment, "id" | "timestamp" | "status">) => Promise<void>;
 }
@@ -17,12 +18,16 @@ interface OperatorWorkspaceProps {
 export default function OperatorWorkspace({ 
   boxes, 
   adjustments, 
+  references,
   currentUser, 
   onSubmitAdjustment 
 }: OperatorWorkspaceProps) {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [scannedBox, setScannedBox] = useState<Box | null>(null);
   const [isNewCarton, setIsNewCarton] = useState(false);
+  const [selectedReferenceCode, setSelectedReferenceCode] = useState("");
+  const [referenceSearchQuery, setReferenceSearchQuery] = useState("");
+  const [materialTypeFilter, setMaterialTypeFilter] = useState<"All" | "Mesh" | "Soft">("All");
   const [materialType, setMaterialType] = useState<"Mesh" | "Leather">("Mesh");
   
   // Input quantities as strings for easy keypad manipulation
@@ -37,10 +42,20 @@ export default function OperatorWorkspace({
   const [errorMsg, setErrorMsg] = useState("");
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const successTimeoutRef = useRef<any>(null);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const qrScannerRef = useRef<any>(null);
+
+  // Clean up success timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Process the scanned barcode
   const handleIdentifyBox = (barcode: string) => {
@@ -49,6 +64,13 @@ export default function OperatorWorkspace({
 
     setIsScanning(true);
     setErrorMsg("");
+
+    // Clear any active success auto-reset timeout to prevent losing the new scan
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = null;
+    }
+    setSuccessMsg(false);
 
     // Standard high-pitched operational feedback audio beep
     try {
@@ -77,6 +99,7 @@ export default function OperatorWorkspace({
       setExpectedQtyStr(found.expectedQty.toString());
       setActualQtyStr("");
       setFocusedField("actual"); // Operator goes straight to counting
+      setSelectedReferenceCode(found.reference || "");
     } else {
       // New carton dynamic registration workflow (Supports empty database workflow)
       setIsNewCarton(true);
@@ -93,6 +116,7 @@ export default function OperatorWorkspace({
       setExpectedQtyStr("");
       setActualQtyStr("");
       setFocusedField("expected"); // Focus Expected Qty first so they enter baseline
+      setSelectedReferenceCode("");
     }
     setIsScanning(false);
   };
@@ -325,34 +349,42 @@ export default function OperatorWorkspace({
 
   // Submit trace and create/update carton record
   const handleSubmitCount = async () => {
-    if (!scannedBox || !calculation) return;
+    if (!scannedBox || !calculation || !selectedReferenceCode) return;
     
     setSubmitting(true);
     try {
+      const refObj = references.find(r => r.code === selectedReferenceCode);
+      const matchedMaterialType = refObj ? refObj.materialType : "Mesh";
+
       await onSubmitAdjustment({
         barcode: scannedBox.barcode,
-        reference: materialType, // Use the materialType as the part reference
+        reference: selectedReferenceCode,
         expectedQty: calculation.expected,
         actualQty: calculation.actual,
         difference: calculation.diff,
         operatorName: currentUser.fullName,
         comment: comment || "Standard count check",
-        materialType: materialType
+        materialType: matchedMaterialType
       });
       
       setSuccessMsg(true);
       
       // Auto reset and focus barcode input after 1.5 seconds
-      setTimeout(() => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+      successTimeoutRef.current = setTimeout(() => {
         setSuccessMsg(false);
         setScannedBox(null);
         setBarcodeInput("");
         setExpectedQtyStr("");
         setActualQtyStr("");
+        setSelectedReferenceCode("");
         setComment("");
         if (barcodeInputRef.current) {
           barcodeInputRef.current.focus();
         }
+        successTimeoutRef.current = null;
       }, 1500);
     } catch (err) {
       console.error("Failed to submit count:", err);
@@ -548,30 +580,6 @@ export default function OperatorWorkspace({
                 </span>
               </div>
             </div>
-
-            {/* Audit Logs for this specific carton ID */}
-            <div className="pt-3.5 border-t border-slate-800/60">
-              <span className="block text-[10px] text-slate-400 uppercase tracking-wider mb-2">Audit Trace History ({boxHistory.length})</span>
-              {boxHistory.length === 0 ? (
-                <p className="text-[10px] text-slate-500 italic">No previous traces on this carton.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                  {boxHistory.map((h) => (
-                    <div key={h.id} className="text-[10px] bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center">
-                      <div>
-                        <span className="font-semibold block text-slate-300">{h.operatorName} • {new Date(h.timestamp).toLocaleDateString()}</span>
-                        <span className="text-slate-400 font-mono italic block truncate max-w-[170px] mt-0.5">"{h.comment}"</span>
-                      </div>
-                      <span className={`px-1.5 py-0.5 rounded font-mono font-bold ${
-                        h.difference === 0 ? "bg-emerald-500/10 text-emerald-400" : h.difference > 0 ? "bg-blue-500/10 text-blue-400" : "bg-red-500/10 text-red-400"
-                      }`}>
-                        {h.difference > 0 ? `+${h.difference}` : h.difference}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </motion.div>
         )}
 
@@ -639,44 +647,114 @@ export default function OperatorWorkspace({
                 </button>
               </div>
 
-              {/* Step 1: Material Type Selector */}
-              <div className="space-y-2.5">
-                <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  1. Select Material Type
-                </span>
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setMaterialType("Mesh")}
-                    className={`flex items-center justify-center gap-3 p-4 rounded-xl border-2 text-sm font-bold transition-all cursor-pointer ${
-                      materialType === "Mesh"
-                        ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm"
-                        : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
-                    }`}
-                  >
-                    <Layers className="w-5 h-5" />
-                    <div className="text-left">
-                      <span className="block font-bold">Mesh</span>
-                      <span className="block text-[10px] font-normal opacity-75">Steering Wheel Cover</span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setMaterialType("Leather")}
-                    className={`flex items-center justify-center gap-3 p-4 rounded-xl border-2 text-sm font-bold transition-all cursor-pointer ${
-                      materialType === "Leather"
-                        ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm"
-                        : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
-                    }`}
-                  >
-                    <Package className="w-5 h-5" />
-                    <div className="text-left">
-                      <span className="block font-bold">Leather</span>
-                      <span className="block text-[10px] font-normal opacity-75">Premium Leather Wrapping</span>
-                    </div>
-                  </button>
+              {/* Step 1: Predefined Reference Selector */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
+                  <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    1. Select Master Reference (17 Predefined)
+                  </span>
+                  {/* Material Type filter inside Reference picker */}
+                  <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+                    {(["All", "Mesh", "Soft"] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setMaterialTypeFilter(filter)}
+                        className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                          materialTypeFilter === filter
+                            ? "bg-white text-blue-700 shadow-xs"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Search input for References */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search references by code or description..."
+                    value={referenceSearchQuery}
+                    onChange={(e) => setReferenceSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500 focus:bg-white transition-all shadow-inner"
+                  />
+                </div>
+
+                {/* References Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[170px] overflow-y-auto pr-1 pb-1 scrollbar-thin">
+                  {references
+                    .filter((ref) => {
+                      // Filter by Material Type
+                      if (materialTypeFilter !== "All" && ref.materialType !== materialTypeFilter) {
+                        return false;
+                      }
+                      // Filter by Search Query
+                      const q = referenceSearchQuery.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        ref.code.toLowerCase().includes(q) ||
+                        ref.description.toLowerCase().includes(q)
+                      );
+                    })
+                    .map((ref) => {
+                      const isSelected = selectedReferenceCode === ref.code;
+                      return (
+                        <button
+                          key={ref.code}
+                          type="button"
+                          onClick={() => {
+                            setSelectedReferenceCode(ref.code);
+                            // Also pre-fill material type for box registration if needed
+                            setMaterialType(ref.materialType === "Mesh" ? "Mesh" : "Leather");
+                          }}
+                          className={`p-3 rounded-xl border-2 text-left transition-all flex items-start gap-2.5 cursor-pointer hover:border-slate-300 ${
+                            isSelected
+                              ? "border-blue-600 bg-blue-50/50 shadow-xs"
+                              : "border-slate-100 bg-slate-50/40"
+                          }`}
+                        >
+                          <div className={`mt-0.5 shrink-0 ${isSelected ? "text-blue-600" : "text-slate-300"}`}>
+                            {isSelected ? <CheckCircle2 className="w-4 h-4" /> : <div className="w-4 h-4 rounded-full border-2 border-slate-300" />}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-xs text-slate-900 block truncate">{ref.code}</span>
+                              <span className={`text-[8px] font-bold px-1 rounded uppercase shrink-0 ${
+                                ref.materialType === "Mesh" ? "bg-blue-100 text-blue-700" : "bg-teal-100 text-teal-700"
+                              }`}>
+                                {ref.materialType}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 font-medium block truncate" title={ref.description}>
+                              {ref.description}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+
+                {/* Display Selected Reference Info card */}
+                {selectedReferenceCode && (() => {
+                  const selectedRefObj = references.find(r => r.code === selectedReferenceCode);
+                  if (!selectedRefObj) return null;
+                  return (
+                    <div className="p-3 bg-blue-50/40 border border-blue-100 rounded-xl grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Selected Description</span>
+                        <span className="font-bold text-slate-800 block truncate">{selectedRefObj.description}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Leather Companion</span>
+                        <span className="font-mono font-bold text-slate-700 block truncate">{selectedRefObj.associatedLeather}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Step 2: Quantities Panel */}
@@ -851,11 +929,11 @@ export default function OperatorWorkspace({
                   {/* Submit Button */}
                   <button
                     onClick={handleSubmitCount}
-                    disabled={expectedQtyStr === "" || actualQtyStr === "" || submitting}
+                    disabled={expectedQtyStr === "" || actualQtyStr === "" || !selectedReferenceCode || submitting}
                     id="submit-count-btn"
                     className={`w-full py-4 rounded-xl font-display font-black text-white text-sm shadow-md transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer ${
-                      expectedQtyStr === "" || actualQtyStr === ""
-                        ? "bg-slate-300 shadow-none cursor-not-allowed"
+                      expectedQtyStr === "" || actualQtyStr === "" || !selectedReferenceCode
+                        ? "bg-slate-300 shadow-none cursor-not-allowed text-slate-500"
                         : "bg-blue-600 hover:bg-blue-700 shadow-blue-600/10"
                     }`}
                   >
@@ -863,6 +941,11 @@ export default function OperatorWorkspace({
                       <>
                         <RefreshCw className="w-5 h-5 animate-spin" />
                         Saving Reconciliation...
+                      </>
+                    ) : !selectedReferenceCode ? (
+                      <>
+                        <AlertCircle className="w-5 h-5" />
+                        Select Reference First
                       </>
                     ) : (
                       <>
