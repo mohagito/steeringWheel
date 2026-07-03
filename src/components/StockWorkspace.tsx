@@ -34,20 +34,6 @@ export const MODEL_MAPPING: { [refCode: string]: string } = {
   "34364719C": "XJF"
 };
 
-// Baselines to match the scale of the user's provided example image
-export const MODEL_BASELINES: { [model: string]: number } = {
-  "C519": 500,
-  "B479": 720,
-  "P33B": 150,
-  "PZ1D": 2000,
-  "OV64/OV85": 10500,
-  "L74": 2100,
-  "CR3": 1800,
-  "K9": 150,
-  "BJA": 0,
-  "XJF": 1200
-};
-
 export default function StockWorkspace({ 
   boxes, 
   adjustments, 
@@ -74,29 +60,25 @@ export default function StockWorkspace({
     });
   }, [boxes, references]);
 
-  // 2. Calculate Real-Time Stock per Model (Baseline + real-time additions)
+  // 2. Calculate Real-Time Stock per Model (based entirely on physical box count in real-time)
   const modelStock = useMemo(() => {
-    const models = Object.keys(MODEL_BASELINES);
+    // Collect all unique models defined in MODEL_MAPPING
+    const models = Array.from(new Set(Object.values(MODEL_MAPPING)));
     
     return models.map(model => {
-      const baseline = MODEL_BASELINES[model];
-      
       // Filter references belonging to this model
       const modelRefs = references.filter(ref => MODEL_MAPPING[ref.code] === model);
       const refCodes = modelRefs.map(r => r.code);
       
       // Sum expected quantities from boxes matching these references
-      const warehouseQty = boxes
+      const totalQty = boxes
         .filter(b => refCodes.includes(b.reference))
         .reduce((sum, b) => sum + b.expectedQty, 0);
 
-      const totalQty = baseline + warehouseQty;
       const boxCount = boxes.filter(b => refCodes.includes(b.reference)).length;
 
       return {
         model,
-        baseline,
-        warehouseQty,
         totalQty,
         boxCount,
         referencesList: modelRefs
@@ -104,28 +86,15 @@ export default function StockWorkspace({
     });
   }, [boxes, references]);
 
-  // 3. Global Stats matching the image: PROD | DELIV | Available Units
+  // 3. Global Stats representing real-time quantities
   const stats = useMemo(() => {
     // Total physical warehouse stock
     const totalPhysicalStock = boxes.reduce((sum, b) => sum + b.expectedQty, 0);
-    
-    // Sum of all model baselines
-    const totalBaselineStock = Object.values(MODEL_BASELINES).reduce((sum, b) => sum + b, 0);
-    
-    // Total available units is baseline + active warehouse stock
-    const availableUnits = totalBaselineStock + totalPhysicalStock;
-    
-    // Delivered units (stable high count from production history)
-    const deliv = 69240; 
-    
-    // PROD = DELIV + Available Units
-    const prod = deliv + availableUnits;
+    const totalBoxes = boxes.length;
 
     return {
-      prod,
-      deliv,
-      availableUnits,
-      physicalWarehouseOnly: totalPhysicalStock
+      availableUnits: totalPhysicalStock,
+      totalBoxes
     };
   }, [boxes]);
 
@@ -228,22 +197,18 @@ export default function StockWorkspace({
             </button>
           </div>
 
-          {/* Core Metrics Badges matching image styling */}
+          {/* Core Real-Time Metrics Badges */}
           <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs sm:text-sm">
-            <div className="font-semibold text-slate-900 flex items-center gap-1.5 font-mono">
-              PROD: <span className="text-slate-800 font-bold">{stats.prod.toLocaleString()}</span>
-            </div>
-            <div className="text-slate-400">|</div>
-            <div className="font-semibold text-slate-900 flex items-center gap-1.5 font-mono">
-              DELIV: <span className="text-slate-800 font-bold">{stats.deliv.toLocaleString()}</span>
-            </div>
-            <div className="text-slate-400">|</div>
             <div className="px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg font-bold flex items-center gap-1.5 font-mono" title="Exactly 17 master steering wheel part references are loaded and tracked in the database">
               {references.length} / 17 Master Parts Active
             </div>
+            <div className="text-slate-400">|</div>
+            <div className="px-3 py-1.5 bg-sky-50 text-sky-700 border border-sky-100 rounded-lg font-bold flex items-center gap-1.5 font-mono" title="Total number of active physical cartons registered in the warehouse">
+              {stats.totalBoxes} Active Cartons
+            </div>
             <div className="text-slate-400 hidden sm:block">|</div>
-            <div className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg font-bold flex items-center gap-1.5 font-mono">
-              {stats.availableUnits.toLocaleString()} Available Units
+            <div className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg font-bold flex items-center gap-1.5 font-mono" title="Sum of all pieces currently registered in the warehouse">
+              {stats.availableUnits.toLocaleString()} Pcs in Stock
             </div>
           </div>
         </div>

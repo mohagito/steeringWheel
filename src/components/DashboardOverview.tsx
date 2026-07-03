@@ -114,7 +114,7 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
       {/* Top Banner & Welcome */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-brand-100 shadow-xs">
         <div>
-          <h2 className="font-display text-2xl font-bold text-brand-950 tracking-tight">EPP NATUR Production Dashboard</h2>
+          <h2 className="font-display text-2xl font-bold text-brand-950 tracking-tight">EPP NATUR Stock Control Dashboard</h2>
           <p className="text-sm text-brand-600 mt-1">
             Real-time shopfloor inventory statistics for the Steering Wheels assembly department.
           </p>
