@@ -312,7 +312,6 @@ export default function OperatorWorkspace({
               : "bg-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-200/50"
           }`}
         >
-          <Sparkles className="w-5 h-5 shrink-0" />
           <div>
             <span className="block font-black uppercase text-[11px] tracking-wide">⚡ Quick Auto-Add Mode</span>
             <span className={`block text-[9px] font-sans font-medium ${flowMode === "quick" ? "text-blue-100" : "text-slate-500"}`}>
@@ -823,34 +822,7 @@ export default function OperatorWorkspace({
         )}
       </AnimatePresence>
 
-      {/* Operator Instruction Guide Card */}
-      <div className="bg-slate-900 text-slate-200 p-5 rounded-3xl border border-slate-800 flex items-start gap-3.5 shadow-lg">
-        <HelpCircle className="w-6 h-6 text-indigo-400 shrink-0 mt-0.5" />
-        <div className="text-xs space-y-1.5 leading-relaxed">
-          <h4 className="font-display font-extrabold text-white uppercase tracking-wider text-xs">Operator Guided Workflow instructions</h4>
-          <p className="text-slate-300">
-            This terminal guides you step-by-step to record inventory counts without any complex software navigation. Choose your flow at the top:
-          </p>
-          {flowMode === "quick" ? (
-            <div className="space-y-1">
-              <p className="text-emerald-400 font-bold">⚡ Active: Quick Auto-Add Mode (2 Steps)</p>
-              <ul className="list-disc pl-4 space-y-1 text-slate-400">
-                <li><strong className="text-white">Step 1</strong>: Scan the Part Reference barcode (or choose from list).</li>
-                <li><strong className="text-white">Step 2</strong>: Scan the box quantity barcode. The carton is immediately added to stock with no manual physical count needed.</li>
-              </ul>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <p className="text-blue-400 font-bold">📋 Active: Guided Audit Mode (3 Steps)</p>
-              <ul className="list-disc pl-4 space-y-1 text-slate-400">
-                <li><strong className="text-white">Step 1</strong>: Scan the Part Reference barcode (or choose from list).</li>
-                <li><strong className="text-white">Step 2</strong>: Scan the expected quantity barcode on the label (or choose preset).</li>
-                <li><strong className="text-white">Step 3</strong>: Manually count physical items in the box, enter the real count, and submit to check for stock discrepancy.</li>
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
+
 
     </div>
   );
