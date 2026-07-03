@@ -4,17 +4,18 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState } from "./seeder";
-import { Box, Adjustment, User, Reference } from "./types";
+import { Box, Adjustment, User, Reference, Delivery } from "./types";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
 import OperatorWorkspace from "./components/OperatorWorkspace";
 import SupervisorWorkspace from "./components/SupervisorWorkspace";
 import AdminWorkspace from "./components/AdminWorkspace";
 import StockWorkspace from "./components/StockWorkspace";
+import DeliveriesWorkspace from "./components/DeliveriesWorkspace";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
-  RefreshCw, Layers, CheckSquare, Shield, HelpCircle, Database
+  RefreshCw, Layers, CheckSquare, Shield, HelpCircle, Database, Truck
 } from "lucide-react";
 
 export default function App() {
@@ -22,9 +23,10 @@ export default function App() {
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [references, setReferences] = useState<Reference[]>([]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries">("dashboard");
 
   // Sync state with Firestore on mount
   useEffect(() => {
@@ -32,6 +34,7 @@ export default function App() {
     let unsubAdjustments: (() => void) | null = null;
     let unsubReferences: (() => void) | null = null;
     let unsubUsers: (() => void) | null = null;
+    let unsubDeliveries: (() => void) | null = null;
 
     async function initApp() {
       try {
@@ -89,6 +92,23 @@ export default function App() {
         }
       );
 
+      // Subscribing to Deliveries collection
+      unsubDeliveries = onSnapshot(
+        collection(db, "deliveries"),
+        (snapshot) => {
+          const delList: Delivery[] = [];
+          snapshot.forEach((doc) => {
+            delList.push({ id: doc.id, ...doc.data() } as Delivery);
+          });
+          // Sort deliveries descending by timestamp
+          delList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setDeliveries(delList);
+        },
+        (error) => {
+          console.error("Error subscribing to deliveries:", error);
+        }
+      );
+
       unsubUsers = onSnapshot(
         collection(db, "users"), 
         (snapshot) => {
@@ -112,9 +132,43 @@ export default function App() {
       if (unsubBoxes) unsubBoxes();
       if (unsubAdjustments) unsubAdjustments();
       if (unsubReferences) unsubReferences();
+      if (unsubDeliveries) unsubDeliveries();
       if (unsubUsers) unsubUsers();
     };
   }, []);
+
+  // Action: Operator logs a delivery / dispatch
+  const handleSubmitDelivery = async (deliveryData: Omit<Delivery, "id" | "timestamp" | "operatorName">) => {
+    if (!currentUser) return;
+    const refCode = deliveryData.reference;
+    const refDocRef = doc(db, "references", refCode);
+    const refSnap = await getDoc(refDocRef);
+    
+    let currentStock = 0;
+    if (refSnap.exists()) {
+      currentStock = refSnap.data().currentStock || 0;
+    }
+    
+    // Decrement stock (can go negative if proceed with warning, but use Math.max to prevent negative unless necessary. Let's allow negative if warning is bypassed, but Math.max(0) is standard safety)
+    const stockAfter = Math.max(0, currentStock - deliveryData.quantity);
+
+    // Save Delivery Record
+    const newId = `del-${Date.now()}`;
+    const newDelivery: Delivery = {
+      ...deliveryData,
+      id: newId,
+      operatorName: currentUser.fullName,
+      timestamp: new Date().toISOString()
+    };
+
+    await setDoc(doc(db, "deliveries", newId), newDelivery);
+
+    // Update reference stock level
+    await setDoc(refDocRef, {
+      currentStock: stockAfter,
+      lastUpdate: new Date().toISOString()
+    }, { merge: true });
+  };
 
   // Action: Operator submits a physical count adjustment
   const handleSubmitAdjustment = async (adjustmentData: Omit<Adjustment, "id" | "timestamp" | "status">) => {
@@ -161,7 +215,9 @@ export default function App() {
       location: "Zone A",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      materialType: adjustmentData.materialType || "Mesh"
+      materialType: adjustmentData.materialType || "Mesh",
+      invoiceNumber: adjustmentData.invoiceNumber || "",
+      palletQuality: adjustmentData.palletQuality || ""
     });
   };
 
@@ -315,6 +371,20 @@ export default function App() {
               <span>Stock</span>
             </button>
 
+            {/* Deliveries Tab */}
+            <button
+              onClick={() => setActiveTab("deliveries")}
+              id="nav-tab-deliveries"
+              className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
+                activeTab === "deliveries"
+                  ? "bg-slate-800 text-white shadow-sm"
+                  : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
+              }`}
+            >
+              <Truck className="w-4 h-4 shrink-0" />
+              <span>Deliveries</span>
+            </button>
+
             {/* Operator Tab */}
             <button
               onClick={() => setActiveTab("operator")}
@@ -402,13 +472,11 @@ export default function App() {
             <h1 className="text-base sm:text-lg font-bold text-slate-800 font-display">
               {activeTab === "dashboard" && "Operational Dashboard"}
               {activeTab === "stock" && "Real-time Stock Inventory"}
+              {activeTab === "deliveries" && "Customer Deliveries & Dispatches"}
               {activeTab === "operator" && "Inventory Count Workspace"}
               {activeTab === "supervisor" && "Supervisor Validation & Sign-offs"}
               {activeTab === "admin" && "Administrative Control Center"}
             </h1>
-            <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold uppercase tracking-wider">
-              System Online
-            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -453,6 +521,15 @@ export default function App() {
                 />
               )}
 
+              {activeTab === "deliveries" && (
+                <DeliveriesWorkspace
+                  deliveries={deliveries}
+                  references={references}
+                  currentUser={currentUser}
+                  onSubmitDelivery={handleSubmitDelivery}
+                />
+              )}
+
               {activeTab === "operator" && (
                 <OperatorWorkspace 
                   boxes={boxes} 
@@ -487,21 +564,6 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </main>
-
-        {/* Footer */}
-        <footer className="bg-white border-t border-slate-200 py-4 px-6 sm:px-8 shrink-0">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-400">
-            <div>
-              <span>EPP NATUR © {new Date().getFullYear()} • Steering Wheels Production Audit System</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1.5 font-mono text-[10px]">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                Synchronized Cloud Database
-              </span>
-            </div>
-          </div>
-        </footer>
 
       </div>
 

@@ -10,7 +10,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "34340664A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "FORD"
   },
   {
     id: "34340689D",
@@ -19,7 +20,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "34340675B",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "FORD"
   },
   {
     id: "34316011B",
@@ -28,7 +30,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "R002A631A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "NISSAN"
   },
   {
     id: "R000B629B",
@@ -37,7 +40,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "R000E487A, R000G739A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "NISSAN"
   },
   {
     id: "R000B630A",
@@ -46,7 +50,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "R000E487A, R000G739A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "NISSAN"
   },
   {
     id: "A025M750B",
@@ -55,7 +60,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "A028J493A, R001F923A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "OPEL"
   },
   {
     id: "A025M751B",
@@ -64,7 +70,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "R001F928A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "OPEL"
   },
   {
     id: "R001W189B",
@@ -73,7 +80,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "R002J088A, R002G542A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "LANCIA"
   },
   {
     id: "R000J601B",
@@ -82,7 +90,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "R000R523A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "Stellantis"
   },
   {
     id: "R000J600C",
@@ -91,7 +100,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "R000R523A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "Stellantis"
   },
   {
     id: "A026K122B",
@@ -100,7 +110,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "A026K160B",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "Stellantis"
   },
   {
     id: "R002W094A",
@@ -109,7 +120,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "R003A180A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "Stellantis"
   },
   {
     id: "A026L577A",
@@ -118,7 +130,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "A026F717A, A026F718A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
   },
   {
     id: "34364719C",
@@ -127,7 +140,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Mesh",
     associatedLeather: "A026L148A, A026L137A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
   },
   {
     id: "34340679A",
@@ -136,7 +150,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Soft",
     associatedLeather: "34340664A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "FORD"
   },
   {
     id: "34340687B",
@@ -145,7 +160,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Soft",
     associatedLeather: "34340675B",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "FORD"
   },
   {
     id: "R000J610A",
@@ -154,7 +170,8 @@ export const DEFAULT_REFERENCES: Reference[] = [
     materialType: "Soft",
     associatedLeather: "R000M817A",
     currentStock: 0,
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    customer: "Stellantis"
   }
 ];
 
@@ -379,67 +396,51 @@ export async function seedDatabaseIfNeeded() {
       await batch.commit();
     }
 
-    // Seed actual cartons from the user's photos if completely empty
+    // Ensure the database is completely clean with 0 stock on start (empty carton inventory and no pending adjustments)
     const boxesSnapshot = await getDocs(collection(db, "boxes"));
-    if (boxesSnapshot.empty) {
-      console.log("Seeding initial cartons from photos...");
-      const batch = writeBatch(db);
-      
-      const ACTUAL_PHOTOS_CARTONS: Box[] = [
-        {
-          id: "A025P562A",
-          barcode: "A025P562A",
-          reference: "34340681C",
-          expectedQty: 100,
-          location: "GI-AREA (Dest 95A 910)",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          materialType: "Mesh"
-        },
-        {
-          id: "A020M334B",
-          barcode: "A020M334B",
-          reference: "R000B629B",
-          expectedQty: 100,
-          location: "GI-AREA (Dest 95A 910)",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          materialType: "Mesh"
-        },
-        {
-          id: "A026K122D",
-          barcode: "A026K122D",
-          reference: "A026K122B",
-          expectedQty: 100,
-          location: "GI-AREA (Dest 95A 910)",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          materialType: "Mesh"
-        }
-      ];
-
-      ACTUAL_PHOTOS_CARTONS.forEach((box) => {
-        batch.set(doc(db, "boxes", box.id), box);
+    if (!boxesSnapshot.empty) {
+      console.log("Cleaning up active database cartons...");
+      const boxesBatch = writeBatch(db);
+      boxesSnapshot.forEach((docSnap) => {
+        boxesBatch.delete(docSnap.ref);
       });
-      await batch.commit();
-      console.log("Database seeded with photo cartons successfully.");
-    } else {
-      console.log("Database seed check completed. Carton inventory already exists.");
+      await boxesBatch.commit();
     }
 
-    // Ensure all 17 predefined references are present in the collection
-    const refsSnapshot = await getDocs(collection(db, "references"));
-    const existingRefIds = new Set(refsSnapshot.docs.map(doc => doc.id));
-    const missingRefs = DEFAULT_REFERENCES.filter(ref => !existingRefIds.has(ref.id));
-    
-    if (missingRefs.length > 0) {
-      console.log(`Seeding missing predefined references (${missingRefs.length}):`, missingRefs.map(r => r.id));
-      const batch = writeBatch(db);
-      missingRefs.forEach((ref) => {
-        batch.set(doc(db, "references", ref.id), ref);
+    const adjustmentsSnapshot = await getDocs(collection(db, "adjustments"));
+    if (!adjustmentsSnapshot.empty) {
+      console.log("Cleaning up pending/old adjustments...");
+      const adjBatch = writeBatch(db);
+      adjustmentsSnapshot.forEach((docSnap) => {
+        adjBatch.delete(docSnap.ref);
       });
-      await batch.commit();
-      console.log("Database seeded with missing predefined references successfully.");
+      await adjBatch.commit();
+    }
+
+    console.log("Database initialized with empty carton inventory for starting point.");
+
+    // Ensure all 17 predefined references are present in the collection and have customer fields set
+    const refsSnapshot = await getDocs(collection(db, "references"));
+    const existingRefs = new Map(refsSnapshot.docs.map(doc => [doc.id, doc.data() as Reference]));
+    const refBatch = writeBatch(db);
+    let needsRefUpdate = false;
+
+    DEFAULT_REFERENCES.forEach((ref) => {
+      const existing = existingRefs.get(ref.id);
+      if (!existing) {
+        console.log(`Seeding missing predefined reference: ${ref.id}`);
+        refBatch.set(doc(db, "references", ref.id), ref);
+        needsRefUpdate = true;
+      } else if (!existing.customer) {
+        console.log(`Migrating customer field for predefined reference: ${ref.id} -> ${ref.customer}`);
+        refBatch.set(doc(db, "references", ref.id), { ...existing, customer: ref.customer }, { merge: true });
+        needsRefUpdate = true;
+      }
+    });
+    
+    if (needsRefUpdate) {
+      await refBatch.commit();
+      console.log("Database references seeded or migrated with customer fields successfully.");
     }
   } catch (error) {
     console.error("Database seeding failed:", error);
@@ -478,6 +479,16 @@ export async function resetDatabaseToPristineState() {
       await refsBatch.commit();
     }
 
+    // 3.5 Delete all deliveries
+    const deliveriesSnapshot = await getDocs(collection(db, "deliveries"));
+    if (!deliveriesSnapshot.empty) {
+      const delBatch = writeBatch(db);
+      deliveriesSnapshot.forEach((docSnap) => {
+        delBatch.delete(docSnap.ref);
+      });
+      await delBatch.commit();
+    }
+
     // 4. Reset users to DEFAULT_USERS in batches
     const usersSnapshot = await getDocs(collection(db, "users"));
     const usersBatch = writeBatch(db);
@@ -491,46 +502,8 @@ export async function resetDatabaseToPristineState() {
     });
     await usersBatch.commit();
 
-    // 5. Seed pristine photo cartons
+    // 5. Seed pristine predefined references with 0 stock
     const seedBatch = writeBatch(db);
-    const ACTUAL_PHOTOS_CARTONS: Box[] = [
-      {
-        id: "A025P562A",
-        barcode: "A025P562A",
-        reference: "34340681C",
-        expectedQty: 100,
-        location: "GI-AREA (Dest 95A 910)",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        materialType: "Mesh"
-      },
-      {
-        id: "A020M334B",
-        barcode: "A020M334B",
-        reference: "R000B629B",
-        expectedQty: 100,
-        location: "GI-AREA (Dest 95A 910)",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        materialType: "Mesh"
-      },
-      {
-        id: "A026K122D",
-        barcode: "A026K122D",
-        reference: "A026K122B",
-        expectedQty: 100,
-        location: "GI-AREA (Dest 95A 910)",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        materialType: "Mesh"
-      }
-    ];
-
-    ACTUAL_PHOTOS_CARTONS.forEach((box) => {
-      seedBatch.set(doc(db, "boxes", box.id), box);
-    });
-
-    // 6. Seed pristine 17 predefined references with 0 stock
     DEFAULT_REFERENCES.forEach((ref) => {
       seedBatch.set(doc(db, "references", ref.id), ref);
     });

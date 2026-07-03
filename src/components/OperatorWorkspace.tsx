@@ -3,7 +3,7 @@ import { Box, Adjustment, User, Reference } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Scan, Package, AlertCircle, Check, ArrowRight, RefreshCw, X,
-  ArrowLeft, HelpCircle, CornerDownLeft, Sparkles, CheckCircle2
+  ArrowLeft, HelpCircle, CornerDownLeft, Sparkles, CheckCircle2, Truck, FileText
 } from "lucide-react";
 
 interface OperatorWorkspaceProps {
@@ -37,6 +37,13 @@ export default function OperatorWorkspace({
   
   // Operational mode: "quick" (Scan ref + scan qty -> immediate save), "audit" (3-step manual discrepancy check)
   const [flowMode, setFlowMode] = useState<"quick" | "audit">("quick");
+  
+  // Active Shipment / Pallet traceability session states
+  const [activePalletInvoice, setActivePalletInvoice] = useState("");
+  const [isPalletSessionActive, setIsPalletSessionActive] = useState(false);
+
+  // Form inputs for the shipment setup screen
+  const [setupInvoice, setSetupInvoice] = useState("");
   
   const [selectedRef, setSelectedRef] = useState<Reference | null>(null);
   const [expectedQtyStr, setExpectedQtyStr] = useState("");
@@ -113,7 +120,55 @@ export default function OperatorWorkspace({
 
     if (activeStep === "ref") {
       // Step 1: Scan Reference Barcode
-      const matched = references.find(r => r.code.toUpperCase() === cleanVal);
+      // Helper function to find a matching reference supporting industry prefixes like 'P', 'I', '1P' and partial wildcard scans
+      const findMatchingReference = (scanned: string, refs: Reference[]): Reference | null => {
+        const upperScanned = scanned.toUpperCase().trim();
+        if (!upperScanned) return null;
+        
+        // 1. Direct exact match
+        let match = refs.find(r => r.code.toUpperCase() === upperScanned);
+        if (match) return match;
+        
+        // 2. Try matching as a substring (if the barcode contains the reference code, e.g. PR000J610A contains R000J610A, IA025M750B contains A025M750B)
+        match = refs.find(r => upperScanned.includes(r.code.toUpperCase()));
+        if (match) return match;
+        
+        // 3. Strip standard industry prefixes (Odette/Galia/AIAG)
+        const commonPrefixes = ["1P", "2P", "P", "I", "S", "Q", "V", "K", "N"];
+        for (const pref of commonPrefixes) {
+          if (upperScanned.startsWith(pref)) {
+            const stripped = upperScanned.substring(pref.length).trim();
+            if (stripped.length >= 3) {
+              // Try exact match with stripped code
+              match = refs.find(r => r.code.toUpperCase() === stripped);
+              if (match) return match;
+              
+              // Try matching references that start with the stripped prefix (for partial scans)
+              match = refs.find(r => r.code.toUpperCase().startsWith(stripped));
+              if (match) return match;
+            }
+          }
+        }
+        
+        // 4. Fallback wildcard stripping (strips 1-3 leading characters to find a startsWith/exact match)
+        // Helps with cases like scanning "IA025" -> stripped "A025" matches "A025M750B"
+        for (let len = 1; len <= 3; len++) {
+          if (upperScanned.length > len) {
+            const stripped = upperScanned.substring(len).trim();
+            match = refs.find(r => r.code.toUpperCase() === stripped);
+            if (match) return match;
+            
+            if (stripped.length >= 3) {
+              match = refs.find(r => r.code.toUpperCase().startsWith(stripped));
+              if (match) return match;
+            }
+          }
+        }
+        
+        return null;
+      };
+
+      const matched = findMatchingReference(cleanVal, references);
       if (matched) {
         setSelectedRef(matched);
         setActiveStep("qty");
@@ -125,14 +180,17 @@ export default function OperatorWorkspace({
       }
     } else if (activeStep === "qty") {
       // Step 2: Scan Quantity Input
-      const isNumeric = /^\d+$/.test(cleanVal);
+      // Strip any leading non-digit characters (typical Odette/Galia quantity prefix, e.g., Q144 -> 144)
+      const parsedQtyVal = cleanVal.replace(/^\D+/, "").trim();
+
+      const isNumeric = /^\d+$/.test(parsedQtyVal);
       if (isNumeric) {
-        setExpectedQtyStr(cleanVal);
+        setExpectedQtyStr(parsedQtyVal);
         if (flowMode === "quick") {
           // In quick scan mode, we auto-save immediately with actualQty = expectedQty!
           setInputValue("");
           playSuccessBeep();
-          handleFinalSubmit(selectedRef!.code, cleanVal, cleanVal, "Direct Quick Scan Stock Intake");
+          handleFinalSubmit(selectedRef!.code, parsedQtyVal, parsedQtyVal, "Direct Quick Scan Stock Intake");
         } else {
           setActiveStep("count");
           setInputValue("");
@@ -243,7 +301,9 @@ export default function OperatorWorkspace({
         difference: actual - expected,
         operatorName: currentUser.fullName,
         comment: customComment || comment || "Standard count check",
-        materialType: matchedMaterialType
+        materialType: matchedMaterialType,
+        invoiceNumber: activePalletInvoice,
+        palletQuality: ""
       });
 
       playSubmitBeep();
@@ -295,8 +355,101 @@ export default function OperatorWorkspace({
     setActiveStep("ref");
   };
 
+  if (!isPalletSessionActive) {
+    return (
+      <div className="max-w-md mx-auto py-4 animate-fadeIn" id="pallet-setup-wizard">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6"
+        >
+          {/* Title section */}
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs border border-blue-100">
+              <Truck className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-extrabold text-slate-900 font-display uppercase tracking-tight">Pallet Intake Traceability</h2>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              EPP NATUR requires entering the incoming pallet invoice number before scanning boxes for maximum traceability.
+            </p>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!setupInvoice.trim()) return;
+              setActivePalletInvoice(setupInvoice.trim().toUpperCase());
+              setIsPalletSessionActive(true);
+              playSuccessBeep();
+            }}
+            className="space-y-5"
+          >
+            {/* Invoice Input */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Pallet Invoice / Delivery Note #
+              </label>
+              <div className="relative">
+                <FileText className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="e.g. PI-98402A"
+                  value={setupInvoice}
+                  onChange={(e) => setSetupInvoice(e.target.value)}
+                  className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white text-sm font-bold uppercase tracking-wide text-slate-800 transition-all font-mono"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Giant tactile start scanning button */}
+            <button
+              type="submit"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-blue-100 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+            >
+              <Scan className="w-4 h-4" />
+              <span>START SCANNING PALLET BOXES</span>
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6" id="operator-guided-wizard">
+
+      {/* Active Pallet Session Status Header */}
+      <div className="bg-slate-900 text-white rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-slate-800 text-emerald-400 rounded-xl">
+            <Truck className="w-5 h-5 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                ACTIVE SHIPMENT SESSION
+              </span>
+            </div>
+            <h3 className="text-xs sm:text-sm font-bold font-mono tracking-wide mt-1 text-slate-100">
+              INVOICE #: <span className="text-blue-400 underline decoration-dotted">{activePalletInvoice}</span>
+            </h3>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsPalletSessionActive(false);
+            setSetupInvoice("");
+            handleResetWizard();
+          }}
+          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 hover:text-rose-400 border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 self-stretch sm:self-auto justify-center"
+        >
+          <X className="w-3.5 h-3.5" />
+          <span>CLOSE PALLET SESSION</span>
+        </button>
+      </div>
       
       {/* Scan Flow Mode Selector - 2 Mode Options */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">

@@ -16,7 +16,9 @@ export interface Box {
   location: string;
   createdAt: string;
   updatedAt: string;
-  materialType?: "Mesh" | "Leather";
+  materialType?: "Mesh" | "Leather" | "Soft";
+  invoiceNumber?: string;
+  palletQuality?: string;
 }
 
 export interface Adjustment {
@@ -36,6 +38,19 @@ export interface Adjustment {
   stockBefore?: number;
   stockAdded?: number;
   stockAfter?: number;
+  invoiceNumber?: string;
+  palletQuality?: string;
+}
+
+export interface Delivery {
+  id: string;
+  invoiceNumber: string;
+  reference: string;
+  quantity: number;
+  operatorName: string;
+  timestamp: string;
+  customer: string;
+  notes?: string;
 }
 
 export interface Reference {
@@ -46,6 +61,7 @@ export interface Reference {
   associatedLeather: string;
   currentStock: number;
   lastUpdate: string;
+  customer?: string;
 }
 
 export interface ReferenceSummary {

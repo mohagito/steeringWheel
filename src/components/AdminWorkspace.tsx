@@ -328,7 +328,7 @@ export default function AdminWorkspace({
               ) : (
                 <div className="space-y-3 p-3.5 bg-rose-50 border border-rose-100 rounded-xl" id="admin-reset-confirm-box">
                   <p className="text-xs text-rose-700 font-medium">
-                    ⚠️ <strong>Are you sure?</strong> This will completely delete all operator physical count logs and restore the original photo reference cartons.
+                    ⚠️ <strong>Are you sure?</strong> This will completely delete all operator physical count logs and reset the database to its pristine zero starting point.
                   </p>
                   <div className="flex gap-2">
                     <button

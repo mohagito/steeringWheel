@@ -123,10 +123,6 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
           </div>
 
           <div className="mt-8 md:mt-0 text-center md:text-left">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono bg-brand-800/60 text-brand-300 border border-brand-700/50">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              EPP Shopfloor Node Active
-            </span>
           </div>
         </div>
 

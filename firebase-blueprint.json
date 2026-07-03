@@ -58,6 +58,21 @@
         "lastUpdate": { "type": "string", "description": "Timestamp of the last update" }
       },
       "required": ["code", "description", "materialType", "associatedLeather", "currentStock", "lastUpdate"]
+    },
+    "Delivery": {
+      "title": "Delivery",
+      "description": "A customer shipment / delivery tracking record",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string", "description": "Professional delivery invoice number" },
+        "reference": { "type": "string", "description": "The part reference code" },
+        "quantity": { "type": "number", "description": "The quantity of parts shipped" },
+        "operatorName": { "type": "string", "description": "Name of the operator who processed this delivery" },
+        "timestamp": { "type": "string", "description": "Date and time of shipment" },
+        "customer": { "type": "string", "description": "Destination customer (e.g. FORD)" },
+        "notes": { "type": "string", "description": "Optional shipment notes" }
+      },
+      "required": ["invoiceNumber", "reference", "quantity", "operatorName", "timestamp", "customer"]
     }
   },
   "firestore": {
@@ -76,6 +91,10 @@
     "/references/{referenceId}": {
       "schema": "Reference",
       "description": "Collection of predefined references and current stock levels"
+    },
+    "/deliveries/{deliveryId}": {
+      "schema": "Delivery",
+      "description": "Collection of professional delivery dispatches"
     }
   }
 }

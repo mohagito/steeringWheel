@@ -13,5 +13,8 @@ service cloud.firestore {
     match /references/{referenceId} {
       allow read, write: if true;
     }
+    match /deliveries/{deliveryId} {
+      allow read, write: if true;
+    }
   }
 }
