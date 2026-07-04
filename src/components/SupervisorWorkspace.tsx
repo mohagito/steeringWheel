@@ -21,7 +21,7 @@ export default function SupervisorWorkspace({
   onApproveAdjustment,
   onRejectAdjustment
 }: SupervisorWorkspaceProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"pending" | "logs" | "reports">("pending");
+  const [activeSubTab, setActiveSubTab] = useState<"pending" | "logs" | "reports">("logs");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "approved" | "pending" | "rejected">("all");
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -167,17 +167,6 @@ export default function SupervisorWorkspace({
 
         {/* Workspace Tab Switcher */}
         <div className="flex bg-brand-50 p-1 rounded-xl border border-brand-100 self-start md:self-auto" id="supervisor-subtab-switcher">
-          <button
-            onClick={() => setActiveSubTab("pending")}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
-              activeSubTab === "pending"
-                ? "bg-white text-brand-950 shadow-xs"
-                : "text-brand-500 hover:text-brand-800"
-            }`}
-            id="subtab-pending-btn"
-          >
-            Pending Sign-offs ({pendingAdjustments.length})
-          </button>
           <button
             onClick={() => setActiveSubTab("logs")}
             className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${

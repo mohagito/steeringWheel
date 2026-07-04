@@ -61,6 +61,7 @@ export default function OperatorWorkspace({
   const [refSearchQuery, setRefSearchQuery] = useState("");
   const [materialTypeFilter, setMaterialTypeFilter] = useState<"All" | "Mesh" | "Soft">("All");
 
+  const setupInvoiceRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const successTimeoutRef = useRef<any>(null);
 
@@ -88,15 +89,27 @@ export default function OperatorWorkspace({
 
   // Auto focus the primary scan input on mount, step change, and reset
   useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
+    if (!isPalletSessionActive) {
+      if (setupInvoiceRef.current) {
+        setupInvoiceRef.current.focus();
+      }
+    } else {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
     }
-  }, [activeStep, successMsg]);
+  }, [isPalletSessionActive, activeStep, successMsg]);
 
   // Handle focusing if user clicks elsewhere on the active terminal card
   const handleCardClick = () => {
-    if (inputRef.current) {
-      inputRef.current.focus();
+    if (isPalletSessionActive) {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    } else {
+      if (setupInvoiceRef.current) {
+        setupInvoiceRef.current.focus();
+      }
     }
   };
 
@@ -378,7 +391,7 @@ export default function OperatorWorkspace({
 
   if (!isPalletSessionActive) {
     return (
-      <div className="max-w-md mx-auto py-4 animate-fadeIn" id="pallet-setup-wizard">
+      <div className="max-w-md mx-auto py-4 animate-fadeIn" id="pallet-setup-wizard" onClick={handleCardClick}>
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -413,12 +426,14 @@ export default function OperatorWorkspace({
               <div className="relative">
                 <FileText className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
                 <input
+                  ref={setupInvoiceRef}
                   type="text"
                   placeholder="e.g. PI-98402A"
                   value={setupInvoice}
                   onChange={(e) => setSetupInvoice(e.target.value)}
                   className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white text-sm font-bold uppercase tracking-wide text-slate-800 transition-all font-mono"
                   required
+                  autoFocus
                 />
               </div>
             </div>
@@ -678,6 +693,7 @@ export default function OperatorWorkspace({
                             : "border-emerald-200 focus:border-emerald-600 focus:bg-white text-emerald-900"
                     }`}
                     autoComplete="off"
+                    autoFocus
                   />
                   <button
                     type="submit"
