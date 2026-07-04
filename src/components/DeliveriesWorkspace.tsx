@@ -299,19 +299,7 @@ export default function DeliveriesWorkspace({
                 />
               </div>
 
-              {/* Shipping notes / carrier */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Additional Notes (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Shipped via DHL on Pallet 4"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800"
-                ></textarea>
-              </div>
+
 
               {/* Notification Banners */}
               <AnimatePresence mode="wait">

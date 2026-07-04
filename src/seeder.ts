@@ -134,26 +134,6 @@ export const DEFAULT_REFERENCES: Reference[] = [
     customer: "RENAULT"
   },
   {
-    id: "A026F717A",
-    code: "A026F717A",
-    description: "PANEL SET Alpine Heated LH",
-    materialType: "Soft",
-    associatedLeather: "A026L577A",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString(),
-    customer: "RENAULT"
-  },
-  {
-    id: "A026F718A",
-    code: "A026F718A",
-    description: "PANEL SET Alpine Heated RH",
-    materialType: "Soft",
-    associatedLeather: "A026L577A",
-    currentStock: 0,
-    lastUpdate: new Date().toISOString(),
-    customer: "RENAULT"
-  },
-  {
     id: "34364719C",
     code: "34364719C",
     description: "XJF HEATING MAT",
@@ -423,6 +403,16 @@ export async function seedDatabaseIfNeeded() {
     const existingRefs = new Map(refsSnapshot.docs.map(doc => [doc.id, doc.data() as Reference]));
     const refBatch = writeBatch(db);
     let needsRefUpdate = false;
+
+    // Delete any references from Firestore that are not in DEFAULT_REFERENCES
+    const validRefIds = new Set(DEFAULT_REFERENCES.map(ref => ref.id));
+    refsSnapshot.docs.forEach((docSnap) => {
+      if (!validRefIds.has(docSnap.id)) {
+        console.log(`Deleting extra reference: ${docSnap.id}`);
+        refBatch.delete(docSnap.ref);
+        needsRefUpdate = true;
+      }
+    });
 
     DEFAULT_REFERENCES.forEach((ref) => {
       const existing = existingRefs.get(ref.id);
