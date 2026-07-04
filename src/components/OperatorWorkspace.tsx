@@ -89,15 +89,40 @@ export default function OperatorWorkspace({
 
   // Auto focus the primary scan input on mount, step change, and reset
   useEffect(() => {
-    if (!isPalletSessionActive) {
-      if (setupInvoiceRef.current) {
-        setupInvoiceRef.current.focus();
+    const keepFocus = () => {
+      if (!isPalletSessionActive) {
+        if (setupInvoiceRef.current && document.activeElement !== setupInvoiceRef.current) {
+          setupInvoiceRef.current.focus();
+        }
+      } else {
+        const activeTag = document.activeElement?.tagName.toLowerCase();
+        if (activeTag !== "input" && activeTag !== "textarea" && activeTag !== "select") {
+          if (inputRef.current && document.activeElement !== inputRef.current) {
+            inputRef.current.focus();
+          }
+        }
       }
-    } else {
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    }
+    };
+
+    keepFocus();
+
+    const handleGlobalInteraction = () => {
+      setTimeout(() => {
+        const activeTag = document.activeElement?.tagName.toLowerCase();
+        if (activeTag !== "input" && activeTag !== "textarea" && activeTag !== "select") {
+          if (isPalletSessionActive) {
+            inputRef.current?.focus();
+          } else {
+            setupInvoiceRef.current?.focus();
+          }
+        }
+      }, 50);
+    };
+
+    document.addEventListener("click", handleGlobalInteraction);
+    return () => {
+      document.removeEventListener("click", handleGlobalInteraction);
+    };
   }, [isPalletSessionActive, activeStep, successMsg]);
 
   // Handle focusing if user clicks elsewhere on the active terminal card

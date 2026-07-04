@@ -151,34 +151,74 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" id="profile-selection-grid">
-                    {users.map((user) => (
-                      <button
-                        key={user.id}
-                        id={`user-btn-${user.username}`}
-                        onClick={() => setSelectedUser(user)}
-                        className="flex items-center gap-4 p-4 rounded-2xl bg-brand-950/40 border border-brand-800 hover:border-brand-500 hover:bg-brand-800/20 text-left transition-all duration-200 group active:scale-98"
-                      >
-                        <div className={`p-3 rounded-xl transition-colors ${
-                          user.role === 'admin' ? 'bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/20' :
-                          user.role === 'supervisor' ? 'bg-amber-500/10 text-amber-400 group-hover:bg-amber-500/20' :
-                          'bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20'
-                        }`}>
-                          <Shield className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-white group-hover:text-brand-100 transition-colors">
-                            {user.fullName}
-                          </p>
-                          <span className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                            user.role === 'admin' ? 'bg-blue-500/20 text-blue-300' :
-                            user.role === 'supervisor' ? 'bg-amber-500/20 text-amber-300' :
-                            'bg-emerald-500/20 text-emerald-300'
-                          }`}>
-                            {user.role === 'admin' ? 'Manager' : user.role === 'supervisor' ? 'Supervisor' : 'Operator'}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
+                    {users.map((user, idx) => {
+                      const isOperator = user.role === "operator";
+                      const isAdmin = user.role === "admin";
+                      const isSupervisor = user.role === "supervisor";
+
+                      // Unique styles for each role (Operator = Emerald, Manager = Blue, Supervisor = Amber)
+                      const roleTheme = isOperator
+                        ? {
+                            borderHover: "hover:border-emerald-400/80",
+                            bgHover: "hover:bg-emerald-500/10",
+                            shadowColor: "rgba(16, 185, 129, 0.25)",
+                            iconBg: "bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 group-hover:text-emerald-300",
+                            badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+                            textHover: "group-hover:text-emerald-200"
+                          }
+                        : isAdmin
+                        ? {
+                            borderHover: "hover:border-blue-400/80",
+                            bgHover: "hover:bg-blue-500/10",
+                            shadowColor: "rgba(59, 130, 246, 0.25)",
+                            iconBg: "bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/20 group-hover:text-blue-300",
+                            badge: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+                            textHover: "group-hover:text-blue-200"
+                          }
+                        : {
+                            borderHover: "hover:border-amber-400/80",
+                            bgHover: "hover:bg-amber-500/10",
+                            shadowColor: "rgba(245, 158, 11, 0.25)",
+                            iconBg: "bg-amber-500/10 text-amber-400 group-hover:bg-amber-500/20 group-hover:text-amber-300",
+                            badge: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+                            textHover: "group-hover:text-amber-200"
+                          };
+
+                      return (
+                        <motion.button
+                          key={user.id}
+                          id={`user-btn-${user.username}`}
+                          onClick={() => setSelectedUser(user)}
+                          initial={{ opacity: 0, y: 15 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ 
+                            type: "spring", 
+                            stiffness: 260, 
+                            damping: 20,
+                            delay: idx * 0.08 
+                          }}
+                          whileHover={{ 
+                            scale: 1.04, 
+                            y: -4,
+                            boxShadow: `0 12px 30px -10px ${roleTheme.shadowColor}`,
+                          }}
+                          whileTap={{ scale: 0.97 }}
+                          className={`flex items-center gap-4 p-4 rounded-2xl bg-brand-950/40 border border-brand-800/80 text-left transition-all duration-300 group cursor-pointer ${roleTheme.borderHover} ${roleTheme.bgHover}`}
+                        >
+                          <div className={`p-3 rounded-xl transition-all duration-300 ${roleTheme.iconBg}`}>
+                            <Shield className="w-5 h-5 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-white group-hover:text-brand-100 transition-colors duration-300">
+                              {user.fullName}
+                            </p>
+                            <span className={`inline-block text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 mt-1 border rounded-md transition-colors duration-300 ${roleTheme.badge}`}>
+                              {user.role === 'admin' ? 'Manager' : user.role === 'supervisor' ? 'Supervisor' : 'Operator'}
+                            </span>
+                          </div>
+                        </motion.button>
+                      );
+                    })}
                   </div>
                 )}
               </motion.div>

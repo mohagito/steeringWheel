@@ -343,92 +343,158 @@ export default function App() {
             
             {/* Dashboard Tab */}
             {currentUser.role !== "operator" && (
-              <button
+              <motion.button
                 onClick={() => setActiveTab("dashboard")}
                 id="nav-tab-dashboard"
-                className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none ${
                   activeTab === "dashboard"
-                    ? "bg-slate-800 text-white shadow-sm"
-                    : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
+                    ? "text-white font-bold"
+                    : "text-slate-400 hover:bg-slate-800/30 hover:text-white"
                 }`}
               >
-                <LayoutDashboard className="w-4 h-4 shrink-0" />
-                <span>Analytics</span>
-              </button>
+                {activeTab === "dashboard" && (
+                  <motion.div
+                    layoutId="activeTabPill"
+                    className="absolute inset-0 bg-slate-800 border border-slate-700/60 rounded-lg -z-10"
+                    transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                  />
+                )}
+                <div className="flex items-center gap-3 z-10 relative">
+                  <LayoutDashboard className="w-4 h-4 shrink-0" />
+                  <span>Analytics</span>
+                </div>
+              </motion.button>
             )}
 
             {/* Stock Tab */}
-            <button
+            <motion.button
               onClick={() => setActiveTab("stock")}
               id="nav-tab-stock"
-              className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none ${
                 activeTab === "stock"
-                  ? "bg-slate-800 text-white shadow-sm"
-                  : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
+                  ? "text-white font-bold"
+                  : "text-slate-400 hover:bg-slate-800/30 hover:text-white"
               }`}
             >
-              <Database className="w-4 h-4 shrink-0" />
-              <span>Stock</span>
-            </button>
+              {activeTab === "stock" && (
+                <motion.div
+                  layoutId="activeTabPill"
+                  className="absolute inset-0 bg-slate-800 border border-slate-700/60 rounded-lg -z-10"
+                  transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                />
+              )}
+              <div className="flex items-center gap-3 z-10 relative">
+                <Database className="w-4 h-4 shrink-0" />
+                <span>Stock</span>
+              </div>
+            </motion.button>
 
             {/* Deliveries Tab */}
-            <button
+            <motion.button
               onClick={() => setActiveTab("deliveries")}
               id="nav-tab-deliveries"
-              className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none ${
                 activeTab === "deliveries"
-                  ? "bg-slate-800 text-white shadow-sm"
-                  : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
+                  ? "text-white font-bold"
+                  : "text-slate-400 hover:bg-slate-800/30 hover:text-white"
               }`}
             >
-              <Truck className="w-4 h-4 shrink-0" />
-              <span>Deliveries</span>
-            </button>
+              {activeTab === "deliveries" && (
+                <motion.div
+                  layoutId="activeTabPill"
+                  className="absolute inset-0 bg-slate-800 border border-slate-700/60 rounded-lg -z-10"
+                  transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                />
+              )}
+              <div className="flex items-center gap-3 z-10 relative">
+                <Truck className="w-4 h-4 shrink-0" />
+                <span>Deliveries</span>
+              </div>
+            </motion.button>
 
-            {/* Operator Tab */}
-            <button
+            {/* Operator Tab (Vibrant Emerald Glow!) */}
+            <motion.button
               onClick={() => setActiveTab("operator")}
               id="nav-tab-operator"
-              className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
+              whileHover={{ scale: 1.03, x: 2 }}
+              whileTap={{ scale: 0.98 }}
+              className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none group ${
                 activeTab === "operator"
-                  ? "bg-slate-800 text-white shadow-sm"
-                  : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
+                  ? "text-emerald-400 font-bold"
+                  : "text-slate-400 hover:bg-emerald-500/10 hover:text-emerald-400"
               }`}
             >
-              <Scan className="w-4 h-4 shrink-0" />
-              <span>Operator count</span>
-            </button>
+              {activeTab === "operator" && (
+                <motion.div
+                  layoutId="activeTabPill"
+                  className="absolute inset-0 bg-emerald-950/40 border border-emerald-500/30 rounded-lg -z-10 shadow-inner"
+                  transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                />
+              )}
+              <div className="flex items-center gap-3 z-10 relative">
+                <Scan className="w-4 h-4 shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3" />
+                <span>Operator count</span>
+              </div>
+            </motion.button>
 
-            {/* Supervisor Tab */}
+            {/* Supervisor Tab (Warm Amber Glow!) */}
             {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
-              <button
+              <motion.button
                 onClick={() => setActiveTab("supervisor")}
                 id="nav-tab-supervisor"
-                className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
+                whileHover={{ scale: 1.03, x: 2 }}
+                whileTap={{ scale: 0.98 }}
+                className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none group ${
                   activeTab === "supervisor"
-                    ? "bg-slate-800 text-white shadow-sm"
-                    : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
+                    ? "text-amber-400 font-bold"
+                    : "text-slate-400 hover:bg-amber-500/10 hover:text-amber-400"
                 }`}
               >
-                <ClipboardCheck className="w-4 h-4 shrink-0" />
-                <span>Supervisor sign-offs</span>
-              </button>
+                {activeTab === "supervisor" && (
+                  <motion.div
+                    layoutId="activeTabPill"
+                    className="absolute inset-0 bg-amber-950/40 border border-amber-500/30 rounded-lg -z-10 shadow-inner"
+                    transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                  />
+                )}
+                <div className="flex items-center gap-3 z-10 relative">
+                  <ClipboardCheck className="w-4 h-4 shrink-0 transition-transform duration-300 group-hover:scale-110" />
+                  <span>Supervisor sign-offs</span>
+                </div>
+              </motion.button>
             )}
 
-            {/* Admin Tab */}
+            {/* Admin Tab (Vibrant Blue/Indigo Glow!) */}
             {currentUser.role === "admin" && (
-              <button
+              <motion.button
                 onClick={() => setActiveTab("admin")}
                 id="nav-tab-admin"
-                className={`p-2.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center gap-3 cursor-pointer ${
+                whileHover={{ scale: 1.03, x: 2 }}
+                whileTap={{ scale: 0.98 }}
+                className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none group ${
                   activeTab === "admin"
-                    ? "bg-slate-800 text-white shadow-sm"
-                    : "text-slate-400 hover:bg-slate-800/40 hover:text-white"
+                    ? "text-blue-400 font-bold"
+                    : "text-slate-400 hover:bg-blue-500/10 hover:text-blue-400"
                 }`}
               >
-                <Settings className="w-4 h-4 shrink-0" />
-                <span>Admin settings</span>
-              </button>
+                {activeTab === "admin" && (
+                  <motion.div
+                    layoutId="activeTabPill"
+                    className="absolute inset-0 bg-blue-950/40 border border-blue-500/30 rounded-lg -z-10 shadow-inner"
+                    transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                  />
+                )}
+                <div className="flex items-center gap-3 z-10 relative">
+                  <Settings className="w-4 h-4 shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6" />
+                  <span>Admin settings</span>
+                </div>
+              </motion.button>
             )}
 
           </nav>
@@ -552,13 +618,9 @@ export default function App() {
 
               {activeTab === "admin" && (
                 <AdminWorkspace 
-                  boxes={boxes} 
                   users={users} 
-                  onAddBox={handleAddBox}
-                  onDeleteBox={handleDeleteBox}
                   onAddUser={handleAddUser}
                   onDeleteUser={handleDeleteUser}
-                  onCleanDatabase={handleCleanDatabase}
                 />
               )}
             </motion.div>
