@@ -416,28 +416,7 @@ export async function seedDatabaseIfNeeded() {
       await batch.commit();
     }
 
-    // Ensure the database is completely clean with 0 stock on start (empty carton inventory and no pending adjustments)
-    const boxesSnapshot = await getDocs(collection(db, "boxes"));
-    if (!boxesSnapshot.empty) {
-      console.log("Cleaning up active database cartons...");
-      const boxesBatch = writeBatch(db);
-      boxesSnapshot.forEach((docSnap) => {
-        boxesBatch.delete(docSnap.ref);
-      });
-      await boxesBatch.commit();
-    }
 
-    const adjustmentsSnapshot = await getDocs(collection(db, "adjustments"));
-    if (!adjustmentsSnapshot.empty) {
-      console.log("Cleaning up pending/old adjustments...");
-      const adjBatch = writeBatch(db);
-      adjustmentsSnapshot.forEach((docSnap) => {
-        adjBatch.delete(docSnap.ref);
-      });
-      await adjBatch.commit();
-    }
-
-    console.log("Database initialized with empty carton inventory for starting point.");
 
     // Ensure all 17 predefined references are present in the collection and have customer fields set
     const refsSnapshot = await getDocs(collection(db, "references"));
