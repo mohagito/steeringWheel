@@ -134,6 +134,26 @@ export const DEFAULT_REFERENCES: Reference[] = [
     customer: "RENAULT"
   },
   {
+    id: "A026F717A",
+    code: "A026F717A",
+    description: "PANEL SET Alpine Heated LH",
+    materialType: "Soft",
+    associatedLeather: "A026L577A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026F718A",
+    code: "A026F718A",
+    description: "PANEL SET Alpine Heated RH",
+    materialType: "Soft",
+    associatedLeather: "A026L577A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
     id: "34364719C",
     code: "34364719C",
     description: "XJF HEATING MAT",

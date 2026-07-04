@@ -132,6 +132,13 @@ export default function OperatorWorkspace({
         // 2. Try matching as a substring (if the barcode contains the reference code, e.g. PR000J610A contains R000J610A, IA025M750B contains A025M750B)
         match = refs.find(r => upperScanned.includes(r.code.toUpperCase()));
         if (match) return match;
+
+        // Try exact match with associatedLeather list
+        match = refs.find(r => {
+          const parts = r.associatedLeather.toUpperCase().split(",").map(s => s.trim());
+          return parts.includes(upperScanned);
+        });
+        if (match) return match;
         
         // 3. Strip standard industry prefixes (Odette/Galia/AIAG)
         const commonPrefixes = ["1P", "2P", "P", "I", "S", "Q", "V", "K", "N"];
@@ -145,6 +152,13 @@ export default function OperatorWorkspace({
               
               // Try matching references that start with the stripped prefix (for partial scans)
               match = refs.find(r => r.code.toUpperCase().startsWith(stripped));
+              if (match) return match;
+
+              // Try matching associated leather with stripped code
+              match = refs.find(r => {
+                const parts = r.associatedLeather.toUpperCase().split(",").map(s => s.trim());
+                return parts.includes(stripped);
+              });
               if (match) return match;
             }
           }
@@ -160,6 +174,13 @@ export default function OperatorWorkspace({
             
             if (stripped.length >= 3) {
               match = refs.find(r => r.code.toUpperCase().startsWith(stripped));
+              if (match) return match;
+
+              // Try matching associated leather with stripped code
+              match = refs.find(r => {
+                const parts = r.associatedLeather.toUpperCase().split(",").map(s => s.trim());
+                return parts.includes(stripped);
+              });
               if (match) return match;
             }
           }
