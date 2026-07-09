@@ -64,6 +64,16 @@ export const DEFAULT_REFERENCES: Reference[] = [
     customer: "OPEL"
   },
   {
+    id: "A029G787B",
+    code: "A029G787B",
+    description: "OV64/OV85 HEATING ELEMENT ASSY",
+    materialType: "Mesh",
+    associatedLeather: "A028J493A, R001F923A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "OPEL"
+  },
+  {
     id: "A025M751B",
     code: "A025M751B",
     description: "HEATING-HOD MAT OV64",
@@ -182,14 +192,14 @@ const DEFAULT_USERS: User[] = [
     username: "mohamed",
     fullName: "Mohamed",
     role: "operator",
-    pin: "1111"
+    pin: "5831"
   },
   {
     id: "user_gonzalo",
     username: "gonzalo",
     fullName: "Gonzalo",
     role: "admin",
-    pin: "2222"
+    pin: "9472"
   }
 ];
 
@@ -368,33 +378,12 @@ export async function seedDatabaseIfNeeded() {
       return;
     }
 
-    // Check users
-    const usersSnapshot = await getDocs(collection(db, "users"));
-    
-    // Check if we have old profiles (e.g. user_juan) or if it's empty
-    let hasOldUsers = false;
-    usersSnapshot.forEach((doc) => {
-      if (doc.id === "user_juan") {
-        hasOldUsers = true;
-      }
+    // Ensure default users exist and have the correct PINs
+    const userBatch = writeBatch(db);
+    DEFAULT_USERS.forEach((user) => {
+      userBatch.set(doc(db, "users", user.id), user);
     });
-
-    if (usersSnapshot.empty || hasOldUsers) {
-      console.log("Seeding or resetting users for Mohamed and Gonzalo...");
-      const batch = writeBatch(db);
-      
-      // If we had old users, clear them
-      if (hasOldUsers) {
-        usersSnapshot.forEach((docSnapshot) => {
-          batch.delete(docSnapshot.ref);
-        });
-      }
-      
-      DEFAULT_USERS.forEach((user) => {
-        batch.set(doc(db, "users", user.id), user);
-      });
-      await batch.commit();
-    }
+    await userBatch.commit();
 
 
 
@@ -476,6 +465,16 @@ export async function resetDatabaseToPristineState() {
         delBatch.delete(docSnap.ref);
       });
       await delBatch.commit();
+    }
+
+    // Delete all productions
+    const productionsSnapshot = await getDocs(collection(db, "productions"));
+    if (!productionsSnapshot.empty) {
+      const prodBatch = writeBatch(db);
+      productionsSnapshot.forEach((docSnap) => {
+        prodBatch.delete(docSnap.ref);
+      });
+      await prodBatch.commit();
     }
 
     // 4. Reset users to DEFAULT_USERS in batches

@@ -1,6 +1,6 @@
 {
   "name": "EPP NATUR Stock Control System",
-  "description": "Professional Stock Control System for EPP NATUR Steering Wheels production. Operator scanning and physical count validation, supervisor reports, and traceability log.",
+  "description": "Professional Stock Control System for EPP NATUR. Features automatic PRECOSIDO raw component and mesh stock reduction upon final product delivery.",
   "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

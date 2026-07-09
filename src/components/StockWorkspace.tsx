@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from "react";
 import { Box, Adjustment, Reference, User } from "../types";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { 
   Package, Layers, TrendingUp, Search, Filter, ArrowRight, 
-  CheckCircle2, Clock, MapPin, Truck, AlertCircle, RefreshCw
+  CheckCircle2, Clock, MapPin, Truck, AlertCircle, RefreshCw,
+  Edit2, Trash2, X, Check, Settings, SlidersHorizontal
 } from "lucide-react";
 
 interface StockWorkspaceProps {
@@ -11,6 +12,9 @@ interface StockWorkspaceProps {
   adjustments: Adjustment[];
   references: Reference[];
   currentUser: User;
+  onDeleteBox?: (boxId: string) => Promise<void>;
+  onUpdateBox?: (boxId: string, updatedFields: Partial<Box>) => Promise<void>;
+  onUpdateReference?: (refId: string, updatedFields: Partial<Reference>) => Promise<void>;
 }
 
 // Map references to their corresponding Model/Project
@@ -24,6 +28,7 @@ export const MODEL_MAPPING: { [refCode: string]: string } = {
   "R000B630A": "PZ1D",
   "A025M750B": "OV64/OV85",
   "A025M751B": "OV64/OV85",
+  "A029G787B": "OV64/OV85",
   "R001W189B": "L74",
   "R000J601B": "CR3",
   "R000J600C": "CR3",
@@ -38,11 +43,29 @@ export default function StockWorkspace({
   boxes, 
   adjustments, 
   references, 
-  currentUser 
+  currentUser,
+  onDeleteBox,
+  onUpdateBox,
+  onUpdateReference
 }: StockWorkspaceProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [materialFilter, setMaterialFilter] = useState<"All" | "Mesh" | "Soft">("All");
   const [customerFilter, setCustomerFilter] = useState<string>("All");
+
+  // States for Manager Stock and Part Management
+  const [selectedRefForManagement, setSelectedRefForManagement] = useState<Reference | null>(null);
+  const [isEditingRef, setIsEditingRef] = useState(false);
+  const [editedRefDesc, setEditedRefDesc] = useState("");
+  const [editedRefCust, setEditedRefCust] = useState("");
+  const [editedRefMat, setEditedRefMat] = useState<"Mesh" | "Soft">("Mesh");
+
+  const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+  const [editedBoxQty, setEditedBoxQty] = useState<number>(0);
+  const [editedBoxLoc, setEditedBoxLoc] = useState<string>("");
+
+  const [confirmDeleteBoxId, setConfirmDeleteBoxId] = useState<string | null>(null);
+  const [managementError, setManagementError] = useState<string | null>(null);
+  const [managementSuccess, setManagementSuccess] = useState<string | null>(null);
 
   // Get unique customers list
   const customers = useMemo(() => {
@@ -65,6 +88,12 @@ export default function StockWorkspace({
       };
     });
   }, [boxes, references]);
+
+  // Find active boxes for the reference currently selected for management
+  const activeRefBoxes = useMemo(() => {
+    if (!selectedRefForManagement) return [];
+    return boxes.filter(b => b.reference === selectedRefForManagement.code);
+  }, [boxes, selectedRefForManagement]);
 
   // 2. Global Stats representing real-time quantities
   const stats = useMemo(() => {
@@ -118,6 +147,77 @@ export default function StockWorkspace({
         };
       });
   }, [adjustments, references]);
+
+  // Manager Actions
+  const handleSaveRefMetadata = async () => {
+    if (!selectedRefForManagement || !onUpdateReference) return;
+    setManagementError(null);
+    setManagementSuccess(null);
+    try {
+      await onUpdateReference(selectedRefForManagement.id, {
+        description: editedRefDesc.trim(),
+        customer: editedRefCust.trim(),
+        materialType: editedRefMat
+      });
+      setManagementSuccess("Part reference successfully updated!");
+      setIsEditingRef(false);
+      // Update selected state locally to prevent stale state display
+      setSelectedRefForManagement({
+        ...selectedRefForManagement,
+        description: editedRefDesc.trim(),
+        customer: editedRefCust.trim(),
+        materialType: editedRefMat
+      });
+      setTimeout(() => setManagementSuccess(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setManagementError("Failed to update part reference details.");
+    }
+  };
+
+  const handleStartEditBox = (box: Box) => {
+    setEditingBoxId(box.id);
+    setEditedBoxQty(box.expectedQty);
+    setEditedBoxLoc(box.location);
+    setConfirmDeleteBoxId(null);
+  };
+
+  const handleSaveBoxChange = async (boxId: string) => {
+    if (!onUpdateBox) return;
+    if (isNaN(editedBoxQty) || editedBoxQty < 0) {
+      setManagementError("Quantity must be a valid positive number.");
+      return;
+    }
+    setManagementError(null);
+    setManagementSuccess(null);
+    try {
+      await onUpdateBox(boxId, {
+        expectedQty: Number(editedBoxQty),
+        location: editedBoxLoc.trim()
+      });
+      setManagementSuccess("Carton details successfully updated!");
+      setEditingBoxId(null);
+      setTimeout(() => setManagementSuccess(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setManagementError("Failed to update carton details.");
+    }
+  };
+
+  const handleDeleteBoxAction = async (boxId: string) => {
+    if (!onDeleteBox) return;
+    setManagementError(null);
+    setManagementSuccess(null);
+    try {
+      await onDeleteBox(boxId);
+      setManagementSuccess("Carton deleted successfully!");
+      setConfirmDeleteBoxId(null);
+      setTimeout(() => setManagementSuccess(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setManagementError("Failed to delete carton.");
+    }
+  };
 
   return (
     <div className="space-y-6" id="stock-workspace-tab">
@@ -236,7 +336,7 @@ export default function StockWorkspace({
               <motion.div
                 key={ref.id}
                 whileHover={{ y: -3, transition: { duration: 0.1 } }}
-                className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[165px] h-full w-full"
+                className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[195px] h-full w-full"
               >
                 <div>
                   <div className="flex justify-between items-start gap-2">
@@ -269,18 +369,41 @@ export default function StockWorkspace({
                   </div>
                 </div>
 
-                <div className="flex items-baseline justify-between mt-3 pt-2 border-t border-slate-100">
-                  <span className="text-[9px] text-slate-400 font-mono">
-                    Last: {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleDateString() : "Never"}
-                  </span>
-                  <div className="flex items-baseline gap-1 shrink-0">
-                    <span className="text-2xl font-extrabold text-slate-900 font-display">
-                      {ref.warehouseQty.toLocaleString()}
+                <div className="mt-4 pt-2 border-t border-slate-100">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[9px] text-slate-400 font-mono">
+                      Last: {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleDateString() : "Never"}
                     </span>
-                    <span className="text-xs font-semibold text-slate-500 font-sans">
-                      pcs
-                    </span>
+                    <div className="flex items-baseline gap-1 shrink-0">
+                      <span className="text-2xl font-extrabold text-slate-900 font-display">
+                        {ref.warehouseQty.toLocaleString()}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-500 font-sans">
+                        pcs
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Manager Controls */}
+                  {currentUser.role === "admin" && (
+                    <button
+                      onClick={() => {
+                        setSelectedRefForManagement(ref);
+                        setEditedRefDesc(ref.description);
+                        setEditedRefCust(ref.customer || "");
+                        setEditedRefMat(ref.materialType);
+                        setIsEditingRef(false);
+                        setEditingBoxId(null);
+                        setConfirmDeleteBoxId(null);
+                        setManagementError(null);
+                        setManagementSuccess(null);
+                      }}
+                      className="mt-3 w-full py-1.5 bg-slate-100 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-slate-700 hover:text-indigo-800 rounded-lg text-[10px] sm:text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer"
+                    >
+                      <Settings className="w-3.5 h-3.5 text-slate-500" />
+                      Manage Part & Stock
+                    </button>
+                  )}
                 </div>
               </motion.div>
             ))}
@@ -346,6 +469,302 @@ export default function StockWorkspace({
           )}
         </div>
       </div>
+
+      {/* Manager's Stock Management Overlay Modal */}
+      <AnimatePresence>
+        {selectedRefForManagement && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+            >
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <Settings className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 font-display uppercase tracking-wide">
+                      Manage Reference & Stock
+                    </h3>
+                    <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">
+                      Modifying part <span className="font-mono font-bold text-slate-700">{selectedRefForManagement.code}</span> details & physical stock.
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedRefForManagement(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 space-y-6 overflow-y-auto flex-1">
+                
+                {/* Error and Success Banners */}
+                {managementError && (
+                  <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs flex items-center gap-2 font-semibold animate-shake">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{managementError}</span>
+                  </div>
+                )}
+
+                {managementSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl text-xs flex items-center gap-2 font-semibold">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>{managementSuccess}</span>
+                  </div>
+                )}
+
+                {/* SECTION 1: REFERENCE INFORMATION */}
+                <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-150">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                      Catalog Information
+                    </h4>
+                    <button
+                      onClick={() => setIsEditingRef(!isEditingRef)}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                      {isEditingRef ? "Cancel" : "Edit Details"}
+                    </button>
+                  </div>
+
+                  {isEditingRef ? (
+                    <div className="space-y-3.5 mt-3 pt-3 border-t border-slate-200/50">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                          Part Description
+                        </label>
+                        <input
+                          type="text"
+                          value={editedRefDesc}
+                          onChange={(e) => setEditedRefDesc(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                            Customer
+                          </label>
+                          <input
+                            type="text"
+                            value={editedRefCust}
+                            onChange={(e) => setEditedRefCust(e.target.value.toUpperCase())}
+                            placeholder="e.g. RENAULT"
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 uppercase focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                            Material Type
+                          </label>
+                          <select
+                            value={editedRefMat}
+                            onChange={(e) => setEditedRefMat(e.target.value as "Mesh" | "Soft")}
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-indigo-500"
+                          >
+                            <option value="Mesh">Mesh</option>
+                            <option value="Soft">Soft</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          onClick={handleSaveRefMetadata}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Save Part Details
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[9px] uppercase tracking-wider">Description</span>
+                        <span className="font-semibold text-slate-800 mt-0.5 block">{selectedRefForManagement.description}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-slate-400 block text-[9px] uppercase tracking-wider">Customer</span>
+                          <span className="font-mono font-bold text-slate-700 mt-0.5 block">{selectedRefForManagement.customer || "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[9px] uppercase tracking-wider">Material Type</span>
+                          <span className="font-bold text-indigo-600 mt-0.5 block">{selectedRefForManagement.materialType}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* SECTION 2: PHYSICAL CARTONS */}
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-1.5 mb-3.5">
+                    <Package className="w-3.5 h-3.5 text-slate-400" />
+                    Active Physical Cartons ({activeRefBoxes.length})
+                  </h4>
+
+                  <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
+                    {activeRefBoxes.map((box) => {
+                      const isEditing = editingBoxId === box.id;
+                      const isDeleting = confirmDeleteBoxId === box.id;
+
+                      return (
+                        <div key={box.id} className="p-4 bg-white hover:bg-slate-50/20 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          
+                          {/* Carton identity */}
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="p-2 bg-slate-50 rounded-lg text-slate-500 shrink-0 border border-slate-100">
+                              <Layers className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-extrabold text-slate-800 font-mono block">
+                                {box.barcode}
+                              </span>
+                              {box.invoiceNumber && (
+                                <span className="text-[10px] text-slate-400 block font-mono mt-0.5">
+                                  Invoice: {box.invoiceNumber}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Inline editor or static info */}
+                          {isEditing ? (
+                            <div className="flex items-center gap-2.5 flex-1 max-w-sm justify-end">
+                              <div className="w-24">
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Qty</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={editedBoxQty}
+                                  onChange={(e) => setEditedBoxQty(Number(e.target.value))}
+                                  className="w-full px-2 py-1 border border-slate-200 rounded text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                                />
+                              </div>
+                              <div className="w-32">
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Location</label>
+                                <input
+                                  type="text"
+                                  value={editedBoxLoc}
+                                  onChange={(e) => setEditedBoxLoc(e.target.value)}
+                                  className="w-full px-2 py-1 border border-slate-200 rounded text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                                />
+                              </div>
+                              <div className="flex items-center gap-1 mt-3.5 shrink-0">
+                                <button
+                                  onClick={() => handleSaveBoxChange(box.id)}
+                                  className="p-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded cursor-pointer"
+                                  title="Save"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setEditingBoxId(null)}
+                                  className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded cursor-pointer"
+                                  title="Cancel"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : isDeleting ? (
+                            <div className="flex items-center gap-2 bg-rose-50 border border-rose-100/50 p-2 rounded-lg text-xs shrink-0 animate-fade-in">
+                              <span className="text-rose-700 font-semibold">Delete from stock?</span>
+                              <button
+                                onClick={() => handleDeleteBoxAction(box.id)}
+                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold cursor-pointer transition-colors text-[10px]"
+                              >
+                                Yes, Delete
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteBoxId(null)}
+                                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded font-semibold cursor-pointer transition-colors text-[10px]"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between md:justify-end gap-6 flex-1">
+                              <div className="text-right">
+                                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Location</span>
+                                <span className="text-xs font-bold text-slate-700 flex items-center gap-1 justify-end mt-0.5">
+                                  <MapPin className="w-3 h-3 text-slate-400" />
+                                  {box.location || "Unassigned"}
+                                </span>
+                              </div>
+
+                              <div className="text-right">
+                                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Quantity</span>
+                                <span className="text-xs font-mono font-black text-slate-900 mt-0.5 block">
+                                  {box.expectedQty} pcs
+                                </span>
+                              </div>
+
+                              {/* Actions */}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  onClick={() => handleStartEditBox(box)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-colors cursor-pointer"
+                                  title="Edit Carton"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setConfirmDeleteBoxId(box.id);
+                                    setEditingBoxId(null);
+                                  }}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-rose-600 transition-colors cursor-pointer"
+                                  title="Delete Carton"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+                      );
+                    })}
+
+                    {activeRefBoxes.length === 0 && (
+                      <div className="p-8 text-center text-slate-400 text-xs">
+                        No cartons currently registered for this steering wheel reference.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-2 shrink-0">
+                <button
+                  onClick={() => setSelectedRefForManagement(null)}
+                  className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-98"
+                >
+                  Close
+                </button>
+              </div>
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

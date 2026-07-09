@@ -16,5 +16,8 @@ service cloud.firestore {
     match /deliveries/{deliveryId} {
       allow read, write: if true;
     }
+    match /productions/{productionId} {
+      allow read, write: if true;
+    }
   }
 }

@@ -53,6 +53,16 @@ export interface Delivery {
   notes?: string;
 }
 
+export interface Production {
+  id: string;
+  date: string; // "YYYY-MM-DD" e.g., "2026-07-09"
+  reference: string;
+  quantity: number;
+  operatorName: string;
+  timestamp: string;
+  notes?: string;
+}
+
 export interface Reference {
   id: string; // Matches reference code
   code: string;
@@ -72,4 +82,11 @@ export interface ReferenceSummary {
   actualQtySum: number;
   accuracyRate: number; // Percentage
   boxCount: number;
+}
+
+export interface ProductAssembly {
+  meshRef: string; // MAILLE CHAUFF
+  gaineRef: string; // GAINE
+  finalRef: string; // RÉFÉRENCE
+  designation: string; // DÉSIGNATION
 }

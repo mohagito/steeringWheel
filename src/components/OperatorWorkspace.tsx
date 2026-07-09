@@ -166,6 +166,13 @@ export default function OperatorWorkspace({
         // 1. Direct exact match
         let match = refs.find(r => r.code.toUpperCase() === upperScanned);
         if (match) return match;
+
+        // 1.5 Robust First-Character Cleanup (Perfect solution for scanners prepending I, 1, P, etc. to 9-char reference codes)
+        if (upperScanned.length > 4) {
+          const firstCharRemoved = upperScanned.substring(1);
+          match = refs.find(r => r.code.toUpperCase() === firstCharRemoved);
+          if (match) return match;
+        }
         
         // 2. Try matching as a substring (if the barcode contains the reference code, e.g. PR000J610A contains R000J610A, IA025M750B contains A025M750B)
         match = refs.find(r => upperScanned.includes(r.code.toUpperCase()));

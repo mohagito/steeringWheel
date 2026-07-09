@@ -1,41 +1,59 @@
 import React, { useState, useMemo } from "react";
-import { Delivery, Reference, User } from "../types";
+import { Production, Reference, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  Truck, Search, Package, AlertCircle, Plus, Calendar, FileText, 
+  Factory, Search, Package, AlertCircle, Plus, Calendar, FileText, 
   BarChart2, User as UserIcon, CheckCircle, TrendingDown, ArrowUpRight, HelpCircle, Trash2
 } from "lucide-react";
 
-interface DeliveriesWorkspaceProps {
-  deliveries: Delivery[];
+interface ProductionWorkspaceProps {
+  productions: Production[];
   references: Reference[];
   currentUser: User;
-  onSubmitDeliveries: (deliveriesData: Omit<Delivery, "id" | "timestamp" | "operatorName">[]) => Promise<void>;
+  onSubmitProduction: (productionEntries: { date: string; reference: string; quantity: number; notes?: string }[]) => Promise<void>;
 }
 
-interface DispatchRow {
+interface ProductionRow {
   referenceCode: string;
   quantity: string;
 }
 
-export default function DeliveriesWorkspace({
-  deliveries,
+export default function ProductionWorkspace({
+  productions,
   references,
   currentUser,
-  onSubmitDeliveries
-}: DeliveriesWorkspaceProps) {
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [customer, setCustomer] = useState("");
+  onSubmitProduction
+}: ProductionWorkspaceProps) {
+  // Default to today's date in YYYY-MM-DD
+  const getTodayString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Default to yesterday's date in YYYY-MM-DD
+  const getYesterdayString = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const [productionDate, setProductionDate] = useState(getTodayString());
   const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState<DispatchRow[]>([{ referenceCode: "", quantity: "" }]);
+  const [rows, setRows] = useState<ProductionRow[]>([{ referenceCode: "", quantity: "" }]);
 
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Search and filter for deliveries history
+  // Search and filter for history logs
   const [searchQuery, setSearchQuery] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("All");
+  const [dateFilter, setDateFilter] = useState(""); // empty means no filter
 
   const handleAddRow = () => {
     setRows([...rows, { referenceCode: "", quantity: "" }]);
@@ -48,50 +66,37 @@ export default function DeliveriesWorkspace({
     setRows(updatedRows);
   };
 
-  const handleRowChange = (index: number, field: keyof DispatchRow, value: string) => {
+  const handleRowChange = (index: number, field: keyof ProductionRow, value: string) => {
     const updatedRows = [...rows];
     updatedRows[index] = {
       ...updatedRows[index],
       [field]: value
     };
-
-    // Auto-fill customer if not specified and we select a reference that has a customer
-    if (field === "referenceCode" && !customer.trim()) {
-      const refObj = references.find((r) => r.code === value);
-      if (refObj && refObj.customer) {
-        setCustomer(refObj.customer);
-      }
-    }
-
     setRows(updatedRows);
   };
 
-  // Handle Dispatch submission
+  // Pre-fill presets for easy data entry
+  const setDateToToday = () => setProductionDate(getTodayString());
+  const setDateToYesterday = () => setProductionDate(getYesterdayString());
+
+  // Handle Submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
     setSuccessMsg("");
 
-    if (!invoiceNumber.trim()) {
-      setErrorMsg("An Invoice / Delivery Note Number is required.");
-      return;
-    }
-
-    if (!customer.trim()) {
-      setErrorMsg("Please specify the destination Customer.");
+    if (!productionDate) {
+      setErrorMsg("A production date is required.");
       return;
     }
 
     // Validate rows
     if (rows.length === 0) {
-      setErrorMsg("Please add at least one reference delivery.");
+      setErrorMsg("Please add at least one reference log.");
       return;
     }
 
-    const cleanedInvoice = invoiceNumber.trim().toUpperCase();
-    const cleanedCustomer = customer.trim().toUpperCase();
-
-    const submissions: Omit<Delivery, "id" | "timestamp" | "operatorName">[] = [];
+    const submissions: { date: string; reference: string; quantity: number; notes?: string }[] = [];
     const warnings: string[] = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -101,8 +106,8 @@ export default function DeliveriesWorkspace({
         return;
       }
 
-      const deliverQty = parseInt(row.quantity, 10);
-      if (isNaN(deliverQty) || deliverQty <= 0) {
+      const consumeQty = parseInt(row.quantity, 10);
+      if (isNaN(consumeQty) || consumeQty <= 0) {
         setErrorMsg(`Row ${i + 1} (${row.referenceCode}): Please enter a valid quantity greater than 0.`);
         return;
       }
@@ -110,35 +115,32 @@ export default function DeliveriesWorkspace({
       // Check stock warning
       const refObj = references.find((r) => r.code === row.referenceCode);
       const currentStock = refObj ? refObj.currentStock : 0;
-      if (deliverQty > currentStock) {
-        warnings.push(`Part ${row.referenceCode}: Quantity (${deliverQty} pcs) exceeds warehouse stock (${currentStock} pcs)`);
+      if (consumeQty > currentStock) {
+        warnings.push(`Part ${row.referenceCode}: Quantity (${consumeQty} pcs) exceeds warehouse stock (${currentStock} pcs)`);
       }
 
       submissions.push({
+        date: productionDate,
         reference: row.referenceCode,
-        quantity: deliverQty,
-        invoiceNumber: cleanedInvoice,
-        customer: cleanedCustomer,
+        quantity: consumeQty,
         notes: notes.trim() || undefined
       });
     }
 
     if (warnings.length > 0) {
       const confirmProceed = window.confirm(
-        `Warning:\n${warnings.join("\n")}\n\nDo you still want to proceed with this dispatch?`
+        `Warning:\n${warnings.join("\n")}\n\nDo you still want to proceed with logging this production consumption? This will deduct the parts from warehouse stock.`
       );
       if (!confirmProceed) return;
     }
 
     setSubmitting(true);
     try {
-      await onSubmitDeliveries(submissions);
+      await onSubmitProduction(submissions);
 
-      setSuccessMsg(`Successfully registered invoice ${cleanedInvoice} with ${submissions.length} references delivered to ${cleanedCustomer}!`);
+      setSuccessMsg(`Successfully registered production consumption for ${productionDate} with ${submissions.length} reference records! Stock levels updated.`);
       
       // Clear inputs
-      setInvoiceNumber("");
-      setCustomer("");
       setNotes("");
       setRows([{ referenceCode: "", quantity: "" }]);
 
@@ -147,97 +149,102 @@ export default function DeliveriesWorkspace({
         setSuccessMsg("");
       }, 6000);
     } catch (err: any) {
-      console.error("Delivery dispatch error:", err);
-      setErrorMsg(err?.message || "Failed to log delivery. Please check connection.");
+      console.error("Production log error:", err);
+      setErrorMsg(err?.message || "Failed to log production. Please check connection.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Delivery stats computations
+  // Production statistics
   const stats = useMemo(() => {
-    const totalQtyDelivered = deliveries.reduce((sum, d) => sum + d.quantity, 0);
-    const totalShipments = new Set(deliveries.map((d) => d.invoiceNumber)).size;
+    const totalQtyConsumed = productions.reduce((sum, p) => sum + p.quantity, 0);
+    const uniqueDays = new Set(productions.map((p) => p.date)).size;
     
-    // Group by customer
-    const customerMap: Record<string, number> = {};
-    deliveries.forEach((d) => {
-      customerMap[d.customer] = (customerMap[d.customer] || 0) + d.quantity;
+    // Group by reference code for ranking
+    const refMap: Record<string, number> = {};
+    productions.forEach((p) => {
+      refMap[p.reference] = (refMap[p.reference] || 0) + p.quantity;
     });
+
+    const topConsumedReferences = Object.entries(refMap)
+      .map(([code, val]) => ({ code, val }))
+      .sort((a, b) => b.val - a.val)
+      .slice(0, 5);
 
     return {
-      totalQtyDelivered,
-      totalShipments,
-      customerShares: Object.entries(customerMap).map(([name, val]) => ({ name, val }))
+      totalQtyConsumed,
+      uniqueDays,
+      topConsumedReferences
     };
-  }, [deliveries]);
+  }, [productions]);
 
-  // Pre-filtered deliveries list
-  const filteredDeliveries = useMemo(() => {
-    return deliveries.filter((d) => {
+  // Pre-filtered productions list
+  const filteredProductions = useMemo(() => {
+    return productions.filter((p) => {
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = !q ? true : (
-        d.invoiceNumber.toLowerCase().includes(q) ||
-        d.reference.toLowerCase().includes(q) ||
-        d.customer.toLowerCase().includes(q) ||
-        (d.notes && d.notes.toLowerCase().includes(q))
+        p.reference.toLowerCase().includes(q) ||
+        p.operatorName.toLowerCase().includes(q) ||
+        p.date.toLowerCase().includes(q) ||
+        (p.notes && p.notes.toLowerCase().includes(q))
       );
-      const matchesCustomer = customerFilter === "All" || d.customer === customerFilter;
-      return matchesSearch && matchesCustomer;
+      const matchesDate = !dateFilter ? true : p.date === dateFilter;
+      return matchesSearch && matchesDate;
     });
-  }, [deliveries, searchQuery, customerFilter]);
+  }, [productions, searchQuery, dateFilter]);
 
-  // Unique list of customers in deliveries
-  const uniqueCustomers = useMemo(() => {
-    const customers = new Set(deliveries.map((d) => d.customer));
-    return Array.from(customers);
-  }, [deliveries]);
+  // Unique list of dates in production logs for filter dropdown
+  const uniqueDates = useMemo(() => {
+    const dates = new Set(productions.map((p) => p.date));
+    return Array.from(dates).sort((a, b) => b.localeCompare(a));
+  }, [productions]);
 
   return (
-    <div className="space-y-6" id="deliveries-workspace">
+    <div className="space-y-6" id="production-workspace">
       
-      {/* Dynamic Overview Metrics Cards */}
+      {/* Overview Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
-          <div className="p-3.5 rounded-xl bg-rose-50 text-rose-600">
+          <div className="p-3.5 rounded-xl bg-blue-50 text-blue-600">
             <TrendingDown className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Total Dispatched Parts</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Total Pieces Consumed</span>
             <span className="text-2xl font-black text-slate-900 font-display mt-0.5 block">
-              {stats.totalQtyDelivered.toLocaleString()} pcs
+              {stats.totalQtyConsumed.toLocaleString()} pcs
             </span>
             <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-              Removed from active stock
+              Used in steering wheel assembly
             </span>
           </div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
-          <div className="p-3.5 rounded-xl bg-blue-50 text-blue-600">
-            <Truck className="w-6 h-6" />
+          <div className="p-3.5 rounded-xl bg-indigo-50 text-indigo-600">
+            <Calendar className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Completed Shipments</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Logged Production Days</span>
             <span className="text-2xl font-black text-slate-900 font-display mt-0.5 block">
-              {stats.totalShipments} invoices
+              {stats.uniqueDays} active days
             </span>
             <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-              Unique deliveries dispatched
+              Traceable daily logs
             </span>
           </div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-center">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Customer Dispatch Breakdown</span>
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Top Consumed References</span>
           <div className="flex flex-wrap gap-2">
-            {stats.customerShares.length === 0 ? (
-              <span className="text-xs text-slate-400 italic">No delivery data yet</span>
+            {stats.topConsumedReferences.length === 0 ? (
+              <span className="text-xs text-slate-400 italic">No production logs entered yet</span>
             ) : (
-              stats.customerShares.map((c) => (
-                <span key={c.name} className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 font-mono">
-                  <span className="font-bold text-rose-600">{c.val}</span>
-                  <span className="text-[10px] text-slate-400 uppercase font-sans font-bold">{c.name}</span>
+              stats.topConsumedReferences.map((ref) => (
+                <span key={ref.code} className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 font-mono" title={`Total of ${ref.val} pcs consumed`}>
+                  <span className="font-bold text-blue-600">{ref.val}</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-sans font-bold">{ref.code}</span>
                 </span>
               ))
             )}
@@ -247,58 +254,58 @@ export default function DeliveriesWorkspace({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* Left Column: Register Dispatch */}
+        {/* Left Column: Register Daily Production */}
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs">
             <div className="flex items-center gap-2.5 mb-5 pb-3 border-b border-slate-100">
-              <ArrowUpRight className="w-5 h-5 text-rose-600" />
+              <Factory className="w-5 h-5 text-blue-600" />
               <div>
-                <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">New Batch Dispatch</h3>
-                <p className="text-[11px] text-slate-400 font-medium">Add multiple references under a single invoice number</p>
+                <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Log Daily Consumption</h3>
+                <p className="text-[11px] text-slate-400 font-medium">Record quantities of reference parts used in production</p>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5" id="delivery-dispatch-form">
-              <div className="grid grid-cols-2 gap-4">
-                {/* Invoice Number */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Invoice / Note #
-                  </label>
-                  <div className="relative">
-                    <FileText className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+            <form onSubmit={handleSubmit} className="space-y-5" id="production-consumption-form">
+              <div className="space-y-3">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Production / Work Date
+                </label>
+                
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Calendar className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                     <input
-                      type="text"
-                      placeholder="e.g. Pk84683"
-                      value={invoiceNumber}
-                      onChange={(e) => setInvoiceNumber(e.target.value)}
-                      className="w-full pl-8.5 pr-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold uppercase"
+                      type="date"
+                      value={productionDate}
+                      onChange={(e) => setProductionDate(e.target.value)}
+                      className="w-full pl-8.5 pr-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-slate-800 font-semibold"
                       required
                     />
                   </div>
+                  
+                  <button
+                    type="button"
+                    onClick={setDateToYesterday}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-bold transition-all cursor-pointer border border-slate-200"
+                  >
+                    Yesterday
+                  </button>
+                  <button
+                    type="button"
+                    onClick={setDateToToday}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-bold transition-all cursor-pointer border border-slate-200"
+                  >
+                    Today
+                  </button>
                 </div>
-
-                {/* Destination Customer */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Customer / Destination
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. RENAULT"
-                    value={customer}
-                    onChange={(e) => setCustomer(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-semibold uppercase font-mono"
-                    required
-                  />
-                </div>
+                <p className="text-[10px] text-slate-400 italic">Select the date on which these parts were physically consumed in production.</p>
               </div>
 
               {/* Multiple Reference Rows */}
               <div className="space-y-3.5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    References to Deliver
+                    Parts Consumed
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
                     {rows.length} reference{rows.length > 1 ? "s" : ""}
@@ -332,13 +339,13 @@ export default function DeliveriesWorkspace({
                             <select
                               value={row.referenceCode}
                               onChange={(e) => handleRowChange(index, "referenceCode", e.target.value)}
-                              className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-800 font-mono"
+                              className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 font-mono"
                               required
                             >
                               <option value="">-- Select Reference --</option>
                               {references.map((ref) => (
                                 <option key={ref.code} value={ref.code}>
-                                  {ref.code} ({ref.currentStock} pcs)
+                                  {ref.code} ({ref.currentStock} pcs in stock)
                                 </option>
                               ))}
                             </select>
@@ -349,10 +356,10 @@ export default function DeliveriesWorkspace({
                             <input
                               type="number"
                               min="1"
-                              placeholder="Qty"
+                              placeholder="Quantity"
                               value={row.quantity}
                               onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
-                              className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-800 font-mono font-bold"
+                              className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 font-mono font-bold"
                               required
                             />
                           </div>
@@ -384,21 +391,21 @@ export default function DeliveriesWorkspace({
                 </button>
               </div>
 
-              {/* Optional Notes */}
+              {/* Comments */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Optional Comments / Notes
+                  Production Line Notes / Shift Comments
                 </label>
                 <textarea
-                  placeholder="e.g. Truck plate, package seals..."
+                  placeholder="e.g. Morning shift assembly, reference 34340689D consumed fully..."
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-slate-800"
                 />
               </div>
 
-              {/* Notification Banners */}
+              {/* Notifications */}
               <AnimatePresence mode="wait">
                 {errorMsg && (
                   <motion.div
@@ -425,30 +432,30 @@ export default function DeliveriesWorkspace({
                 )}
               </AnimatePresence>
 
-              {/* Submit Button */}
+              {/* Submit button */}
               <button
                 type="submit"
                 disabled={submitting}
-                className={`w-full py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white shadow-md shadow-rose-100 flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                className={`w-full py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white shadow-md shadow-blue-100 flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   submitting
                     ? "bg-slate-400 shadow-none cursor-not-allowed"
-                    : "bg-rose-600 hover:bg-rose-500 active:scale-98"
+                    : "bg-blue-600 hover:bg-blue-500 active:scale-98"
                 }`}
               >
-                <Truck className="w-4 h-4" />
-                <span>{submitting ? "Processing Dispatch..." : "Dispatch Shipment"}</span>
+                <Factory className="w-4 h-4" />
+                <span>{submitting ? "Saving Production Log..." : "Save Daily Production"}</span>
               </button>
             </form>
           </div>
         </div>
 
-        {/* Right Column: Shipment History / Logs */}
+        {/* Right Column: Daily Production Logs History */}
         <div className="lg:col-span-7 space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-100">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Professional Dispatches Ledger</h3>
-                <p className="text-[11px] text-slate-400 font-medium">Traceable audit logs of customer shipments</p>
+                <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Production Consumption Ledger</h3>
+                <p className="text-[11px] text-slate-400 font-medium">Daily traceability log of parts used on assembly line</p>
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -457,22 +464,22 @@ export default function DeliveriesWorkspace({
                   <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search invoices, refs, customers..."
+                    placeholder="Search references, operators..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-rose-500 focus:bg-white transition-all w-full sm:w-56 text-slate-800"
+                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-500 focus:bg-white transition-all w-full sm:w-48 text-slate-800"
                   />
                 </div>
 
-                {/* Customer Filter */}
+                {/* Date Filter */}
                 <select
-                  value={customerFilter}
-                  onChange={(e) => setCustomerFilter(e.target.value)}
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
                   className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none text-slate-600"
                 >
-                  <option value="All">All Customers</option>
-                  {uniqueCustomers.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                  <option value="">All Dates</option>
+                  {uniqueDates.map((d) => (
+                    <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
               </div>
@@ -483,17 +490,17 @@ export default function DeliveriesWorkspace({
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[9px]">
-                    <th className="py-3 px-4 font-black">Invoice / Note</th>
+                    <th className="py-3 px-4 font-black">Production Date</th>
                     <th className="py-3 px-4 font-black">Reference Code</th>
-                    <th className="py-3 px-4 font-black">Quantity</th>
-                    <th className="py-3 px-4 font-black">Customer</th>
-                    <th className="py-3 px-4 font-black">Dispatched By</th>
-                    <th className="py-3 px-4 font-black text-right">Timestamp</th>
+                    <th className="py-3 px-4 font-black">Quantity Consumed</th>
+                    <th className="py-3 px-4 font-black">Logged By</th>
+                    <th className="py-3 px-4 font-black">Notes</th>
+                    <th className="py-3 px-4 font-black text-right">Registered At</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredDeliveries.map((delivery) => {
-                    const formattedDate = new Date(delivery.timestamp).toLocaleString("en-US", {
+                  {filteredProductions.map((p) => {
+                    const formattedDate = new Date(p.timestamp).toLocaleString("en-US", {
                       month: "short",
                       day: "numeric",
                       hour: "2-digit",
@@ -501,27 +508,25 @@ export default function DeliveriesWorkspace({
                     });
 
                     return (
-                      <tr key={delivery.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <span className="flex items-center gap-1.5 font-mono font-bold text-rose-700 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded text-[10px] w-fit">
-                            <FileText className="w-3 h-3" />
-                            {delivery.invoiceNumber}
+                      <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3.5 px-4 font-semibold text-slate-700">
+                          <span className="flex items-center gap-1 text-slate-800">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            {p.date}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
-                          {delivery.reference}
+                        <td className="py-3.5 px-4 font-mono font-bold text-blue-700">
+                          {p.reference}
                         </td>
                         <td className="py-3.5 px-4 font-mono font-black text-slate-900 text-[13px]">
-                          -{delivery.quantity} pcs
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-200/50 rounded font-mono text-[9px] font-bold uppercase">
-                            {delivery.customer}
-                          </span>
+                          {p.quantity.toLocaleString()} pcs
                         </td>
                         <td className="py-3.5 px-4 text-slate-600 flex items-center gap-1.5 font-sans font-semibold">
                           <UserIcon className="w-3.5 h-3.5 text-slate-400" />
-                          {delivery.operatorName}
+                          {p.operatorName}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-500 max-w-[180px] truncate" title={p.notes || ""}>
+                          {p.notes || <span className="text-slate-300 italic">-</span>}
                         </td>
                         <td className="py-3.5 px-4 text-right text-slate-400 font-mono text-[11px]">
                           {formattedDate}
@@ -530,12 +535,12 @@ export default function DeliveriesWorkspace({
                     );
                   })}
 
-                  {filteredDeliveries.length === 0 && (
+                  {filteredProductions.length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-12 text-center text-slate-400 bg-slate-50/20">
                         <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-500" />
-                        <p className="text-sm font-semibold">No dispatches matching filters</p>
-                        <p className="text-xs text-slate-400 mt-1">Register a new delivery in the left panel</p>
+                        <p className="text-sm font-semibold">No production records found</p>
+                        <p className="text-xs text-slate-400 mt-1">Register a new production log in the left panel</p>
                       </td>
                     </tr>
                   )}

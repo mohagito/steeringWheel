@@ -73,6 +73,20 @@
         "notes": { "type": "string", "description": "Optional shipment notes" }
       },
       "required": ["invoiceNumber", "reference", "quantity", "operatorName", "timestamp", "customer"]
+    },
+    "Production": {
+      "title": "Production",
+      "description": "A daily product consumption / production log",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "The target date for the logged production, e.g. YYYY-MM-DD" },
+        "reference": { "type": "string", "description": "The part reference code" },
+        "quantity": { "type": "number", "description": "The quantity of parts consumed in production" },
+        "operatorName": { "type": "string", "description": "Name of the user who logged this production" },
+        "timestamp": { "type": "string", "description": "Creation timestamp" },
+        "notes": { "type": "string", "description": "Optional comments" }
+      },
+      "required": ["date", "reference", "quantity", "operatorName", "timestamp"]
     }
   },
   "firestore": {
@@ -95,6 +109,10 @@
     "/deliveries/{deliveryId}": {
       "schema": "Delivery",
       "description": "Collection of professional delivery dispatches"
+    },
+    "/productions/{productionId}": {
+      "schema": "Production",
+      "description": "Collection of daily production consumption logs"
     }
   }
 }

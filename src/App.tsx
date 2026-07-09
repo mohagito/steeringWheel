@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { 
-  collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, getDoc 
+  collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, getDoc, writeBatch
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState } from "./seeder";
-import { Box, Adjustment, User, Reference, Delivery } from "./types";
+import { Box, Adjustment, User, Reference, Delivery, Production } from "./types";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
 import OperatorWorkspace from "./components/OperatorWorkspace";
@@ -12,10 +12,12 @@ import SupervisorWorkspace from "./components/SupervisorWorkspace";
 import AdminWorkspace from "./components/AdminWorkspace";
 import StockWorkspace from "./components/StockWorkspace";
 import DeliveriesWorkspace from "./components/DeliveriesWorkspace";
+import ProductionWorkspace from "./components/ProductionWorkspace";
+import AssembliesWorkspace, { PRODUCT_ASSEMBLIES } from "./components/AssembliesWorkspace";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
-  RefreshCw, Layers, CheckSquare, Shield, HelpCircle, Database, Truck
+  RefreshCw, Layers, CheckSquare, Shield, HelpCircle, Database, Truck, Factory
 } from "lucide-react";
 
 export default function App() {
@@ -24,9 +26,10 @@ export default function App() {
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [references, setReferences] = useState<Reference[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [productions, setProductions] = useState<Production[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "assemblies">("dashboard");
 
   // Sync state with Firestore on mount
   useEffect(() => {
@@ -35,6 +38,7 @@ export default function App() {
     let unsubReferences: (() => void) | null = null;
     let unsubUsers: (() => void) | null = null;
     let unsubDeliveries: (() => void) | null = null;
+    let unsubProductions: (() => void) | null = null;
 
     async function initApp() {
       try {
@@ -109,6 +113,27 @@ export default function App() {
         }
       );
 
+      // Subscribing to Productions collection
+      unsubProductions = onSnapshot(
+        collection(db, "productions"),
+        (snapshot) => {
+          const prodList: Production[] = [];
+          snapshot.forEach((doc) => {
+            prodList.push({ id: doc.id, ...doc.data() } as Production);
+          });
+          // Sort productions descending by date, then by timestamp
+          prodList.sort((a, b) => {
+            const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+            if (dateDiff !== 0) return dateDiff;
+            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+          });
+          setProductions(prodList);
+        },
+        (error) => {
+          console.error("Error subscribing to productions:", error);
+        }
+      );
+
       unsubUsers = onSnapshot(
         collection(db, "users"), 
         (snapshot) => {
@@ -133,41 +158,187 @@ export default function App() {
       if (unsubAdjustments) unsubAdjustments();
       if (unsubReferences) unsubReferences();
       if (unsubDeliveries) unsubDeliveries();
+      if (unsubProductions) unsubProductions();
       if (unsubUsers) unsubUsers();
     };
   }, []);
 
-  // Action: Operator logs a delivery / dispatch
-  const handleSubmitDelivery = async (deliveryData: Omit<Delivery, "id" | "timestamp" | "operatorName">) => {
+  // Helper to remove undefined values before writing to Firestore
+  const cleanUndefined = <T extends Record<string, any>>(obj: T): T => {
+    const clean: any = {};
+    Object.keys(obj).forEach((key) => {
+      if (obj[key] !== undefined) {
+        clean[key] = obj[key];
+      }
+    });
+    return clean as T;
+  };
+
+  // Action: Operator logs multiple deliveries / dispatches in a batch under one invoice
+  const handleSubmitDeliveries = async (deliveriesData: Omit<Delivery, "id" | "timestamp" | "operatorName">[]) => {
     if (!currentUser) return;
-    const refCode = deliveryData.reference;
-    const refDocRef = doc(db, "references", refCode);
-    const refSnap = await getDoc(refDocRef);
+    const batch = writeBatch(db);
+    const timestamp = new Date().toISOString();
     
-    let currentStock = 0;
-    if (refSnap.exists()) {
-      currentStock = refSnap.data().currentStock || 0;
-    }
+    // Determine all references to fetch and update (including auto-triggered mesh references)
+    const allRefCodesToUpdate = new Set<string>();
+    deliveriesData.forEach(d => {
+      allRefCodesToUpdate.add(d.reference);
+      const asm = PRODUCT_ASSEMBLIES.find(a => a.finalRef === d.reference);
+      if (asm && asm.meshRef) {
+        allRefCodesToUpdate.add(asm.meshRef);
+      }
+    });
+
+    const refCodesArray = Array.from(allRefCodesToUpdate);
+    const refSnaps = await Promise.all(
+      refCodesArray.map(ref => getDoc(doc(db, "references", ref)))
+    );
     
-    // Decrement stock (can go negative if proceed with warning, but use Math.max to prevent negative unless necessary. Let's allow negative if warning is bypassed, but Math.max(0) is standard safety)
-    const stockAfter = Math.max(0, currentStock - deliveryData.quantity);
+    const refSnapMap: Record<string, number> = {};
+    refSnaps.forEach((snap: any) => {
+      if (snap.exists()) {
+        refSnapMap[snap.id] = snap.data()?.currentStock || 0;
+      } else {
+        refSnapMap[snap.id] = 0;
+      }
+    });
 
-    // Save Delivery Record
-    const newId = `del-${Date.now()}`;
-    const newDelivery: Delivery = {
-      ...deliveryData,
-      id: newId,
-      operatorName: currentUser.fullName,
-      timestamp: new Date().toISOString()
-    };
+    deliveriesData.forEach((delivery, index) => {
+      const refCode = delivery.reference;
+      const qty = delivery.quantity;
+      const currentStock = refSnapMap[refCode] || 0;
+      
+      const stockAfter = Math.max(0, currentStock - qty);
+      refSnapMap[refCode] = stockAfter; // update locally in case of duplicate references in input
 
-    await setDoc(doc(db, "deliveries", newId), newDelivery);
+      const newId = `del-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
+      const newDelivery: Delivery = {
+        ...delivery,
+        id: newId,
+        operatorName: currentUser.fullName,
+        timestamp
+      };
 
-    // Update reference stock level
-    await setDoc(refDocRef, {
-      currentStock: stockAfter,
-      lastUpdate: new Date().toISOString()
-    }, { merge: true });
+      batch.set(doc(db, "deliveries", newId), cleanUndefined(newDelivery));
+      batch.set(doc(db, "references", refCode), {
+        currentStock: stockAfter,
+        lastUpdate: timestamp
+      }, { merge: true });
+
+      // Automatically deliver and deduct the associated mesh if any
+      const asm = PRODUCT_ASSEMBLIES.find(a => a.finalRef === refCode);
+      if (asm && asm.meshRef) {
+        const meshRef = asm.meshRef;
+        const currentMeshStock = refSnapMap[meshRef] || 0;
+        const meshStockAfter = Math.max(0, currentMeshStock - qty);
+        refSnapMap[meshRef] = meshStockAfter;
+
+        // Log a delivery for the mesh
+        const meshDelId = `del-auto-mesh-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
+        const meshDelivery: Delivery = {
+          id: meshDelId,
+          invoiceNumber: delivery.invoiceNumber,
+          reference: meshRef,
+          quantity: qty,
+          operatorName: currentUser.fullName,
+          timestamp,
+          customer: delivery.customer,
+          notes: `Automatically delivered with final assembly ${refCode}`
+        };
+
+        batch.set(doc(db, "deliveries", meshDelId), cleanUndefined(meshDelivery));
+        batch.set(doc(db, "references", meshRef), {
+          currentStock: meshStockAfter,
+          lastUpdate: timestamp
+        }, { merge: true });
+
+        // Decrement corresponding quantity from active warehouse boxes to keep the stock numbers perfectly in sync!
+        const componentBoxes = [...boxes]
+          .filter(b => b.reference.toUpperCase() === meshRef.toUpperCase())
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+        let remainingToDeduct = qty;
+        for (const box of componentBoxes) {
+          if (remainingToDeduct <= 0) break;
+
+          const currentQty = box.expectedQty || 0;
+          const deduction = Math.min(currentQty, remainingToDeduct);
+          const newQty = currentQty - deduction;
+          remainingToDeduct -= deduction;
+
+          // Update the box in firestore
+          batch.update(doc(db, "boxes", box.id), {
+            expectedQty: newQty,
+            updatedAt: timestamp
+          });
+
+          // Log an Adjustment record for tracking
+          const adjId = `adj-consume-delivery-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+          const adj: Adjustment = {
+            id: adjId,
+            barcode: box.barcode,
+            reference: meshRef,
+            expectedQty: currentQty,
+            actualQty: newQty,
+            difference: -deduction,
+            operatorName: currentUser.fullName,
+            timestamp,
+            status: "approved",
+            comment: `Consumed automatically on delivery of final product ${refCode}`,
+            materialType: box.materialType
+          };
+          batch.set(doc(db, "adjustments", adjId), cleanUndefined(adj));
+        }
+      }
+    });
+
+    await batch.commit();
+  };
+
+  // Action: Operator logs production consumption in a batch
+  const handleSubmitProduction = async (productionEntries: { date: string; reference: string; quantity: number; notes?: string }[]) => {
+    if (!currentUser) return;
+    const batch = writeBatch(db);
+    const timestamp = new Date().toISOString();
+    
+    // Fetch all reference snaps in parallel
+    const refSnaps = await Promise.all(
+      productionEntries.map(p => getDoc(doc(db, "references", p.reference)))
+    );
+    
+    const refSnapMap: Record<string, number> = {};
+    refSnaps.forEach((snap: any) => {
+      if (snap.exists()) {
+        refSnapMap[snap.id] = snap.data()?.currentStock || 0;
+      } else {
+        refSnapMap[snap.id] = 0;
+      }
+    });
+
+    productionEntries.forEach((entry, index) => {
+      const refCode = entry.reference;
+      const currentStock = refSnapMap[refCode] || 0;
+      
+      const stockAfter = Math.max(0, currentStock - entry.quantity);
+      refSnapMap[refCode] = stockAfter; // update locally in case of duplicate references in input
+
+      const newId = `prod-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
+      const newProduction: Production = {
+        ...entry,
+        id: newId,
+        operatorName: currentUser.fullName,
+        timestamp
+      };
+
+      batch.set(doc(db, "productions", newId), cleanUndefined(newProduction));
+      batch.set(doc(db, "references", refCode), {
+        currentStock: stockAfter,
+        lastUpdate: timestamp
+      }, { merge: true });
+    });
+
+    await batch.commit();
   };
 
   // Action: Operator submits a physical count adjustment
@@ -197,7 +368,7 @@ export default function App() {
       stockAfter
     };
 
-    await setDoc(doc(db, "adjustments", newId), newAdjustment);
+    await setDoc(doc(db, "adjustments", newId), cleanUndefined(newAdjustment));
 
     // Update reference currentStock
     await setDoc(refDocRef, {
@@ -255,6 +426,92 @@ export default function App() {
     });
   };
 
+  const handleLogAssemblyProduction = async (finalRef: string, qty: number, notes?: string) => {
+    if (!currentUser) return;
+
+    // Find the assembly formula
+    const asm = PRODUCT_ASSEMBLIES.find(a => a.finalRef === finalRef);
+    if (!asm) return;
+
+    const batch = writeBatch(db);
+    const timestamp = new Date().toISOString();
+
+    // 1. Log a production record for the final reference
+    const prodId = `prod-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const newProduction: Production = {
+      id: prodId,
+      date: new Date().toISOString().split("T")[0],
+      reference: finalRef,
+      quantity: qty,
+      operatorName: currentUser.fullName,
+      timestamp,
+      notes: notes || `Assembled from ${asm.gaineRef}${asm.meshRef ? ` & ${asm.meshRef}` : ""}`
+    };
+    batch.set(doc(db, "productions", prodId), cleanUndefined(newProduction));
+
+    // Helper to deduct quantity from component boxes
+    const deductComponent = (componentRef: string, deductQty: number) => {
+      if (!componentRef) return;
+      
+      // Get all active boxes for this component reference
+      const componentBoxes = [...boxes]
+        .filter(b => b.reference.toUpperCase() === componentRef.toUpperCase())
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+      let remainingToDeduct = deductQty;
+      for (const box of componentBoxes) {
+        if (remainingToDeduct <= 0) break;
+
+        const currentQty = box.expectedQty || 0;
+        const deduction = Math.min(currentQty, remainingToDeduct);
+        const newQty = currentQty - deduction;
+        remainingToDeduct -= deduction;
+
+        // Update the box in firestore
+        batch.update(doc(db, "boxes", box.id), {
+          expectedQty: newQty,
+          updatedAt: timestamp
+        });
+
+        // Log an Adjustment record for tracking
+        const adjId = `adj-consume-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        const adj: Adjustment = {
+          id: adjId,
+          barcode: box.barcode,
+          reference: componentRef,
+          expectedQty: currentQty,
+          actualQty: newQty,
+          difference: -deduction,
+          operatorName: currentUser.fullName,
+          timestamp,
+          status: "approved",
+          comment: `Consumed for assembly of final product ${finalRef}`,
+          materialType: box.materialType
+        };
+        batch.set(doc(db, "adjustments", adjId), cleanUndefined(adj));
+      }
+    };
+
+    // Deduct components
+    if (asm.meshRef) {
+      deductComponent(asm.meshRef, qty);
+    }
+    deductComponent(asm.gaineRef, qty);
+
+    // Commit batch write
+    await batch.commit();
+  };
+
+  const handleLogAssemblyDelivery = async (finalRef: string, qty: number, customer: string, invoice: string) => {
+    await handleSubmitDeliveries([{
+      reference: finalRef,
+      quantity: qty,
+      customer,
+      invoiceNumber: invoice,
+      notes: "Assembled steering wheel shipment"
+    }]);
+  };
+
   // Action: Admin registers a box
   const handleAddBox = async (boxData: Omit<Box, "createdAt" | "updatedAt">) => {
     const newBox: Box = {
@@ -268,6 +525,24 @@ export default function App() {
   // Action: Admin deletes a box
   const handleDeleteBox = async (boxId: string) => {
     await deleteDoc(doc(db, "boxes", boxId));
+  };
+
+  // Action: Admin updates a box
+  const handleUpdateBox = async (boxId: string, updatedFields: Partial<Box>) => {
+    const boxRef = doc(db, "boxes", boxId);
+    await updateDoc(boxRef, {
+      ...updatedFields,
+      updatedAt: new Date().toISOString()
+    });
+  };
+
+  // Action: Admin updates a reference
+  const handleUpdateReference = async (refId: string, updatedFields: Partial<Reference>) => {
+    const refRef = doc(db, "references", refId);
+    await updateDoc(refRef, {
+      ...updatedFields,
+      lastUpdate: new Date().toISOString()
+    });
   };
 
   // Action: Admin adds a user profile
@@ -338,6 +613,8 @@ export default function App() {
             </div>
           </div>
 
+
+
           {/* Navigation Items */}
           <nav className="flex md:flex-col flex-row flex-wrap md:space-y-1 gap-1" id="primary-navigation-tabs">
             
@@ -393,19 +670,19 @@ export default function App() {
               </div>
             </motion.button>
 
-            {/* Deliveries Tab */}
+            {/* Assemblies Tab (Indigo Glow!) */}
             <motion.button
-              onClick={() => setActiveTab("deliveries")}
-              id="nav-tab-deliveries"
+              onClick={() => setActiveTab("assemblies")}
+              id="nav-tab-assemblies"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none ${
-                activeTab === "deliveries"
-                  ? "text-white font-bold"
+              className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none group ${
+                activeTab === "assemblies"
+                  ? "text-indigo-400 font-bold"
                   : "text-slate-400 hover:bg-slate-800/30 hover:text-white"
               }`}
             >
-              {activeTab === "deliveries" && (
+              {activeTab === "assemblies" && (
                 <motion.div
                   layoutId="activeTabPill"
                   className="absolute inset-0 bg-slate-800 border border-slate-700/60 rounded-lg -z-10"
@@ -413,35 +690,91 @@ export default function App() {
                 />
               )}
               <div className="flex items-center gap-3 z-10 relative">
-                <Truck className="w-4 h-4 shrink-0" />
-                <span>Deliveries</span>
+                <Layers className="w-4 h-4 shrink-0 transition-transform duration-300 group-hover:rotate-12" />
+                <span>PRECOSIDO</span>
               </div>
             </motion.button>
 
+            {/* Deliveries Tab */}
+            {currentUser.role === "admin" && (
+              <motion.button
+                onClick={() => setActiveTab("deliveries")}
+                id="nav-tab-deliveries"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none ${
+                  activeTab === "deliveries"
+                    ? "text-white font-bold"
+                    : "text-slate-400 hover:bg-slate-800/30 hover:text-white"
+                }`}
+              >
+                {activeTab === "deliveries" && (
+                  <motion.div
+                    layoutId="activeTabPill"
+                    className="absolute inset-0 bg-slate-800 border border-slate-700/60 rounded-lg -z-10"
+                    transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                  />
+                )}
+                <div className="flex items-center gap-3 z-10 relative">
+                  <Truck className="w-4 h-4 shrink-0" />
+                  <span>Deliveries</span>
+                </div>
+              </motion.button>
+            )}
+
+            {/* Production Tab */}
+            {currentUser.role === "admin" && (
+              <motion.button
+                onClick={() => setActiveTab("production")}
+                id="nav-tab-production"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none group ${
+                  activeTab === "production"
+                    ? "text-blue-400 font-bold"
+                    : "text-slate-400 hover:bg-slate-800/30 hover:text-white"
+                }`}
+              >
+                {activeTab === "production" && (
+                  <motion.div
+                    layoutId="activeTabPill"
+                    className="absolute inset-0 bg-slate-800 border border-slate-700/60 rounded-lg -z-10"
+                    transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                  />
+                )}
+                <div className="flex items-center gap-3 z-10 relative">
+                  <Factory className="w-4 h-4 shrink-0 transition-transform duration-300 group-hover:scale-110" />
+                  <span>Production</span>
+                </div>
+              </motion.button>
+            )}
+
             {/* Operator Tab (Vibrant Emerald Glow!) */}
-            <motion.button
-              onClick={() => setActiveTab("operator")}
-              id="nav-tab-operator"
-              whileHover={{ scale: 1.03, x: 2 }}
-              whileTap={{ scale: 0.98 }}
-              className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none group ${
-                activeTab === "operator"
-                  ? "text-emerald-400 font-bold"
-                  : "text-slate-400 hover:bg-emerald-500/10 hover:text-emerald-400"
-              }`}
-            >
-              {activeTab === "operator" && (
-                <motion.div
-                  layoutId="activeTabPill"
-                  className="absolute inset-0 bg-emerald-950/40 border border-emerald-500/30 rounded-lg -z-10 shadow-inner"
-                  transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                />
-              )}
-              <div className="flex items-center gap-3 z-10 relative">
-                <Scan className="w-4 h-4 shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3" />
-                <span>Operator count</span>
-              </div>
-            </motion.button>
+            {currentUser.role !== "admin" && (
+              <motion.button
+                onClick={() => setActiveTab("operator")}
+                id="nav-tab-operator"
+                whileHover={{ scale: 1.03, x: 2 }}
+                whileTap={{ scale: 0.98 }}
+                className={`relative p-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none group ${
+                  activeTab === "operator"
+                    ? "text-emerald-400 font-bold"
+                    : "text-slate-400 hover:bg-emerald-500/10 hover:text-emerald-400"
+                }`}
+              >
+                {activeTab === "operator" && (
+                  <motion.div
+                    layoutId="activeTabPill"
+                    className="absolute inset-0 bg-emerald-950/40 border border-emerald-500/30 rounded-lg -z-10 shadow-inner"
+                    transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                  />
+                )}
+                <div className="flex items-center gap-3 z-10 relative">
+                  <Scan className="w-4 h-4 shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3" />
+                  <span>Operator count</span>
+                </div>
+              </motion.button>
+            )}
 
             {/* Supervisor Tab (Warm Amber Glow!) */}
             {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
@@ -538,7 +871,9 @@ export default function App() {
             <h1 className="text-base sm:text-lg font-bold text-slate-800 font-display">
               {activeTab === "dashboard" && "Operational Dashboard"}
               {activeTab === "stock" && "Real-time Stock Inventory"}
+              {activeTab === "assemblies" && "PRECOSIDO Mappings & Stock Sync"}
               {activeTab === "deliveries" && "Customer Deliveries & Dispatches"}
+              {activeTab === "production" && "Daily Production Consumption"}
               {activeTab === "operator" && "Inventory Count Workspace"}
               {activeTab === "supervisor" && "Supervisor Validation & Sign-offs"}
               {activeTab === "admin" && "Administrative Control Center"}
@@ -546,7 +881,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            {activeTab !== "operator" && (
+            {activeTab !== "operator" && currentUser.role !== "admin" && (
               <button
                 onClick={() => setActiveTab("operator")}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold text-xs shadow-md shadow-blue-200 transition-all cursor-pointer active:scale-95"
@@ -574,7 +909,7 @@ export default function App() {
                   boxes={boxes} 
                   adjustments={adjustments} 
                   references={references}
-                  onTriggerScan={() => setActiveTab("operator")}
+                  onTriggerScan={currentUser.role !== "admin" ? () => setActiveTab("operator") : undefined}
                 />
               )}
 
@@ -584,15 +919,38 @@ export default function App() {
                   adjustments={adjustments} 
                   references={references}
                   currentUser={currentUser}
+                  onDeleteBox={handleDeleteBox}
+                  onUpdateBox={handleUpdateBox}
+                  onUpdateReference={handleUpdateReference}
                 />
               )}
 
-              {activeTab === "deliveries" && (
+              {activeTab === "assemblies" && (
+                <AssembliesWorkspace
+                  boxes={boxes}
+                  adjustments={adjustments}
+                  references={references}
+                  currentUser={currentUser}
+                  onLogProduction={handleLogAssemblyProduction}
+                  onLogDelivery={handleLogAssemblyDelivery}
+                />
+              )}
+
+              {activeTab === "deliveries" && currentUser.role === "admin" && (
                 <DeliveriesWorkspace
                   deliveries={deliveries}
                   references={references}
                   currentUser={currentUser}
-                  onSubmitDelivery={handleSubmitDelivery}
+                  onSubmitDeliveries={handleSubmitDeliveries}
+                />
+              )}
+
+              {activeTab === "production" && currentUser.role === "admin" && (
+                <ProductionWorkspace
+                  productions={productions}
+                  references={references}
+                  currentUser={currentUser}
+                  onSubmitProduction={handleSubmitProduction}
                 />
               )}
 

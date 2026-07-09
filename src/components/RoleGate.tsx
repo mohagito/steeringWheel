@@ -87,6 +87,39 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
     }
   };
 
+  // Physical keyboard listener for PIN entry
+  useEffect(() => {
+    if (!selectedUser) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // If we already succeeded, ignore
+      if (success) return;
+
+      const key = e.key;
+
+      if (key === "Backspace") {
+        e.preventDefault();
+        handleBackspace();
+      } else if (key === "Escape") {
+        e.preventDefault();
+        setSelectedUser(null);
+        setPin("");
+        setError("");
+      } else if (key === "Delete") {
+        e.preventDefault();
+        handleClear();
+      } else if (/^[0-9]$/.test(key)) {
+        e.preventDefault();
+        handleKeyPress(key);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedUser, pin, success]);
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-brand-950 p-4 relative overflow-hidden" id="rolegate-screen">
       {/* Background organic light glows */}
@@ -321,11 +354,6 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                   >
                     ⌫
                   </button>
-                </div>
-
-                {/* Hints for ease of evaluation/testing */}
-                <div className="text-[10px] text-brand-400 bg-brand-950/30 px-3 py-1 rounded-lg border border-brand-800/30">
-                  Demo PIN for this user is: <strong className="text-white font-mono">{selectedUser.pin}</strong>
                 </div>
               </motion.div>
             )}
