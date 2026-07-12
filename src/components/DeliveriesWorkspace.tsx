@@ -207,9 +207,6 @@ export default function DeliveriesWorkspace({
             <span className="text-2xl font-black text-slate-900 font-display mt-0.5 block">
               {stats.totalQtyDelivered.toLocaleString()} pcs
             </span>
-            <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-              Removed from active stock
-            </span>
           </div>
         </div>
 
@@ -221,9 +218,6 @@ export default function DeliveriesWorkspace({
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Completed Shipments</span>
             <span className="text-2xl font-black text-slate-900 font-display mt-0.5 block">
               {stats.totalShipments} invoices
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-              Unique deliveries dispatched
             </span>
           </div>
         </div>
@@ -254,7 +248,6 @@ export default function DeliveriesWorkspace({
               <ArrowUpRight className="w-5 h-5 text-rose-600" />
               <div>
                 <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">New Batch Dispatch</h3>
-                <p className="text-[11px] text-slate-400 font-medium">Add multiple references under a single invoice number</p>
               </div>
             </div>
 

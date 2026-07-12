@@ -109,122 +109,93 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
   const COLORS = ["#557968", "#789988", "#a5beb0", "#cbdad0", "#416051"];
 
   return (
-    <div className="space-y-6" id="dashboard-overview-tab">
+    <div className="space-y-4" id="dashboard-overview-tab">
       
-      {/* Top Banner & Welcome */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-brand-100 shadow-xs">
-        <div>
-          <h2 className="font-display text-2xl font-bold text-brand-950 tracking-tight">EPP NATUR Stock Control Dashboard</h2>
-          <p className="text-sm text-brand-600 mt-1">
-            Real-time shopfloor inventory statistics for the Steering Wheels assembly department.
-          </p>
-        </div>
-        
-        {onTriggerScan && (
-          <button
-            onClick={onTriggerScan}
-            id="dashboard-scan-shortcut-btn"
-            className="self-start sm:self-auto inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 active:scale-98 text-white font-medium shadow-md shadow-brand-600/10 transition-all text-sm cursor-pointer"
-          >
-            <Package className="w-4 h-4" />
-            Scan New Carton
-          </button>
-        )}
-      </div>
+
 
       {/* Grid of Key Performance Indicators */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="kpi-grid">
         
         {/* KPI 1: Active Cartons */}
-        <div className="bg-white p-5 rounded-2xl border border-brand-100 shadow-xs flex items-center gap-4 hover:shadow-md transition-shadow">
-          <div className="p-3.5 bg-brand-50 rounded-xl text-brand-600">
-            <Layers className="w-6 h-6" />
+        <div className="bg-[#0f1e36] p-4 rounded-sm border border-[#1e293b] flex items-center gap-4">
+          <div className="p-3 bg-[#0a1322] border border-[#1e293b] rounded-sm text-brand-400">
+            <Layers className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-xs font-medium text-brand-400 uppercase tracking-wider block">Tracked Cartons</span>
-            <span className="text-2xl font-bold text-brand-950 font-display mt-0.5 block">{metrics.totalBoxes}</span>
-            <span className="text-[10px] text-brand-500 font-mono block mt-0.5">
-              Total system stock: {metrics.totalExpectedParts} pcs
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Cartons</span>
+            <span className="text-xl font-bold text-white mt-0.5 block">{metrics.totalBoxes}</span>
+            <span className="text-[10px] text-slate-400 font-mono block">
+              {metrics.totalExpectedParts} expected parts
             </span>
           </div>
         </div>
 
         {/* KPI 2: Inventory Accuracy Rate */}
-        <div className="bg-white p-5 rounded-2xl border border-brand-100 shadow-xs flex items-center gap-4 hover:shadow-md transition-shadow">
-          <div className="p-3.5 bg-emerald-50 rounded-xl text-emerald-600">
-            <CheckCircle2 className="w-6 h-6" />
+        <div className="bg-[#0f1e36] p-4 rounded-sm border border-[#1e293b] flex items-center gap-4">
+          <div className="p-3 bg-[#0c2e21] border border-emerald-900 rounded-sm text-emerald-400">
+            <CheckCircle2 className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-xs font-medium text-brand-400 uppercase tracking-wider block">Carton Accuracy</span>
-            <span className="text-2xl font-bold text-brand-950 font-display mt-0.5 block">{metrics.accuracyRate}%</span>
-            <span className="text-[10px] text-emerald-600 font-medium block mt-0.5">
-              Target requirement: &gt;98%
-            </span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Count Accuracy</span>
+            <span className="text-xl font-bold text-emerald-400 mt-0.5 block">{metrics.accuracyRate}%</span>
           </div>
         </div>
 
         {/* KPI 3: Net Parts Discrepancy */}
-        <div className={`bg-white p-5 rounded-2xl border border-brand-100 shadow-xs flex items-center gap-4 hover:shadow-md transition-shadow`}>
-          <div className={`p-3.5 rounded-xl ${metrics.totalDifferences === 0 ? "bg-brand-50 text-brand-600" : metrics.totalDifferences > 0 ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600"}`}>
-            <AlertTriangle className="w-6 h-6" />
+        <div className="bg-[#0f1e36] p-4 rounded-sm border border-[#1e293b] flex items-center gap-4">
+          <div className={`p-3 border rounded-sm ${metrics.totalDifferences === 0 ? "bg-[#0a1322] border-[#1e293b] text-slate-400" : metrics.totalDifferences > 0 ? "bg-[#092642] border-blue-900 text-blue-400" : "bg-[#2d1110] border-red-900 text-red-400"}`}>
+            <AlertTriangle className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-xs font-medium text-brand-400 uppercase tracking-wider block">Net Adjustment</span>
-            <span className={`text-2xl font-bold font-display mt-0.5 block ${metrics.totalDifferences === 0 ? "text-brand-950" : metrics.totalDifferences > 0 ? "text-blue-600" : "text-red-500"}`}>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Net Adjustment</span>
+            <span className={`text-xl font-bold mt-0.5 block ${metrics.totalDifferences === 0 ? "text-white" : metrics.totalDifferences > 0 ? "text-blue-400" : "text-red-400"}`}>
               {metrics.totalDifferences > 0 ? `+${metrics.totalDifferences}` : metrics.totalDifferences} pcs
-            </span>
-            <span className="text-[10px] text-brand-500 font-mono block mt-0.5">
-              Abs deviation: {metrics.absoluteDifferences} pcs
             </span>
           </div>
         </div>
 
         {/* KPI 4: Pending Supervisor Sign-offs */}
-        <div className="bg-white p-5 rounded-2xl border border-brand-100 shadow-xs flex items-center gap-4 hover:shadow-md transition-shadow">
-          <div className={`p-3.5 rounded-xl ${metrics.pendingCount > 0 ? "bg-amber-50 text-amber-600 animate-pulse" : "bg-brand-50 text-brand-400"}`}>
-            <RefreshCw className="w-6 h-6" />
+        <div className="bg-[#0f1e36] p-4 rounded-sm border border-[#1e293b] flex items-center gap-4">
+          <div className={`p-3 border rounded-sm ${metrics.pendingCount > 0 ? "bg-[#2d210c] border-amber-900 text-amber-400" : "bg-[#0a1322] border-[#1e293b] text-slate-500"}`}>
+            <RefreshCw className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-xs font-medium text-brand-400 uppercase tracking-wider block">Pending Validation</span>
-            <span className="text-2xl font-bold text-brand-950 font-display mt-0.5 block">{metrics.pendingCount}</span>
-            <span className="text-[10px] text-brand-500 block mt-0.5">
-              {metrics.pendingCount > 0 ? "Awaiting supervisor validation" : "All checks fully approved"}
-            </span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pending Actions</span>
+            <span className="text-xl font-bold text-white mt-0.5 block">{metrics.pendingCount}</span>
           </div>
         </div>
 
       </div>
 
       {/* 17 Predefined References Master Stock Board */}
-      <div className="bg-white p-6 rounded-2xl border border-brand-100 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-sm border border-slate-200 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
           <div>
-            <h3 className="font-display font-bold text-brand-950 text-base">Predefined Master Stock Board</h3>
-            <p className="text-xs text-brand-500">Live stock levels of the 17 predefined master product references</p>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">MASTER STOCK BOARD (17 PREDEFINED REFERENCES)</h3>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search references..."
+                placeholder="Search code/desc..."
                 value={refSearchQuery}
                 onChange={(e) => setRefSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-brand-500 focus:bg-white transition-all shadow-inner w-full sm:w-56"
+                className="pl-8 pr-3 py-1 bg-slate-50 border border-slate-200 rounded-sm text-xs font-mono focus:outline-none focus:border-brand-500 focus:bg-white w-full sm:w-48"
               />
             </div>
 
             {/* Filter buttons */}
-            <div className="flex gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
+            <div className="flex bg-slate-100 p-0.5 rounded-sm shrink-0">
               {(["All", "Mesh", "Soft"] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => setRefFilterType(type)}
-                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  className={`px-2.5 py-0.5 text-[10px] font-bold rounded-none uppercase tracking-wider transition-colors cursor-pointer ${
                     refFilterType === type
-                      ? "bg-white text-brand-700 shadow-xs font-semibold"
+                      ? "bg-slate-700 text-white font-semibold"
                       : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
@@ -236,19 +207,19 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
         </div>
 
         {/* References Table */}
-        <div className="overflow-x-auto border border-slate-100 rounded-xl">
-          <table className="w-full text-left text-xs">
+        <div className="overflow-x-auto border border-slate-200 rounded-none">
+          <table className="w-full text-left text-xs industrial-table">
             <thead>
-              <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 font-bold">
-                <th className="py-3 px-4 uppercase font-bold text-[10px]">Reference Code</th>
-                <th className="py-3 px-4 uppercase font-bold text-[10px]">Description</th>
-                <th className="py-3 px-4 uppercase font-bold text-[10px]">Material Type</th>
-                <th className="py-3 px-4 uppercase font-bold text-[10px]">Leather Companion</th>
-                <th className="py-3 px-4 uppercase font-bold text-[10px] text-right">Current Stock</th>
-                <th className="py-3 px-4 uppercase font-bold text-[10px] text-right">Last Updated</th>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Reference Code</th>
+                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Description</th>
+                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Material Type</th>
+                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Leather Companion</th>
+                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px] text-right">Current Stock</th>
+                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px] text-right">Last Sync</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-200">
               {references
                 .filter((ref) => {
                   // Type filter
@@ -270,27 +241,27 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
                       });
 
                   return (
-                    <tr key={ref.code} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
-                      <td className="py-3.5 px-4 font-medium text-slate-600">{ref.description}</td>
-                      <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    <tr key={ref.code} className="hover:bg-slate-50">
+                      <td className="py-2 px-3 font-mono font-bold text-slate-900">{ref.code}</td>
+                      <td className="py-2 px-3 font-normal text-slate-600">{ref.description}</td>
+                      <td className="py-2 px-3">
+                        <span className={`px-1.5 py-0.5 rounded-none text-[9px] font-bold uppercase tracking-wider border ${
                           ref.materialType === "Mesh" 
-                            ? "bg-blue-50 text-blue-700 border border-blue-100" 
-                            : "bg-teal-50 text-teal-700 border border-teal-100"
+                            ? "bg-blue-50 text-blue-700 border-blue-200" 
+                            : "bg-teal-50 text-teal-700 border-teal-200"
                         }`}>
                           {ref.materialType}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-400">{ref.associatedLeather}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-sm text-slate-900">
+                      <td className="py-2 px-3 font-mono text-slate-500">{ref.associatedLeather}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
                         {ref.currentStock === 0 ? (
                           <span className="text-slate-400">0 pcs</span>
                         ) : (
-                          <span className="text-blue-600 font-extrabold">{ref.currentStock} pcs</span>
+                          <span className="text-brand-600 font-extrabold">{ref.currentStock} pcs</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-right text-slate-400 font-medium">{formattedTime}</td>
+                      <td className="py-2 px-3 text-right text-slate-500 font-mono">{formattedTime}</td>
                     </tr>
                   );
                 })}
@@ -308,17 +279,16 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
       </div>
 
       {/* Main Charts & Discrepancies Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" id="charts-layout-grid">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4" id="charts-layout-grid">
         
         {/* Daily Adjustment Timeline Chart */}
-        <div className="bg-white p-5 rounded-2xl border border-brand-100 shadow-xs lg:col-span-8 flex flex-col h-[340px]">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white p-4 rounded-sm border border-slate-200 lg:col-span-8 flex flex-col h-[320px]">
+          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
             <div>
-              <h3 className="font-display font-semibold text-brand-950 text-base">Weekly Physical Adjustments History</h3>
-              <p className="text-xs text-brand-500">Magnitudes of inventory corrections over the last 7 days</p>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Operator Count Activity Log</h3>
             </div>
-            <span className="text-[10px] uppercase font-mono px-2 py-0.5 bg-brand-50 border border-brand-100 rounded text-brand-600">
-              Validated Stock Checks
+            <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-600">
+              STOCK HISTORY
             </span>
           </div>
           
@@ -327,61 +297,60 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
               <AreaChart data={chartTimelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorCounted" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#557968" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#557968" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorError" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#d97706" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#d97706" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f3" />
-                <XAxis dataKey="date" stroke="#789988" fontSize={11} tickLine={false} />
-                <YAxis stroke="#789988" fontSize={11} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
+                <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: "#141f1a", border: "none", borderRadius: "12px" }}
-                  labelStyle={{ color: "#a5beb0", fontWeight: "bold" }}
-                  itemStyle={{ color: "#ffffff" }}
+                  contentStyle={{ backgroundColor: "#0f1e36", border: "1px solid #1e293b", borderRadius: "2px" }}
+                  labelStyle={{ color: "#ffffff", fontWeight: "bold", fontSize: "11px" }}
+                  itemStyle={{ color: "#94a3b8", fontSize: "11px" }}
                 />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
-                <Area type="monotone" name="Steering Wheels Counted" dataKey="counted" stroke="#557968" strokeWidth={2} fillOpacity={1} fill="url(#colorCounted)" />
-                <Area type="monotone" name="Absolute Deviation (pcs)" dataKey="errorMagnitude" stroke="#d97706" strokeWidth={1.5} fillOpacity={1} fill="url(#colorError)" />
+                <Legend iconType="square" wrapperStyle={{ fontSize: 10 }} />
+                <Area type="monotone" name="Steering Wheels Counted" dataKey="counted" stroke="#2563eb" strokeWidth={1.5} fillOpacity={1} fill="url(#colorCounted)" />
+                <Area type="monotone" name="Absolute Deviation (pcs)" dataKey="errorMagnitude" stroke="#f59e0b" strokeWidth={1.5} fillOpacity={1} fill="url(#colorError)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* References with Highest Discrepancy Chart */}
-        <div className="bg-white p-5 rounded-2xl border border-brand-100 shadow-xs lg:col-span-4 flex flex-col h-[340px]">
-          <div>
-            <h3 className="font-display font-semibold text-brand-950 text-base">Reference Accuracy Check</h3>
-            <p className="text-xs text-brand-500">Unreconciled physical discrepancies per reference code</p>
+        <div className="bg-white p-4 rounded-sm border border-slate-200 lg:col-span-4 flex flex-col h-[320px]">
+          <div className="border-b border-slate-100 pb-2 mb-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Inventory Deviation Check</h3>
           </div>
 
-          <div className="flex-1 flex flex-col justify-between mt-4 min-h-0">
+          <div className="flex-1 flex flex-col justify-between min-h-0">
             {referenceData.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
-                <HelpCircle className="w-8 h-8 text-brand-200" />
-                <p className="text-xs text-brand-400 mt-2">No references registered yet</p>
+                <HelpCircle className="w-8 h-8 text-slate-300" />
+                <p className="text-xs text-slate-400 mt-2">No references registered yet</p>
               </div>
             ) : (
               <div className="flex-1 min-h-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={referenceData.slice(0, 5)} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f3" />
-                    <XAxis dataKey="name" stroke="#789988" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#789988" fontSize={11} tickLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} />
+                    <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
                     <Tooltip 
-                      contentStyle={{ backgroundColor: "#141f1a", border: "none", borderRadius: "12px" }}
-                      itemStyle={{ color: "#ffffff" }}
+                      contentStyle={{ backgroundColor: "#0f1e36", border: "1px solid #1e293b", borderRadius: "2px" }}
+                      itemStyle={{ color: "#ffffff", fontSize: "11px" }}
                     />
-                    <Bar name="Discrepancy (pcs)" dataKey="discrepancy" radius={[4, 4, 0, 0]}>
+                    <Bar name="Discrepancy (pcs)" dataKey="discrepancy" fill="#2563eb">
                       {referenceData.slice(0, 5).map((entry, index) => {
                         const isNegative = entry.discrepancy < 0;
                         return (
                           <Cell 
                             key={`cell-${index}`} 
-                            fill={entry.discrepancy === 0 ? "#cbdad0" : isNegative ? "#ef4444" : "#3b82f6"} 
+                            fill={entry.discrepancy === 0 ? "#cbd5e1" : isNegative ? "#ef4444" : "#2563eb"} 
                           />
                         );
                       })}
@@ -391,7 +360,7 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
               </div>
             )}
             
-            <div className="text-[10px] text-brand-500 font-mono bg-brand-50/50 p-2.5 rounded-xl border border-brand-100 flex justify-between">
+            <div className="text-[10px] text-slate-500 font-mono bg-slate-50 p-2 border border-slate-100 flex justify-between rounded-none mt-2">
               <span>🔵 Positive: Overages</span>
               <span>🔴 Negative: Deficits</span>
             </div>
@@ -401,28 +370,27 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
       </div>
 
       {/* Discrepancy warning board & Recent log */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6" id="discrepancy-board-layout">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4" id="discrepancy-board-layout">
         
         {/* Most problematic references */}
-        <div className="bg-white p-5 rounded-2xl border border-brand-100 shadow-xs md:col-span-5">
-          <h3 className="font-display font-semibold text-brand-950 text-base mb-3">Priority Reference Alert</h3>
-          <p className="text-xs text-brand-500 mb-4">References with the highest total variance in counts</p>
+        <div className="bg-white p-4 rounded-sm border border-slate-200 md:col-span-5">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 mb-3 border-b border-slate-100 pb-2">Active Deviation Warnings</h3>
 
-          <div className="space-y-3" id="problematic-references-list">
+          <div className="space-y-2" id="problematic-references-list">
             {referenceData.slice(0, 4).map((entry, i) => {
               const accuracyColor = entry.discrepancy === 0 
-                ? "text-emerald-600 bg-emerald-50" 
+                ? "text-slate-600 bg-slate-50 border-slate-200" 
                 : entry.discrepancy < 0 
-                  ? "text-red-600 bg-red-50" 
-                  : "text-blue-600 bg-blue-50";
+                  ? "text-red-600 bg-red-50 border-red-200" 
+                  : "text-blue-600 bg-blue-50 border-blue-200";
 
               return (
-                <div key={entry.reference} className="flex items-center justify-between p-3.5 rounded-xl border border-brand-50 bg-brand-50/20">
+                <div key={entry.reference} className="flex items-center justify-between p-2.5 rounded-none border border-slate-100 bg-slate-50">
                   <div>
-                    <span className="font-mono text-sm font-semibold text-brand-900">{entry.reference}</span>
-                    <p className="text-[11px] text-brand-400 mt-0.5">Total System Stock: {entry.expected} pcs</p>
+                    <span className="font-mono text-xs font-bold text-slate-900">{entry.reference}</span>
+                    <p className="text-[10px] text-slate-400">Target Inventory: {entry.expected} pcs</p>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-mono font-semibold ${accuracyColor}`}>
+                  <span className={`px-2 py-0.5 rounded-none border text-xs font-mono font-bold ${accuracyColor}`}>
                     {entry.discrepancy > 0 ? `+${entry.discrepancy}` : entry.discrepancy} pcs
                   </span>
                 </div>
@@ -430,57 +398,56 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
             })}
             
             {referenceData.length === 0 && (
-              <p className="text-xs text-brand-400 text-center py-6">No discrepancies recorded yet.</p>
+              <p className="text-xs text-slate-400 text-center py-6">No discrepancies recorded yet.</p>
             )}
           </div>
         </div>
 
         {/* Recent stock counts list */}
-        <div className="bg-white p-5 rounded-2xl border border-brand-100 shadow-xs md:col-span-7">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white p-4 rounded-sm border border-slate-200 md:col-span-7">
+          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
             <div>
-              <h3 className="font-display font-semibold text-brand-950 text-base">Recent Stock Counts</h3>
-              <p className="text-xs text-brand-500">Real-time trace log of counted cartons</p>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Recent Shopfloor Counts</h3>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs" id="recent-counts-table">
+            <table className="w-full text-left text-xs industrial-table" id="recent-counts-table">
               <thead>
-                <tr className="border-b border-brand-100 text-brand-400 font-medium">
-                  <th className="py-2.5 font-normal uppercase">Carton ID</th>
-                  <th className="py-2.5 font-normal uppercase">Reference</th>
-                  <th className="py-2.5 font-normal uppercase text-right">Expected</th>
-                  <th className="py-2.5 font-normal uppercase text-right">Counted</th>
-                  <th className="py-2.5 font-normal uppercase text-right">Diff</th>
-                  <th className="py-2.5 font-normal uppercase text-right">Status</th>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                  <th className="py-2 px-2 font-bold uppercase text-[10px]">Carton ID</th>
+                  <th className="py-2 px-2 font-bold uppercase text-[10px]">Reference</th>
+                  <th className="py-2 px-2 font-bold uppercase text-[10px] text-right">Target</th>
+                  <th className="py-2 px-2 font-bold uppercase text-[10px] text-right">Actual</th>
+                  <th className="py-2 px-2 font-bold uppercase text-[10px] text-right">Diff</th>
+                  <th className="py-2 px-2 font-bold uppercase text-[10px] text-right">Validation</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-brand-50">
+              <tbody className="divide-y divide-slate-200">
                 {adjustments.slice(0, 5).map((adj) => {
                   const diffColor = adj.difference === 0 
-                    ? "text-brand-400" 
+                    ? "text-slate-400" 
                     : adj.difference > 0 
-                      ? "text-blue-600 font-semibold" 
-                      : "text-red-500 font-semibold";
+                      ? "text-blue-600 font-bold" 
+                      : "text-red-500 font-bold";
                   
                   const statusColors = {
-                    approved: "bg-emerald-50 text-emerald-700 border-emerald-100",
-                    pending: "bg-amber-50 text-amber-700 border-amber-100 animate-pulse",
-                    rejected: "bg-rose-50 text-rose-700 border-rose-100"
+                    approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                    pending: "bg-amber-50 text-amber-700 border-amber-200",
+                    rejected: "bg-red-50 text-red-700 border-red-200"
                   };
 
                   return (
-                    <tr key={adj.id} className="hover:bg-brand-50/40">
-                      <td className="py-3 font-mono font-medium text-brand-950">{adj.barcode}</td>
-                      <td className="py-3 font-mono text-brand-600">{adj.reference}</td>
-                      <td className="py-3 text-right font-mono text-brand-500">{adj.expectedQty}</td>
-                      <td className="py-3 text-right font-mono text-brand-800">{adj.actualQty}</td>
-                      <td className={`py-3 text-right font-mono ${diffColor}`}>
+                    <tr key={adj.id} className="hover:bg-slate-50">
+                      <td className="py-2 px-2 font-mono text-slate-900">{adj.barcode}</td>
+                      <td className="py-2 px-2 font-mono text-slate-600">{adj.reference}</td>
+                      <td className="py-2 px-2 text-right font-mono text-slate-500">{adj.expectedQty}</td>
+                      <td className="py-2 px-2 text-right font-mono text-slate-800">{adj.actualQty}</td>
+                      <td className={`py-2 px-2 text-right font-mono ${diffColor}`}>
                         {adj.difference > 0 ? `+${adj.difference}` : adj.difference}
                       </td>
-                      <td className="py-3 text-right">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${statusColors[adj.status]}`}>
+                      <td className="py-2 px-2 text-right">
+                        <span className={`inline-block px-1.5 py-0.5 rounded-none text-[9px] font-bold border uppercase ${statusColors[adj.status]}`}>
                           {adj.status}
                         </span>
                       </td>
@@ -490,7 +457,7 @@ export default function DashboardOverview({ boxes, adjustments, references = [],
 
                 {adjustments.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-brand-400">
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
                       No stock checks recorded yet. Scan a carton to begin.
                     </td>
                   </tr>

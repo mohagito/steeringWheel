@@ -166,7 +166,10 @@ export default function AssembliesWorkspace({
     return PRODUCT_ASSEMBLIES.map(assembly => {
       const meshStock = assembly.meshRef ? getReferenceStock(assembly.meshRef) : 0;
       const gaineStock = getReferenceStock(assembly.gaineRef);
-      const finalStock = getReferenceStock(assembly.finalRef);
+      
+      // Get virtual stock for final pre-sewn assembly reference from Firestore references prop
+      const refObj = references.find(r => cleanBarcode(r.code) === cleanBarcode(assembly.finalRef));
+      const finalStock = refObj ? refObj.currentStock : 0;
       
       let maxAssemblies = 0;
       if (assembly.meshRef) {
@@ -183,7 +186,7 @@ export default function AssembliesWorkspace({
         maxAssemblies
       };
     });
-  }, [boxes]);
+  }, [boxes, references]);
 
   const filteredAssemblies = useMemo(() => {
     return processedAssemblies.filter(asm => {
@@ -350,6 +353,17 @@ export default function AssembliesWorkspace({
                     </div>
                   </div>
                 )}
+
+                {/* Pre-Sewn Finished Assembly Stock */}
+                <div className="border-t border-slate-200/60 pt-2.5 mt-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-slate-600 font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                      <span>Pre-Sewn Stock:</span>
+                    </div>
+                    <span className="font-mono text-indigo-600 font-bold">{asm.finalStock} pcs</span>
+                  </div>
+                </div>
               </div>
 
               {/* Stock Potential & Actions */}

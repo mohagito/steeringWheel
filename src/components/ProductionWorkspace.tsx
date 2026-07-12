@@ -214,9 +214,6 @@ export default function ProductionWorkspace({
             <span className="text-2xl font-black text-slate-900 font-display mt-0.5 block">
               {stats.totalQtyConsumed.toLocaleString()} pcs
             </span>
-            <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-              Used in steering wheel assembly
-            </span>
           </div>
         </div>
 
@@ -228,9 +225,6 @@ export default function ProductionWorkspace({
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Logged Production Days</span>
             <span className="text-2xl font-black text-slate-900 font-display mt-0.5 block">
               {stats.uniqueDays} active days
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-              Traceable daily logs
             </span>
           </div>
         </div>
@@ -261,7 +255,6 @@ export default function ProductionWorkspace({
               <Factory className="w-5 h-5 text-blue-600" />
               <div>
                 <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Log Daily Consumption</h3>
-                <p className="text-[11px] text-slate-400 font-medium">Record quantities of reference parts used in production</p>
               </div>
             </div>
 

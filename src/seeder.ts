@@ -182,24 +182,408 @@ export const DEFAULT_REFERENCES: Reference[] = [
     currentStock: 0,
     lastUpdate: new Date().toISOString(),
     customer: "Stellantis"
+  },
+  {
+    id: "34358622A",
+    code: "34358622A",
+    description: "LEATHER COMPONENT FOR P33 SW",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "STELLANTIS"
+  },
+  {
+    id: "A020M319B",
+    code: "A020M319B",
+    description: "SPLIT LEATHER COMPONENT P64-P74",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A020M334B",
+    code: "A020M334B",
+    description: "TOP LEATHER COMPONENT P64-P74",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A020M341B",
+    code: "A020M341B",
+    description: "PERF LEATHER COMPONENT P64-P74",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A022H262A",
+    code: "A022H262A",
+    description: "TEP COMPONENT V316",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A025N293A",
+    code: "A025N293A",
+    description: "LEATHER COMPONENT PCF SW OV64_OV85",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "OPEL"
+  },
+  {
+    id: "A025P546A",
+    code: "A025P546A",
+    description: "LEATHER COMPONENT SPLIT K9 MCM PEUGEOT",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "PEUGEOT"
+  },
+  {
+    id: "A026F719A",
+    code: "A026F719A",
+    description: "LEATHER COMPONENT Mainstream HJB PH2",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026F720A",
+    code: "A026F720A",
+    description: "LEATHER COMPONENT Mainstream PD HJB PH2",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026F717A",
+    code: "A026F717A",
+    description: "LEATHER COMPONENT BJA RS LINE",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026F718A",
+    code: "A026F718A",
+    description: "LEATHER COMPONENT Alpine Heated PADDLE",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026L137A",
+    code: "A026L137A",
+    description: "LEATHER COMPONENT Mainstream HEATED",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026L148A",
+    code: "A026L148A",
+    description: "LEATHER COMPONENT MAINSTREAM PAD HJB PH2",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A028J493A",
+    code: "A028J493A",
+    description: "LEATHER COMPONENT OV64 SW synthetic",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "OPEL"
+  },
+  {
+    id: "R001E455A",
+    code: "R001E455A",
+    description: "LEATHER COMPONENT P13A MC TEP",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "R001E454A",
+    code: "R001E454A",
+    description: "LEATHER COMPONENT TEP P13A MC",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "R001F923A",
+    code: "R001F923A",
+    description: "LEATHER COMPONENT PCF C/DIMPLE OV64",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "OPEL"
+  },
+  {
+    id: "R001E456B",
+    code: "R001E456B",
+    description: "HEATING MESH FOR P13A MC TEP",
+    materialType: "Mesh",
+    associatedLeather: "R001E455A",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026K160B",
+    code: "A026K160B",
+    description: "LEATHER COMPONENT SPLIT K9 MCM OVCTF",
+    materialType: "Soft",
+    associatedLeather: "",
+    currentStock: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "STELLANTIS"
+  },
+  {
+    id: "34358621A",
+    code: "34358621A",
+    description: "Conjunto cuero precosido P33 SW",
+    materialType: "Soft",
+    associatedLeather: "34358622A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "STELLANTIS"
+  },
+  {
+    id: "A015E189B",
+    code: "A015E189B",
+    description: "PLANTILLA PRECOSID SPLIT LEATHER P64-P74",
+    materialType: "Soft",
+    associatedLeather: "A020M319B",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A020M330C",
+    code: "A020M330C",
+    description: "PLANTILLA PRECOSIDA TOP LEATHER P64-P74",
+    materialType: "Soft",
+    associatedLeather: "A020M334B",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A020M340C",
+    code: "A020M340C",
+    description: "PLANTILLA PRECO TOP LEATH PERF P64-P74",
+    materialType: "Soft",
+    associatedLeather: "A020M341B",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A022H261A",
+    code: "A022H261A",
+    description: "V316 MOM TEP PRESEWED",
+    materialType: "Soft",
+    associatedLeather: "A022H262A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A024J017A",
+    code: "A024J017A",
+    description: "PLANTILLA PRECOSIDA CALEFACT BJA RS LINE",
+    materialType: "Mesh",
+    associatedLeather: "A026F717A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A025N291A",
+    code: "A025N291A",
+    description: "PLANTILLA PRECOSIDA PCF SW OV64_OV85",
+    materialType: "Soft",
+    associatedLeather: "A025N293A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "OPEL"
+  },
+  {
+    id: "A025P545A",
+    code: "A025P545A",
+    description: "PLANTILLA PRECOSIDA SPLIT K9 MCM PEUGEOT",
+    materialType: "Soft",
+    associatedLeather: "A025P546A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "PEUGEOT"
+  },
+  {
+    id: "A026F705A",
+    code: "A026F705A",
+    description: "PLANT PREC Mainstream HJB PH2",
+    materialType: "Soft",
+    associatedLeather: "A026F719A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026F706A",
+    code: "A026F706A",
+    description: "PLANT PREC Mainstream PD HJB PH2",
+    materialType: "Soft",
+    associatedLeather: "A026F720A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026K152B",
+    code: "A026K152B",
+    description: "PLANTILLA PREC+MALLA SPLIT K9 MCM OVCTF",
+    materialType: "Mesh",
+    associatedLeather: "A026K160B",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "STELLANTIS"
+  },
+  {
+    id: "A026K608A",
+    code: "A026K608A",
+    description: "PANEL-UNIT: Alpine Heated PADDLE",
+    materialType: "Mesh",
+    associatedLeather: "A026F718A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026L136A",
+    code: "A026L136A",
+    description: "PANEL-UNIT: Mainstream HEATED",
+    materialType: "Mesh",
+    associatedLeather: "A026L137A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A026L147A",
+    code: "A026L147A",
+    description: "PLANT PREC+MALLA MAINSTREAM PAD HJB PH2",
+    materialType: "Mesh",
+    associatedLeather: "A026L148A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "A029H198A",
+    code: "A029H198A",
+    description: "PLANTILLA PREC+MALLA OV64 SW synthetic",
+    materialType: "Mesh",
+    associatedLeather: "A028J493A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "OPEL"
+  },
+  {
+    id: "R001E399A",
+    code: "R001E399A",
+    description: "PLANT PREC+MALLA P13A MC TEP",
+    materialType: "Mesh",
+    associatedLeather: "R001E455A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "R001E452A",
+    code: "R001E452A",
+    description: "PLANTILLA PRECOSIDA TEP P13A MC",
+    materialType: "Soft",
+    associatedLeather: "R001E454A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "RENAULT"
+  },
+  {
+    id: "R001F925A",
+    code: "R001F925A",
+    description: "PLANT PRECOSIDA+ MALLA PCF C/DIMPLE OV64",
+    materialType: "Mesh",
+    associatedLeather: "R001F923A",
+    currentStock: 300,
+    lastUpdate: new Date().toISOString(),
+    customer: "OPEL"
   }
 ];
 
 // Seed data
 const DEFAULT_USERS: User[] = [
   {
-    id: "user_mohamed",
-    username: "mohamed",
-    fullName: "Mohamed",
+    id: "user_shifta",
+    username: "shifta",
+    fullName: "SHIFT A",
     role: "operator",
-    pin: "5831"
+    pin: "1111"
+  },
+  {
+    id: "user_shiftb",
+    username: "shiftb",
+    fullName: "SHIFT B",
+    role: "operator",
+    pin: "2222"
   },
   {
     id: "user_gonzalo",
     username: "gonzalo",
-    fullName: "Gonzalo",
+    fullName: "GONZALO",
     role: "admin",
     pin: "9472"
+  },
+  {
+    id: "user_soukaina",
+    username: "soukaina",
+    fullName: "SOUKAINA",
+    role: "supervisor",
+    pin: "8315"
   }
 ];
 
@@ -275,6 +659,266 @@ const DEFAULT_BOXES: Box[] = [
     location: "Aisle C, Shelf 1, Bay 1",
     createdAt: new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString()
+  },
+  {
+    id: "BOX-201",
+    barcode: "BOX-201",
+    reference: "A025M750B",
+    expectedQty: 300,
+    location: "Aisle M, Shelf 2, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Mesh"
+  },
+  {
+    id: "BOX-202",
+    barcode: "BOX-202",
+    reference: "A025M750B",
+    expectedQty: 200,
+    location: "Aisle M, Shelf 2, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Mesh"
+  },
+  {
+    id: "BOX-203",
+    barcode: "BOX-203",
+    reference: "A028J493A",
+    expectedQty: 450,
+    location: "Aisle L, Shelf 1, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-204",
+    barcode: "BOX-204",
+    reference: "R001F923A",
+    expectedQty: 400,
+    location: "Aisle L, Shelf 1, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-205",
+    barcode: "BOX-205",
+    reference: "A026L577A",
+    expectedQty: 300,
+    location: "Aisle M, Shelf 3, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Mesh"
+  },
+  {
+    id: "BOX-206",
+    barcode: "BOX-206",
+    reference: "A026L577A",
+    expectedQty: 300,
+    location: "Aisle M, Shelf 3, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Mesh"
+  },
+  {
+    id: "BOX-207",
+    barcode: "BOX-207",
+    reference: "A026F717A",
+    expectedQty: 400,
+    location: "Aisle L, Shelf 2, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-208",
+    barcode: "BOX-208",
+    reference: "A026F718A",
+    expectedQty: 350,
+    location: "Aisle L, Shelf 2, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-209",
+    barcode: "BOX-209",
+    reference: "A026K122B",
+    expectedQty: 300,
+    location: "Aisle M, Shelf 4, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Mesh"
+  },
+  {
+    id: "BOX-210",
+    barcode: "BOX-210",
+    reference: "A026K160B",
+    expectedQty: 400,
+    location: "Aisle L, Shelf 3, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-211",
+    barcode: "BOX-211",
+    reference: "34364719C",
+    expectedQty: 300,
+    location: "Aisle M, Shelf 5, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Mesh"
+  },
+  {
+    id: "BOX-212",
+    barcode: "BOX-212",
+    reference: "34364719C",
+    expectedQty: 300,
+    location: "Aisle M, Shelf 5, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Mesh"
+  },
+  {
+    id: "BOX-213",
+    barcode: "BOX-213",
+    reference: "A026L137A",
+    expectedQty: 400,
+    location: "Aisle L, Shelf 4, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-214",
+    barcode: "BOX-214",
+    reference: "A026L148A",
+    expectedQty: 450,
+    location: "Aisle L, Shelf 4, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-215",
+    barcode: "BOX-215",
+    reference: "R001E456B",
+    expectedQty: 300,
+    location: "Aisle M, Shelf 1, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Mesh"
+  },
+  {
+    id: "BOX-216",
+    barcode: "BOX-216",
+    reference: "R001E455A",
+    expectedQty: 400,
+    location: "Aisle L, Shelf 5, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-217",
+    barcode: "BOX-217",
+    reference: "R001E454A",
+    expectedQty: 400,
+    location: "Aisle L, Shelf 5, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-218",
+    barcode: "BOX-218",
+    reference: "34358622A",
+    expectedQty: 350,
+    location: "Aisle L, Shelf 6, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-219",
+    barcode: "BOX-219",
+    reference: "A020M319B",
+    expectedQty: 300,
+    location: "Aisle L, Shelf 6, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-220",
+    barcode: "BOX-220",
+    reference: "A020M334B",
+    expectedQty: 300,
+    location: "Aisle L, Shelf 7, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-221",
+    barcode: "BOX-221",
+    reference: "A020M341B",
+    expectedQty: 300,
+    location: "Aisle L, Shelf 7, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-222",
+    barcode: "BOX-222",
+    reference: "A022H262A",
+    expectedQty: 300,
+    location: "Aisle L, Shelf 8, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-223",
+    barcode: "BOX-223",
+    reference: "A025N293A",
+    expectedQty: 300,
+    location: "Aisle L, Shelf 8, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-224",
+    barcode: "BOX-224",
+    reference: "A025P546A",
+    expectedQty: 300,
+    location: "Aisle L, Shelf 9, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-225",
+    barcode: "BOX-225",
+    reference: "A026F719A",
+    expectedQty: 300,
+    location: "Aisle L, Shelf 9, Bay 2",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
+  },
+  {
+    id: "BOX-226",
+    barcode: "BOX-226",
+    reference: "A026F720A",
+    expectedQty: 300,
+    location: "Aisle L, Shelf 10, Bay 1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    materialType: "Leather"
   }
 ];
 
@@ -286,11 +930,11 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
     expectedQty: 50,
     actualQty: 48,
     difference: -2,
-    operatorName: "Mohamed",
+    operatorName: "SHIFT A",
     timestamp: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(),
     comment: "Scratched parts removed during inspection",
     status: "approved",
-    validatedBy: "Gonzalo",
+    validatedBy: "GONZALO",
     validatedAt: new Date(Date.now() - 4 * 24 * 3600 * 1000 + 3600000).toISOString()
   },
   {
@@ -300,11 +944,11 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
     expectedQty: 40,
     actualQty: 42,
     difference: 2,
-    operatorName: "Mohamed",
+    operatorName: "SHIFT B",
     timestamp: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
     comment: "Extra items found from previous packing shift",
     status: "approved",
-    validatedBy: "Gonzalo",
+    validatedBy: "GONZALO",
     validatedAt: new Date(Date.now() - 3 * 24 * 3600 * 1000 + 2 * 3600000).toISOString()
   },
   {
@@ -314,11 +958,11 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
     expectedQty: 20,
     actualQty: 18,
     difference: -2,
-    operatorName: "Mohamed",
+    operatorName: "SHIFT A",
     timestamp: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
     comment: "Damaged packaging",
     status: "approved",
-    validatedBy: "Gonzalo",
+    validatedBy: "GONZALO",
     validatedAt: new Date(Date.now() - 2 * 24 * 3600 * 1000 + 4 * 3600000).toISOString()
   },
   {
@@ -328,11 +972,11 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
     expectedQty: 100,
     actualQty: 100,
     difference: 0,
-    operatorName: "Mohamed",
+    operatorName: "SHIFT B",
     timestamp: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
     comment: "Standard stock validation count",
     status: "approved",
-    validatedBy: "Gonzalo",
+    validatedBy: "GONZALO",
     validatedAt: new Date(Date.now() - 1 * 24 * 3600 * 1000 + 10 * 60000).toISOString()
   },
   {
@@ -342,7 +986,7 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
     expectedQty: 35,
     actualQty: 30,
     difference: -5,
-    operatorName: "Mohamed",
+    operatorName: "SHIFT A",
     timestamp: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
     comment: "Boxes missing components",
     status: "pending"
@@ -354,7 +998,7 @@ const DEFAULT_ADJUSTMENTS: Adjustment[] = [
     expectedQty: 65,
     actualQty: 67,
     difference: 2,
-    operatorName: "Mohamed",
+    operatorName: "SHIFT B",
     timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
     comment: "Miscounted in previous batch",
     status: "pending"
@@ -380,14 +1024,24 @@ export async function seedDatabaseIfNeeded() {
 
     // Ensure default users exist and have the correct PINs
     const userBatch = writeBatch(db);
+    userBatch.delete(doc(db, "users", "user_mohamed"));
     DEFAULT_USERS.forEach((user) => {
       userBatch.set(doc(db, "users", user.id), user);
     });
     await userBatch.commit();
 
+    // Ensure boxes are seeded if empty
+    const boxesSnapshot = await getDocs(collection(db, "boxes"));
+    if (boxesSnapshot.empty) {
+      console.log("Seeding initial default boxes...");
+      const boxBatch = writeBatch(db);
+      DEFAULT_BOXES.forEach((box) => {
+        boxBatch.set(doc(db, "boxes", box.id), box);
+      });
+      await boxBatch.commit();
+    }
 
-
-    // Ensure all 17 predefined references are present in the collection and have customer fields set
+    // Ensure all references are present in the collection and have customer fields set
     const refsSnapshot = await getDocs(collection(db, "references"));
     const existingRefs = new Map(refsSnapshot.docs.map(doc => [doc.id, doc.data() as Reference]));
     const refBatch = writeBatch(db);
@@ -494,6 +1148,11 @@ export async function resetDatabaseToPristineState() {
     const seedBatch = writeBatch(db);
     DEFAULT_REFERENCES.forEach((ref) => {
       seedBatch.set(doc(db, "references", ref.id), ref);
+    });
+
+    // Seed pristine predefined boxes
+    DEFAULT_BOXES.forEach((box) => {
+      seedBatch.set(doc(db, "boxes", box.id), box);
     });
 
     await seedBatch.commit();

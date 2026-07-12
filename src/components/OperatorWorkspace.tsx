@@ -423,20 +423,20 @@ export default function OperatorWorkspace({
 
   if (!isPalletSessionActive) {
     return (
-      <div className="max-w-md mx-auto py-4 animate-fadeIn" id="pallet-setup-wizard" onClick={handleCardClick}>
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6"
-        >
+      <div className="max-w-md mx-auto py-6" id="pallet-setup-wizard" onClick={handleCardClick}>
+        <div className="bg-white border border-[#1e293b] rounded-none p-6 shadow-sm space-y-6">
+          {/* Header Banner - Industrial Slate */}
+          <div className="bg-[#0f1e36] -mx-6 -mt-6 p-4 border-b border-[#1e293b] flex items-center justify-between">
+            <span className="text-[11px] font-mono font-bold tracking-wider text-slate-300 uppercase">HMI Intake Terminal</span>
+            <span className="text-[9px] font-mono text-emerald-400 font-bold">ONLINE</span>
+          </div>
+
           {/* Title section */}
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs border border-blue-100">
-              <Truck className="w-8 h-8" />
-            </div>
-            <h2 className="text-xl font-extrabold text-slate-900 font-display uppercase tracking-tight">Pallet Intake Traceability</h2>
+          <div className="space-y-1">
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">STEP 01 // Pallet Initiation</div>
+            <h2 className="text-lg font-black text-[#0f1e36] font-display uppercase tracking-tight">Active Pallet Intake</h2>
             <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              EPP NATUR requires entering the incoming pallet invoice number before scanning boxes for maximum traceability.
+              Scan or type the incoming supplier invoice.
             </p>
           </div>
 
@@ -448,22 +448,22 @@ export default function OperatorWorkspace({
               setIsPalletSessionActive(true);
               playSuccessBeep();
             }}
-            className="space-y-5"
+            className="space-y-4"
           >
             {/* Invoice Input */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Pallet Invoice / Delivery Note #
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                Invoice Number (E.g. Odette Barcode)
               </label>
               <div className="relative">
-                <FileText className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                <FileText className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                 <input
                   ref={setupInvoiceRef}
                   type="text"
-                  placeholder="e.g. PI-98402A"
+                  placeholder="E.G. PI-98402A"
                   value={setupInvoice}
                   onChange={(e) => setSetupInvoice(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white text-sm font-bold uppercase tracking-wide text-slate-800 transition-all font-mono"
+                  className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-[#1e293b] rounded-none focus:outline-none focus:border-blue-600 focus:bg-white text-sm font-bold uppercase tracking-wide text-slate-800 transition-colors font-mono"
                   required
                   autoFocus
                 />
@@ -473,34 +473,34 @@ export default function OperatorWorkspace({
             {/* Giant tactile start scanning button */}
             <button
               type="submit"
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-blue-100 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+              className="w-full py-3 bg-[#0a1322] hover:bg-blue-600 border border-[#1e293b] text-white rounded-none text-xs font-bold tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer uppercase"
             >
               <Scan className="w-4 h-4" />
-              <span>START SCANNING PALLET BOXES</span>
+              <span>Initialize Intake Session</span>
             </button>
           </form>
-        </motion.div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6" id="operator-guided-wizard">
+    <div className="max-w-4xl mx-auto space-y-4" id="operator-guided-wizard">
 
       {/* Active Pallet Session Status Header */}
-      <div className="bg-slate-900 text-white rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-md">
+      <div className="bg-[#0f1e36] text-white rounded-none p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-[#1e293b] shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-slate-800 text-emerald-400 rounded-xl">
-            <Truck className="w-5 h-5 animate-pulse" />
+          <div className="p-2 bg-[#0a1322] text-blue-400 border border-slate-700">
+            <Truck className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full uppercase tracking-wide">
-                ACTIVE SHIPMENT SESSION
+              <span className="text-[9px] font-mono font-bold bg-blue-500/20 text-blue-300 px-2 py-0.5 border border-blue-500/30 uppercase tracking-wide">
+                ACTIVE TRACEABILITY SESSION
               </span>
             </div>
-            <h3 className="text-xs sm:text-sm font-bold font-mono tracking-wide mt-1 text-slate-100">
-              INVOICE #: <span className="text-blue-400 underline decoration-dotted">{activePalletInvoice}</span>
+            <h3 className="text-xs font-bold font-mono tracking-wide mt-1 text-slate-200">
+              INCOMING INVOICE: <span className="text-blue-400 font-mono font-black">{activePalletInvoice}</span>
             </h3>
           </div>
         </div>
@@ -512,33 +512,28 @@ export default function OperatorWorkspace({
             setSetupInvoice("");
             handleResetWizard();
           }}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 hover:text-rose-400 border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 self-stretch sm:self-auto justify-center"
+          className="px-3 py-1.5 bg-[#0a1322] hover:bg-red-900 hover:text-white border border-slate-700 rounded-none text-[10px] font-mono font-bold tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 self-stretch sm:self-auto justify-center"
         >
           <X className="w-3.5 h-3.5" />
-          <span>CLOSE PALLET SESSION</span>
+          <span>CLOSE PALLET</span>
         </button>
       </div>
       
       {/* Scan Flow Mode Selector - 2 Mode Options */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+      <div className="grid grid-cols-2 gap-2 bg-[#0a1322]/5 p-1 rounded-none border border-slate-200">
         <button
           type="button"
           onClick={() => {
             setFlowMode("quick");
             handleResetWizard();
           }}
-          className={`flex items-center justify-start gap-3 py-2.5 px-4 rounded-xl font-display text-left transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-none font-mono text-xs font-bold transition-colors cursor-pointer ${
             flowMode === "quick"
-              ? "bg-blue-600 text-white shadow-md shadow-blue-100"
-              : "bg-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-200/50"
+              ? "bg-[#0f1e36] text-white border border-[#1e293b]"
+              : "bg-transparent text-slate-600 hover:bg-slate-200/50"
           }`}
         >
-          <div>
-            <span className="block font-black uppercase text-[11px] tracking-wide">⚡ Quick Auto-Add Mode</span>
-            <span className={`block text-[9px] font-sans font-medium ${flowMode === "quick" ? "text-blue-100" : "text-slate-500"}`}>
-              Scan Ref + Scan Qty = Instantly saved to stock (no manual count)
-            </span>
-          </div>
+          <span>⚡ QUICK INTAKE</span>
         </button>
 
         <button
@@ -547,67 +542,62 @@ export default function OperatorWorkspace({
             setFlowMode("audit");
             handleResetWizard();
           }}
-          className={`flex items-center justify-start gap-3 py-2.5 px-4 rounded-xl font-display text-left transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-none font-mono text-xs font-bold transition-colors cursor-pointer ${
             flowMode === "audit"
-              ? "bg-blue-600 text-white shadow-md shadow-blue-100"
-              : "bg-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-200/50"
+              ? "bg-[#0f1e36] text-white border border-[#1e293b]"
+              : "bg-transparent text-slate-600 hover:bg-slate-200/50"
           }`}
         >
-          <Scan className="w-5 h-5 shrink-0" />
-          <div>
-            <span className="block font-black uppercase text-[11px] tracking-wide">📋 Guided Audit Mode</span>
-            <span className={`block text-[9px] font-sans font-medium ${flowMode === "audit" ? "text-blue-100" : "text-slate-500"}`}>
-              Scan Ref + Scan Qty + Enter manual physical count to audit
-            </span>
-          </div>
+          <Scan className="w-4 h-4" />
+          <span>📋 GUIDED DISCREPANCY AUDIT</span>
         </button>
       </div>
 
       {/* Step Indicator Progress Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row gap-3 items-center justify-between">
+      <div className="bg-white p-3.5 rounded-none border border-slate-200 flex flex-col sm:flex-row gap-3 items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></div>
-          <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500">
-            Active Operator: <strong className="text-slate-800">{currentUser.fullName}</strong>
+          <div className="w-2.5 h-2.5 bg-blue-600"></div>
+          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
+            OPERATOR: <strong className="text-slate-800 font-bold">{currentUser.fullName}</strong>
           </span>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-4 text-xs font-bold font-display">
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
+        <div className="flex items-center gap-2 sm:gap-4 text-xs font-bold font-mono">
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-none transition-colors ${
             activeStep === "ref" 
-              ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100" 
+              ? "bg-[#0f1e36] border-[#1e293b] text-white" 
               : selectedRef 
                 ? "bg-emerald-50 border-emerald-200 text-emerald-700" 
                 : "bg-slate-50 border-slate-200 text-slate-400"
           }`}>
-            <span className="text-[10px] bg-white/20 w-4 h-4 rounded-full flex items-center justify-center font-mono">1</span>
-            <span>REFERENCE</span>
+            <span className="text-[9px] w-3.5 h-3.5 border border-current flex items-center justify-center font-mono">1</span>
+            <span className="text-[10px]">REF</span>
           </div>
 
-          <div className="h-0.5 w-4 bg-slate-200"></div>
+          <div className="h-px w-3 bg-slate-300"></div>
 
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-none transition-colors ${
             activeStep === "qty" 
-              ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100" 
+              ? "bg-[#0f1e36] border-[#1e293b] text-white" 
               : expectedQtyStr 
                 ? "bg-emerald-50 border-emerald-200 text-emerald-700" 
                 : "bg-slate-50 border-slate-200 text-slate-400"
           }`}>
-            <span className="text-[10px] bg-white/20 w-4 h-4 rounded-full flex items-center justify-center font-mono">2</span>
-            <span>{flowMode === "quick" ? "QUANTITY (AUTO-SAVE)" : "EXPECTED"}</span>
+            <span className="text-[9px] w-3.5 h-3.5 border border-current flex items-center justify-center font-mono">2</span>
+            <span className="text-[10px]">{flowMode === "quick" ? "QTY" : "EXPECTED"}</span>
           </div>
 
           {flowMode === "audit" && (
             <>
-              <div className="h-0.5 w-4 bg-slate-200"></div>
+              <div className="h-px w-3 bg-slate-300"></div>
 
-              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
+              <div className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-none transition-colors ${
                 activeStep === "count" 
-                  ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100" 
+                  ? "bg-[#0f1e36] border-[#1e293b] text-white" 
                   : "bg-slate-50 border-slate-200 text-slate-400"
               }`}>
-                <span className="text-[10px] bg-white/20 w-4 h-4 rounded-full flex items-center justify-center font-mono">3</span>
-                <span>MANUAL COUNT</span>
+                <span className="text-[9px] w-3.5 h-3.5 border border-current flex items-center justify-center font-mono">3</span>
+                <span className="text-[10px]">PHYSICAL</span>
               </div>
             </>
           )}
@@ -619,49 +609,45 @@ export default function OperatorWorkspace({
           // Success Feedback Splash Card
           <motion.div
             key="success-splash"
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.97 }}
-            className="bg-emerald-600 text-white rounded-3xl p-8 sm:p-12 text-center shadow-xl space-y-6 flex flex-col items-center justify-center min-h-[400px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="bg-emerald-600 text-white rounded-none p-8 text-center shadow-sm space-y-4 flex flex-col items-center justify-center min-h-[350px] border border-emerald-700"
           >
-            <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center animate-bounce shadow-inner">
-              <Check className="w-10 h-10 text-white" strokeWidth={3} />
+            <div className="w-12 h-12 bg-white/10 border border-white/20 rounded-none flex items-center justify-center">
+              <Check className="w-6 h-6 text-white" strokeWidth={3} />
             </div>
-            <div className="space-y-2">
-              <h3 className="font-display font-extrabold text-2xl sm:text-3xl">STOCK SAVED</h3>
-              <p className="text-emerald-100 text-sm max-w-lg leading-relaxed font-medium">
+            <div className="space-y-1">
+              <h3 className="font-mono font-black text-lg tracking-wider">INTAKE RECORDED</h3>
+              <p className="text-emerald-100 text-xs font-mono max-w-lg leading-relaxed">
                 {successMsg}
               </p>
             </div>
-            <div className="flex items-center gap-2 text-[11px] font-mono text-emerald-200 bg-emerald-700/50 px-4 py-2 rounded-xl border border-emerald-500/30">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span>SYSTEM READY FOR NEXT CARTON SCAN</span>
+            <div className="flex items-center gap-2 text-[10px] font-mono text-emerald-200 bg-emerald-800/40 px-3 py-1.5 border border-emerald-500/30 rounded-none">
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              <span>TERMINAL READY FOR NEXT SCAN</span>
             </div>
           </motion.div>
         ) : (
           // Main Guided Form Terminal
-          <motion.div
+          <div
             key="terminal-body"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
             onClick={handleCardClick}
-            className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden relative cursor-text min-h-[460px] flex flex-col"
+            className="bg-white rounded-none border border-slate-200 shadow-xs overflow-hidden relative cursor-text min-h-[420px] flex flex-col"
           >
-            {/* Top high-visibility stripe */}
-            <div className={`h-2 transition-all duration-300 ${
-              activeStep === "ref" ? "bg-indigo-600" : activeStep === "qty" ? "bg-blue-500" : "bg-emerald-500"
+            {/* Top high-visibility status bar */}
+            <div className={`h-1.5 transition-all duration-300 ${
+              activeStep === "ref" ? "bg-blue-600" : activeStep === "qty" ? "bg-amber-500" : "bg-emerald-600"
             }`} />
 
             {/* Terminal Header Info Panel */}
-            <div className="bg-slate-50 border-b border-slate-100 p-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
-                  <Scan className="w-4 h-4" />
+            <div className="bg-[#0f1e36] text-white border-b border-[#1e293b] p-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="p-1 bg-[#0a1322] border border-slate-700 text-blue-400">
+                  <Scan className="w-3.5 h-3.5" />
                 </span>
                 <div>
-                  <h4 className="font-display font-extrabold text-slate-800 text-sm">EPP Guided Audit Terminal</h4>
-                  <p className="text-[10px] text-slate-500 font-medium">Auto-focus enabled. Scan using hardware or use tactile touch below.</p>
+                  <h4 className="font-mono font-bold text-[11px] uppercase tracking-wider">HMI STATION // SW-INTAKE-01</h4>
                 </div>
               </div>
 
@@ -669,34 +655,34 @@ export default function OperatorWorkspace({
                 <button
                   type="button"
                   onClick={handleResetWizard}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 py-1 bg-[#0a1322] hover:bg-slate-800 text-slate-300 rounded-none text-[10px] font-mono font-bold transition-colors border border-slate-700 flex items-center gap-1 cursor-pointer"
                 >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Start Over</span>
+                  <X className="w-3 h-3" />
+                  <span>RESET TERMINAL</span>
                 </button>
               )}
             </div>
 
             {/* Terminal Working Area */}
-            <div className="p-6 sm:p-8 flex-1 flex flex-col justify-between space-y-6">
+            <div className="p-4 sm:p-6 flex-1 flex flex-col justify-between space-y-6">
               
               {/* Giant Guided Label, Input, and Feedback Area */}
               <div className="space-y-4">
                 
-                {/* 🔴 THE GIANT GUIDED INPUT LABEL - EXACTLY WHAT THE USER SPECIFIED */}
+                {/* 🔴 THE GUIDED INPUT LABEL */}
                 <div className="text-center">
-                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
-                    {flowMode === "quick" ? "⚡ Auto-Add Step" : "📋 Audit Step"}
+                  <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-2.5 py-1 border border-slate-300 uppercase tracking-widest">
+                    {flowMode === "quick" ? "⚡ SPEED INTAKE ACTIVE" : "📋 AUDIT INTAKE ACTIVE"}
                   </span>
                   
-                  <h2 className="text-xl sm:text-2xl font-display font-black text-slate-900 uppercase tracking-tight mt-2">
-                    {activeStep === "ref" && "FIRST SCAN THE REFERENCE BARCODE"}
+                  <h2 className="text-lg font-mono font-black text-slate-900 uppercase tracking-tight mt-3">
+                    {activeStep === "ref" && "SCAN MASTER REFERENCE BARCODE"}
                     {activeStep === "qty" && (
                       flowMode === "quick" 
-                        ? "SCAN THE QUANTITY TO INSTANTLY SAVE TO STOCK"
-                        : "SCAN THE EXPECTED QUANTITY INPUT"
+                        ? "SCAN CARTON QUANTITY (AUTO-SAVE)"
+                        : "SCAN EXPECTED QUANTITY FROM LABEL"
                     )}
-                    {activeStep === "count" && "COUNT THE BOX MANUALLY AND ENTER THE REAL QUANTITY"}
+                    {activeStep === "count" && "ENTER PHYSICAL COUNT"}
                   </h2>
                 </div>
 
@@ -708,64 +694,60 @@ export default function OperatorWorkspace({
                     type="text"
                     placeholder={
                       activeStep === "ref"
-                        ? "Scan reference barcode (e.g. A025M750B)..."
+                        ? "Scan reference label code (e.g. A025M750B)..."
                         : activeStep === "qty"
-                          ? (flowMode === "quick" ? "Scan quantity barcode (e.g. 300) to auto-save..." : "Scan expected quantity barcode (e.g. 150)...")
+                          ? (flowMode === "quick" ? "Scan/enter quantity (e.g. 100) to complete intake..." : "Scan/enter expected count...")
                           : "Type physical items counted, then press Enter..."
                     }
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
-                    className={`w-full text-center py-4 px-6 bg-slate-50 border-2 rounded-2xl font-mono text-lg sm:text-xl font-black transition-all uppercase shadow-inner focus:outline-none ${
+                    className={`w-full text-center py-3.5 px-4 bg-slate-50 border rounded-none font-mono text-base font-bold transition-colors uppercase focus:outline-none focus:bg-white ${
                       errorMsg 
-                        ? "border-red-500 bg-red-50/25 text-red-900 focus:border-red-600" 
+                        ? "border-red-500 text-red-900 focus:border-red-600" 
                         : activeStep === "ref"
-                          ? "border-indigo-200 focus:border-indigo-600 focus:bg-white text-indigo-900"
+                          ? "border-[#1e293b] text-slate-900 focus:border-blue-600"
                           : activeStep === "qty"
-                            ? "border-blue-200 focus:border-blue-600 focus:bg-white text-blue-900"
-                            : "border-emerald-200 focus:border-emerald-600 focus:bg-white text-emerald-900"
+                            ? "border-[#1e293b] text-slate-900 focus:border-blue-600"
+                            : "border-[#1e293b] text-slate-900 focus:border-emerald-600"
                     }`}
                     autoComplete="off"
                     autoFocus
                   />
                   <button
                     type="submit"
-                    className={`absolute right-2.5 top-2.5 h-11 px-5 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
-                      activeStep === "ref" ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100" :
+                    className={`absolute right-1.5 top-1.5 h-9 px-4 rounded-none font-mono font-bold text-[10px] text-white flex items-center gap-1.5 transition-colors cursor-pointer ${
+                      activeStep === "ref" ? "bg-blue-600 hover:bg-blue-700" :
                       activeStep === "qty" 
-                        ? (flowMode === "quick" ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100" : "bg-blue-600 hover:bg-blue-700 shadow-blue-100") :
-                      "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100"
+                        ? (flowMode === "quick" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700") :
+                      "bg-emerald-600 hover:bg-emerald-700"
                     }`}
                   >
-                    <span>{activeStep === "qty" && flowMode === "quick" ? "SAVE" : "NEXT"}</span>
-                    <CornerDownLeft className="w-3.5 h-3.5" />
+                    <span>{activeStep === "qty" && flowMode === "quick" ? "COMMIT" : "CONFIRM"}</span>
+                    <CornerDownLeft className="w-3 h-3" />
                   </button>
                 </form>
 
                 {/* Error feedback banner */}
                 {errorMsg && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs font-semibold flex items-center gap-2 max-w-xl mx-auto"
-                  >
+                  <div className="p-2.5 bg-red-50 border border-red-200 text-red-800 rounded-none text-xs font-semibold flex items-center gap-2 max-w-xl mx-auto font-mono">
                     <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
                     <span>{errorMsg}</span>
-                  </motion.div>
+                  </div>
                 )}
 
                 {/* Interactive Status Summary Widget when in mid-workflow */}
                 {selectedRef && (
-                  <div className="max-w-xl mx-auto p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 grid grid-cols-2 gap-4 shadow-md font-mono text-xs">
+                  <div className="max-w-xl mx-auto p-3 bg-slate-50 border border-slate-200 grid grid-cols-2 gap-4 font-mono text-xs">
                     <div>
-                      <span className="text-slate-400 text-[10px] block uppercase">Selected Ref</span>
-                      <span className="text-sm font-bold text-indigo-300 block mt-0.5">{selectedRef.code}</span>
-                      <span className="text-[10px] text-slate-400 truncate block mt-0.5">{selectedRef.description}</span>
+                      <span className="text-slate-500 text-[9px] block uppercase font-bold">Traceability Reference</span>
+                      <span className="text-sm font-bold text-slate-900 block mt-0.5">{selectedRef.code}</span>
+                      <span className="text-[10px] text-slate-500 truncate block mt-0.5">{selectedRef.description}</span>
                     </div>
 
                     <div>
-                      <span className="text-slate-400 text-[10px] block uppercase">Expected Qty</span>
-                      <span className="text-sm font-bold text-blue-300 block mt-0.5">
-                        {expectedQtyStr ? `${expectedQtyStr} pcs` : "⏳ WAITING"}
+                      <span className="text-slate-500 text-[9px] block uppercase font-bold">Declared Expected Qty</span>
+                      <span className="text-sm font-bold text-slate-900 block mt-0.5">
+                        {expectedQtyStr ? `${expectedQtyStr} PCS` : "⏳ WAITING SCAN"}
                       </span>
                     </div>
                   </div>
@@ -773,27 +755,27 @@ export default function OperatorWorkspace({
               </div>
 
               {/* Dynamic Action Helpers customized to each step */}
-              <div className="pt-4 border-t border-slate-100">
+              <div className="pt-4 border-t border-slate-200">
                 
                 {/* STEP 1: SELECT FROM REFERENCE LIST OR SEARCH */}
                 {activeStep === "ref" && (
-                  <div className="space-y-3.5 animate-fadeIn">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                        Or select reference from master list:
+                  <div className="space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
+                      <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
+                        MANUAL REFERENCE SELECTOR:
                       </span>
                       
                       <div className="flex items-center gap-2">
                         {/* Material filter tags */}
-                        <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                        <div className="flex bg-slate-100 p-0.5 border border-slate-200">
                           {(["All", "Mesh", "Soft"] as const).map((type) => (
                             <button
                               key={type}
                               type="button"
                               onClick={() => setMaterialTypeFilter(type)}
-                              className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                              className={`px-2 py-0.5 text-[9px] font-mono font-bold rounded-none transition-colors cursor-pointer ${
                                 materialTypeFilter === type
-                                  ? "bg-white text-slate-800 shadow-xs border border-slate-200/50"
+                                  ? "bg-white text-slate-900 border border-slate-200 shadow-2xs"
                                   : "text-slate-500 hover:text-slate-800"
                               }`}
                             >
@@ -805,29 +787,29 @@ export default function OperatorWorkspace({
                         {/* Search input */}
                         <input
                           type="text"
-                          placeholder="Search parts..."
+                          placeholder="Type filter..."
                           value={refSearchQuery}
                           onChange={(e) => setRefSearchQuery(e.target.value)}
-                          className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg bg-slate-50 font-medium placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                          className="px-2 py-0.5 text-xs border border-slate-200 rounded-none bg-slate-50 font-mono placeholder-slate-400 focus:outline-none focus:border-blue-600"
                         />
                       </div>
                     </div>
 
                     {filteredReferences.length === 0 ? (
-                      <div className="py-6 text-center text-xs text-slate-400 font-semibold border border-dashed border-slate-200 rounded-xl">
-                        No references matching search criteria found.
+                      <div className="py-4 text-center text-xs font-mono text-slate-400 border border-dashed border-slate-200">
+                        No matches.
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[220px] overflow-y-auto pr-1">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
                         {filteredReferences.map((ref) => (
                           <button
                             key={ref.code}
                             type="button"
                             onClick={() => handleSelectReference(ref)}
-                            className="p-2.5 text-xs font-mono font-bold rounded-xl border bg-slate-50 hover:bg-indigo-50 border-slate-200 hover:border-indigo-300 text-slate-700 hover:text-indigo-900 transition-all text-left flex flex-col justify-between cursor-pointer group shadow-2xs hover:shadow-xs"
+                            className="p-2 text-xs font-mono font-bold border bg-slate-50 hover:bg-blue-50 border-slate-200 hover:border-blue-300 text-slate-700 hover:text-blue-900 transition-colors text-left flex flex-col justify-between cursor-pointer rounded-none"
                           >
-                            <span className="block text-indigo-600 font-black group-hover:scale-102 transition-transform">{ref.code}</span>
-                            <span className="block text-[9px] text-slate-400 font-sans truncate font-medium mt-0.5">{ref.description}</span>
+                            <span className="block text-blue-600 font-black">{ref.code}</span>
+                            <span className="block text-[8px] text-slate-400 font-sans truncate font-medium mt-0.5">{ref.description}</span>
                           </button>
                         ))}
                       </div>
@@ -837,28 +819,28 @@ export default function OperatorWorkspace({
 
                 {/* STEP 2: COMMON QUANTITY PRESETS OR BACK */}
                 {activeStep === "qty" && (
-                  <div className="space-y-4 animate-fadeIn">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between pb-1">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                        Or select expected quantity preset:
+                      <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
+                        QUANTITY SELECTION PRESETS:
                       </span>
                       <button
                         type="button"
                         onClick={() => { setActiveStep("ref"); setSelectedRef(null); }}
-                        className="text-xs text-slate-500 hover:text-slate-800 font-bold flex items-center gap-1 cursor-pointer"
+                        className="text-[10px] font-mono text-slate-500 hover:text-slate-900 font-bold flex items-center gap-1 cursor-pointer"
                       >
-                        <ArrowLeft className="w-3.5 h-3.5" />
-                        <span>Back to Step 1</span>
+                        <ArrowLeft className="w-3 h-3" />
+                        <span>BACK TO REF</span>
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-4 sm:grid-cols-8 gap-2.5">
+                    <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                       {[10, 20, 50, 100, 120, 150, 200, 250].map((preset) => (
                         <button
                           key={preset}
                           type="button"
                           onClick={() => handleSelectQtyPreset(preset)}
-                          className="py-3 px-2 text-sm font-extrabold font-mono rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-400 text-slate-700 hover:text-blue-800 transition-all shadow-2xs cursor-pointer text-center"
+                          className="py-2 px-1 text-xs font-bold font-mono border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-400 text-slate-700 hover:text-blue-800 transition-colors cursor-pointer text-center rounded-none"
                         >
                           {preset}
                         </button>
@@ -869,63 +851,49 @@ export default function OperatorWorkspace({
 
                 {/* STEP 3: PHYSICAL MANUAL COUNTING TACTILE STATION */}
                 {activeStep === "count" && (
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6 animate-fadeIn pt-2">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-1">
                     
                     {/* Variance visualizer & audit comment (5 columns) */}
-                    <div className="md:col-span-5 space-y-4">
+                    <div className="md:col-span-5 space-y-3">
                       
                       {/* Live Variance Calculation */}
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Difference Calculated</span>
-                          <span className="text-[9px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">Real - Expected</span>
-                        </div>
-                        
+                      <div className="p-3 bg-slate-50 border border-slate-200 space-y-1">
+                        <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-wider block">Audit Variance</span>
                         <div className="flex items-baseline justify-between pt-1">
-                          <span className="text-xs text-slate-500 font-semibold">Variance:</span>
-                          <span className={`text-2xl font-mono font-black ${
+                          <span className="text-xs font-mono text-slate-500">Delta:</span>
+                          <span className={`text-xl font-mono font-black ${
                             variance === 0 
                               ? "text-emerald-600" 
                               : variance > 0 
                                 ? "text-blue-600" 
-                                : "text-red-500"
+                                : "text-red-600"
                           }`}>
-                            {variance === 0 ? "0" : variance > 0 ? `+${variance}` : variance} <span className="text-xs font-bold">pcs</span>
+                            {variance === 0 ? "0" : variance > 0 ? `+${variance}` : variance} <span className="text-xs font-bold">PCS</span>
                           </span>
-                        </div>
-
-                        <div className="text-center py-1 bg-white border border-slate-100 rounded-lg text-[9px] font-bold tracking-wide mt-1">
-                          {variance === 0 ? (
-                            <span className="text-emerald-600">✓ Quantities Match Perfectly</span>
-                          ) : variance > 0 ? (
-                            <span className="text-blue-600">▲ Overage: Count exceeds expected</span>
-                          ) : (
-                            <span className="text-red-500">▼ Shortage: Count is below expected</span>
-                          )}
                         </div>
                       </div>
 
                       {/* Comment section */}
-                      <div className="space-y-2">
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                          Comment / Remark (Optional)
+                      <div className="space-y-1.5">
+                        <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+                          Auditor Comment (Traceability log)
                         </label>
                         <textarea
-                          placeholder="Type or select a comment below..."
+                          placeholder="Add comment..."
                           value={comment}
                           onChange={(e) => setComment(e.target.value)}
-                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-colors h-14 resize-none shadow-inner"
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-none text-xs font-mono focus:outline-none focus:border-blue-600 h-12 resize-none"
                         />
                         
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap gap-1">
                           {PRESET_COMMENTS.map((preset) => (
                             <button
                               key={preset}
                               type="button"
                               onClick={() => setComment(preset)}
-                              className={`text-[9px] px-2 py-1 rounded-lg border font-semibold transition-all cursor-pointer ${
+                              className={`text-[8px] px-1.5 py-0.5 rounded-none border font-mono font-semibold transition-colors cursor-pointer ${
                                 comment === preset
-                                  ? "bg-slate-800 text-white border-slate-800"
+                                  ? "bg-[#0f1e36] text-white border-[#1e293b]"
                                   : "bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300"
                               }`}
                             >
@@ -938,26 +906,24 @@ export default function OperatorWorkspace({
                     </div>
 
                     {/* Numeric keypad & submit button (7 columns) */}
-                    <div className="md:col-span-7 flex flex-col justify-between gap-4">
+                    <div className="md:col-span-7 flex flex-col justify-between gap-3">
                       
                       {/* Quick keypad incremental adjustments */}
-                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                            ➕ Quick Count Adjustments
-                          </span>
-                        </div>
+                      <div className="p-2.5 bg-slate-50 border border-slate-200 space-y-2">
+                        <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
+                          INCREMENTAL ADJUSTMENT
+                        </span>
                         
-                        <div className="grid grid-cols-5 gap-1.5">
+                        <div className="grid grid-cols-5 gap-1">
                           {[-10, -5, -1, +5, +10].map((inc) => (
                             <button
                               key={inc}
                               type="button"
                               onClick={() => handleIncrement(inc)}
-                              className={`py-1.5 text-xs font-bold rounded-lg border text-center transition-all cursor-pointer ${
+                              className={`py-1 text-[10px] font-mono font-bold border text-center transition-colors cursor-pointer rounded-none ${
                                 inc > 0 
-                                  ? "border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" 
-                                  : "border-red-100 bg-red-50 text-red-700 hover:bg-red-100"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" 
+                                  : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
                               }`}
                             >
                               {inc > 0 ? `+${inc}` : inc}
@@ -967,13 +933,13 @@ export default function OperatorWorkspace({
                       </div>
 
                       {/* Tactile 10-key layout */}
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-3 gap-1">
                         {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
                           <button
                             key={n}
                             type="button"
                             onClick={() => handleKeypadPress(n)}
-                            className="h-11 rounded-xl bg-slate-100 border border-slate-200 hover:border-slate-400 hover:bg-slate-200 text-slate-800 font-display text-sm font-black transition-all active:scale-95 cursor-pointer"
+                            className="h-10 rounded-none bg-slate-50 border border-slate-200 hover:border-slate-400 hover:bg-slate-100 text-slate-800 font-mono text-sm font-bold transition-colors cursor-pointer"
                           >
                             {n}
                           </button>
@@ -981,21 +947,21 @@ export default function OperatorWorkspace({
                         <button
                           type="button"
                           onClick={handleKeypadClear}
-                          className="h-11 rounded-xl bg-slate-100 border border-slate-200 hover:border-slate-400 hover:bg-slate-200 text-slate-500 font-mono text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                          className="h-10 rounded-none bg-slate-50 border border-slate-200 hover:border-slate-400 hover:bg-slate-100 text-slate-500 font-mono text-[10px] font-bold transition-colors cursor-pointer"
                         >
-                          CLEAR
+                          CLR
                         </button>
                         <button
                           type="button"
                           onClick={() => handleKeypadPress("0")}
-                          className="h-11 rounded-xl bg-slate-100 border border-slate-200 hover:border-slate-400 hover:bg-slate-200 text-slate-800 font-display text-sm font-black transition-all active:scale-95 cursor-pointer"
+                          className="h-10 rounded-none bg-slate-50 border border-slate-200 hover:border-slate-400 hover:bg-slate-100 text-slate-800 font-mono text-sm font-bold transition-colors cursor-pointer"
                         >
                           0
                         </button>
                         <button
                           type="button"
                           onClick={handleKeypadBackspace}
-                          className="h-11 rounded-xl bg-slate-100 border border-slate-200 hover:border-slate-400 hover:bg-slate-200 text-slate-500 font-mono text-sm font-bold transition-all active:scale-95 flex items-center justify-center cursor-pointer"
+                          className="h-10 rounded-none bg-slate-50 border border-slate-200 hover:border-slate-400 hover:bg-slate-100 text-slate-500 font-mono text-sm transition-colors flex items-center justify-center cursor-pointer"
                         >
                           ⌫
                         </button>
@@ -1006,7 +972,7 @@ export default function OperatorWorkspace({
                         <button
                           type="button"
                           onClick={() => { setActiveStep("qty"); setInputValue(""); }}
-                          className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl border border-slate-200 flex items-center justify-center cursor-pointer transition-all active:scale-95"
+                          className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-none border border-slate-200 flex items-center justify-center cursor-pointer transition-colors"
                           title="Back"
                         >
                           <ArrowLeft className="w-4 h-4" />
@@ -1016,17 +982,17 @@ export default function OperatorWorkspace({
                           type="button"
                           onClick={handleManualSubmitBtnClick}
                           disabled={submitting}
-                          className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-display font-black text-xs rounded-xl shadow-md shadow-emerald-100 hover:shadow-lg transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer uppercase"
+                          className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-mono font-bold text-xs rounded-none transition-colors flex items-center justify-center gap-2 cursor-pointer uppercase border border-emerald-700"
                         >
                           {submitting ? (
                             <>
                               <RefreshCw className="w-4 h-4 animate-spin" />
-                              <span>Submitting stock...</span>
+                              <span>RECORDING...</span>
                             </>
                           ) : (
                             <>
                               <Check className="w-4 h-4" strokeWidth={3} />
-                              <span>Submit Count to Stock System</span>
+                              <span>COMMIT PHYSICAL STOCK</span>
                             </>
                           )}
                         </button>
@@ -1040,11 +1006,9 @@ export default function OperatorWorkspace({
               </div>
 
             </div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
-
-
 
     </div>
   );
