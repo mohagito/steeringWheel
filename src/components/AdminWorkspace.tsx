@@ -8,14 +8,17 @@ interface AdminWorkspaceProps {
   users: User[];
   onAddUser: (userData: User) => Promise<void>;
   onDeleteUser: (userId: string) => Promise<void>;
+  onCleanDatabase: () => Promise<void>;
 }
 
 export default function AdminWorkspace({
   users,
   onAddUser,
   onDeleteUser,
+  onCleanDatabase,
 }: AdminWorkspaceProps) {
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   // State for User Form
   const [newUsername, setNewUsername] = useState("");
@@ -259,6 +262,45 @@ export default function AdminWorkspace({
           </div>
         </div>
 
+      </div>
+
+      {/* Danger Zone: Database Reset */}
+      <div className="bg-white p-4 rounded-none border border-red-200 shadow-2xs mt-4">
+        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-red-100">
+          <AlertCircle className="w-4 h-4 text-red-600" />
+          <h4 className="font-mono font-bold text-red-800 text-xs uppercase">Danger Zone</h4>
+        </div>
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-mono text-xs">
+          <div className="space-y-1">
+            <p className="font-bold text-slate-800">Reset System Database to Pristine State</p>
+            <p className="text-slate-500 text-[11px]">
+              This will completely wipe out all box records, adjustment audits, production histories, and deliveries. 
+              All official references will be initialized with 0 stock, creating a clean starting point for official production use.
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              if (window.confirm("CRITICAL: Are you absolutely sure you want to reset the entire database to 0 stock? This action is permanent and cannot be undone.")) {
+                try {
+                  setIsResetting(true);
+                  await onCleanDatabase();
+                  alert("Success: Database has been reset to 0 stock starting point!");
+                } catch (e) {
+                  console.error(e);
+                  alert("Error: Failed to reset database.");
+                } finally {
+                  setIsResetting(false);
+                }
+              }
+            }}
+            disabled={isResetting}
+            id="admin-reset-db-btn"
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold border border-red-700 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 select-none uppercase"
+          >
+            <RefreshCw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
+            <span>RESET DATABASE TO 0</span>
+          </button>
+        </div>
       </div>
 
     </div>

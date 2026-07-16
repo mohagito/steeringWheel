@@ -13,11 +13,10 @@ import AdminWorkspace from "./components/AdminWorkspace";
 import StockWorkspace from "./components/StockWorkspace";
 import DeliveriesWorkspace from "./components/DeliveriesWorkspace";
 import ProductionWorkspace from "./components/ProductionWorkspace";
-import AssembliesWorkspace, { PRODUCT_ASSEMBLIES } from "./components/AssembliesWorkspace";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
-  RefreshCw, Layers, CheckSquare, Shield, HelpCircle, Database, Truck, Factory
+  RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory
 } from "lucide-react";
 
 export default function App() {
@@ -29,7 +28,7 @@ export default function App() {
   const [productions, setProductions] = useState<Production[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "assemblies">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production">("dashboard");
 
   // Sync state with Firestore on mount
   useEffect(() => {
@@ -180,14 +179,10 @@ export default function App() {
     const batch = writeBatch(db);
     const timestamp = new Date().toISOString();
     
-    // Determine all references to fetch and update (including auto-triggered mesh references)
+    // Determine all references to fetch and update
     const allRefCodesToUpdate = new Set<string>();
     deliveriesData.forEach(d => {
       allRefCodesToUpdate.add(d.reference);
-      const asm = PRODUCT_ASSEMBLIES.find(a => a.finalRef === d.reference);
-      if (asm && asm.meshRef) {
-        allRefCodesToUpdate.add(asm.meshRef);
-      }
     });
 
     const refCodesArray = Array.from(allRefCodesToUpdate);
@@ -226,70 +221,42 @@ export default function App() {
         lastUpdate: timestamp
       }, { merge: true });
 
-      // Automatically deliver and deduct the associated mesh if any
-      const asm = PRODUCT_ASSEMBLIES.find(a => a.finalRef === refCode);
-      if (asm && asm.meshRef) {
-        const meshRef = asm.meshRef;
-        const currentMeshStock = refSnapMap[meshRef] || 0;
-        const meshStockAfter = Math.max(0, currentMeshStock - qty);
-        refSnapMap[meshRef] = meshStockAfter;
+      // Decrement corresponding quantity from active warehouse boxes to keep the stock numbers perfectly in sync!
+      const componentBoxes = [...boxes]
+        .filter(b => b.reference.toUpperCase() === refCode.toUpperCase())
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-        // Log a delivery for the mesh
-        const meshDelId = `del-auto-mesh-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
-        const meshDelivery: Delivery = {
-          id: meshDelId,
-          invoiceNumber: delivery.invoiceNumber,
-          reference: meshRef,
-          quantity: qty,
+      let remainingToDeduct = qty;
+      for (const box of componentBoxes) {
+        if (remainingToDeduct <= 0) break;
+
+        const currentQty = box.expectedQty || 0;
+        const deduction = Math.min(currentQty, remainingToDeduct);
+        const newQty = currentQty - deduction;
+        remainingToDeduct -= deduction;
+
+        // Update the box in firestore
+        batch.update(doc(db, "boxes", box.id), {
+          expectedQty: newQty,
+          updatedAt: timestamp
+        });
+
+        // Log an Adjustment record for tracking
+        const adjId = `adj-consume-delivery-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
+        const adj: Adjustment = {
+          id: adjId,
+          barcode: box.barcode,
+          reference: refCode,
+          expectedQty: currentQty,
+          actualQty: newQty,
+          difference: -deduction,
           operatorName: currentUser.fullName,
           timestamp,
-          customer: delivery.customer,
-          notes: `Automatically delivered with final assembly ${refCode}`
+          status: "approved",
+          comment: `Consumed automatically on delivery of reference ${refCode}`,
+          materialType: box.materialType
         };
-
-        batch.set(doc(db, "deliveries", meshDelId), cleanUndefined(meshDelivery));
-        batch.set(doc(db, "references", meshRef), {
-          currentStock: meshStockAfter,
-          lastUpdate: timestamp
-        }, { merge: true });
-
-        // Decrement corresponding quantity from active warehouse boxes to keep the stock numbers perfectly in sync!
-        const componentBoxes = [...boxes]
-          .filter(b => b.reference.toUpperCase() === meshRef.toUpperCase())
-          .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-        let remainingToDeduct = qty;
-        for (const box of componentBoxes) {
-          if (remainingToDeduct <= 0) break;
-
-          const currentQty = box.expectedQty || 0;
-          const deduction = Math.min(currentQty, remainingToDeduct);
-          const newQty = currentQty - deduction;
-          remainingToDeduct -= deduction;
-
-          // Update the box in firestore
-          batch.update(doc(db, "boxes", box.id), {
-            expectedQty: newQty,
-            updatedAt: timestamp
-          });
-
-          // Log an Adjustment record for tracking
-          const adjId = `adj-consume-delivery-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-          const adj: Adjustment = {
-            id: adjId,
-            barcode: box.barcode,
-            reference: meshRef,
-            expectedQty: currentQty,
-            actualQty: newQty,
-            difference: -deduction,
-            operatorName: currentUser.fullName,
-            timestamp,
-            status: "approved",
-            comment: `Consumed automatically on delivery of final product ${refCode}`,
-            materialType: box.materialType
-          };
-          batch.set(doc(db, "adjustments", adjId), cleanUndefined(adj));
-        }
+        batch.set(doc(db, "adjustments", adjId), cleanUndefined(adj));
       }
     });
 
@@ -426,103 +393,7 @@ export default function App() {
     });
   };
 
-  const handleLogAssemblyProduction = async (finalRef: string, qty: number, notes?: string) => {
-    if (!currentUser) return;
 
-    // Find the assembly formula
-    const asm = PRODUCT_ASSEMBLIES.find(a => a.finalRef === finalRef);
-    if (!asm) return;
-
-    // Fetch the current stock of finalRef
-    const finalRefDocRef = doc(db, "references", finalRef);
-    const finalRefSnap = await getDoc(finalRefDocRef);
-    const currentStock = finalRefSnap.exists() ? (finalRefSnap.data()?.currentStock || 0) : 0;
-    const stockAfter = currentStock + qty;
-
-    const batch = writeBatch(db);
-    const timestamp = new Date().toISOString();
-
-    // 1. Log a production record for the final reference
-    const prodId = `prod-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    const newProduction: Production = {
-      id: prodId,
-      date: new Date().toISOString().split("T")[0],
-      reference: finalRef,
-      quantity: qty,
-      operatorName: currentUser.fullName,
-      timestamp,
-      notes: notes || `Assembled from ${asm.gaineRef}${asm.meshRef ? ` & ${asm.meshRef}` : ""}`
-    };
-    batch.set(doc(db, "productions", prodId), cleanUndefined(newProduction));
-
-    // Update the final reference's stock in Firestore
-    batch.set(finalRefDocRef, {
-      currentStock: stockAfter,
-      lastUpdate: timestamp
-    }, { merge: true });
-
-    // Helper to deduct quantity from component boxes
-    const deductComponent = (componentRef: string, deductQty: number) => {
-      if (!componentRef) return;
-      
-      // Get all active boxes for this component reference
-      const componentBoxes = [...boxes]
-        .filter(b => b.reference.toUpperCase() === componentRef.toUpperCase())
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-      let remainingToDeduct = deductQty;
-      for (const box of componentBoxes) {
-        if (remainingToDeduct <= 0) break;
-
-        const currentQty = box.expectedQty || 0;
-        const deduction = Math.min(currentQty, remainingToDeduct);
-        const newQty = currentQty - deduction;
-        remainingToDeduct -= deduction;
-
-        // Update the box in firestore
-        batch.update(doc(db, "boxes", box.id), {
-          expectedQty: newQty,
-          updatedAt: timestamp
-        });
-
-        // Log an Adjustment record for tracking
-        const adjId = `adj-consume-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-        const adj: Adjustment = {
-          id: adjId,
-          barcode: box.barcode,
-          reference: componentRef,
-          expectedQty: currentQty,
-          actualQty: newQty,
-          difference: -deduction,
-          operatorName: currentUser.fullName,
-          timestamp,
-          status: "approved",
-          comment: `Consumed for assembly of final product ${finalRef}`,
-          materialType: box.materialType
-        };
-        batch.set(doc(db, "adjustments", adjId), cleanUndefined(adj));
-      }
-    };
-
-    // Deduct components
-    if (asm.meshRef) {
-      deductComponent(asm.meshRef, qty);
-    }
-    deductComponent(asm.gaineRef, qty);
-
-    // Commit batch write
-    await batch.commit();
-  };
-
-  const handleLogAssemblyDelivery = async (finalRef: string, qty: number, customer: string, invoice: string) => {
-    await handleSubmitDeliveries([{
-      reference: finalRef,
-      quantity: qty,
-      customer,
-      invoiceNumber: invoice,
-      notes: "Assembled steering wheel shipment"
-    }]);
-  };
 
   // Action: Admin registers a box
   const handleAddBox = async (boxData: Omit<Box, "createdAt" | "updatedAt">) => {
@@ -662,21 +533,7 @@ export default function App() {
               </div>
             </button>
 
-            {/* Assemblies Tab */}
-            <button
-              onClick={() => setActiveTab("assemblies")}
-              id="nav-tab-assemblies"
-              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
-                activeTab === "assemblies"
-                  ? "text-[#818cf8] font-bold bg-[#0f1e36] border-[#818cf8]"
-                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Layers className="w-4 h-4 shrink-0" />
-                <span>PRECOSIDO</span>
-              </div>
-            </button>
+
 
             {/* Deliveries Tab */}
             {currentUser.role === "admin" && (
@@ -809,7 +666,7 @@ export default function App() {
             <h1 className="text-base sm:text-lg font-bold text-slate-800 font-display">
               {activeTab === "dashboard" && "Operational Dashboard"}
               {activeTab === "stock" && "Real-time Stock Inventory"}
-              {activeTab === "assemblies" && "PRECOSIDO Mappings & Stock Sync"}
+
               {activeTab === "deliveries" && "Customer Deliveries & Dispatches"}
               {activeTab === "production" && "Daily Production Consumption"}
               {activeTab === "operator" && "Inventory Count Workspace"}
@@ -863,16 +720,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === "assemblies" && (
-                <AssembliesWorkspace
-                  boxes={boxes}
-                  adjustments={adjustments}
-                  references={references}
-                  currentUser={currentUser}
-                  onLogProduction={handleLogAssemblyProduction}
-                  onLogDelivery={handleLogAssemblyDelivery}
-                />
-              )}
+
 
               {activeTab === "deliveries" && currentUser.role === "admin" && (
                 <DeliveriesWorkspace
@@ -917,6 +765,7 @@ export default function App() {
                   users={users} 
                   onAddUser={handleAddUser}
                   onDeleteUser={handleDeleteUser}
+                  onCleanDatabase={handleCleanDatabase}
                 />
               )}
             </motion.div>
