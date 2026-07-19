@@ -70,8 +70,23 @@ export interface Reference {
   materialType: "Mesh" | "Soft";
   associatedLeather: string;
   currentStock: number;
+  stock1: number; // STOCK 1 - Warehouse Stock
+  stock2: number; // STOCK 2 - Production Stock
   lastUpdate: string;
   customer?: string;
+}
+
+export interface InventoryTransaction {
+  id: string;
+  barcode?: string;
+  reference: string;
+  movementType: "STOCK 1 IN" | "STOCK 1 OUT" | "STOCK 2 IN" | "STOCK 2 OUT" | "TRANSFER";
+  stock: "Stock 1" | "Stock 2" | "Stock 1 -> Stock 2";
+  quantity: number;
+  operatorName: string;
+  timestamp: string;
+  notes?: string;
+  deliveryType?: "Mini Project" | "Normal Delivery";
 }
 
 export interface ReferenceSummary {

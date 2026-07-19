@@ -9,7 +9,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "MALLA CALEFACTADA CUERO SINTETICO C519",
     materialType: "Mesh",
     associatedLeather: "34340664A",
-    currentStock: 0,
+    currentStock: 320,
+    stock1: 240,
+    stock2: 80,
     lastUpdate: new Date().toISOString(),
     customer: "FORD"
   },
@@ -19,7 +21,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "HEATING ELEMENT ASSY B479 STLINE FOR TEP",
     materialType: "Mesh",
     associatedLeather: "34340675B",
-    currentStock: 0,
+    currentStock: 410,
+    stock1: 350,
+    stock2: 60,
     lastUpdate: new Date().toISOString(),
     customer: "FORD"
   },
@@ -29,7 +33,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "HEATING ELEMENT ASSY P33B SW",
     materialType: "Mesh",
     associatedLeather: "R002A631A",
-    currentStock: 0,
+    currentStock: 180,
+    stock1: 150,
+    stock2: 30,
     lastUpdate: new Date().toISOString(),
     customer: "NISSAN"
   },
@@ -39,7 +45,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "HEATING-HOD PZ1D",
     materialType: "Mesh",
     associatedLeather: "R000E487A, R000G739A",
-    currentStock: 0,
+    currentStock: 290,
+    stock1: 200,
+    stock2: 90,
     lastUpdate: new Date().toISOString(),
     customer: "NISSAN"
   },
@@ -49,7 +57,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "HOD PZ1D",
     materialType: "Mesh",
     associatedLeather: "R000E487A, R000G739A",
-    currentStock: 0,
+    currentStock: 150,
+    stock1: 100,
+    stock2: 50,
     lastUpdate: new Date().toISOString(),
     customer: "NISSAN"
   },
@@ -59,7 +69,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "OV64/OV85 HEATING MATERIAL",
     materialType: "Mesh",
     associatedLeather: "A028J493A, R001F923A",
-    currentStock: 0,
+    currentStock: 530,
+    stock1: 450,
+    stock2: 80,
     lastUpdate: new Date().toISOString(),
     customer: "OPEL"
   },
@@ -69,7 +81,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "HEATING-HOD MAT OV64",
     materialType: "Mesh",
     associatedLeather: "R001F928A",
-    currentStock: 0,
+    currentStock: 220,
+    stock1: 180,
+    stock2: 40,
     lastUpdate: new Date().toISOString(),
     customer: "OPEL"
   },
@@ -79,7 +93,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "HEATING MAT HES+HOD L74 SW",
     materialType: "Mesh",
     associatedLeather: "R002J088A, R002G542A",
-    currentStock: 0,
+    currentStock: 110,
+    stock1: 80,
+    stock2: 30,
     lastUpdate: new Date().toISOString(),
     customer: "LANCIA"
   },
@@ -89,7 +105,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "HEATING-HOD MAT CR3 SW",
     materialType: "Mesh",
     associatedLeather: "R000R523A",
-    currentStock: 0,
+    currentStock: 480,
+    stock1: 400,
+    stock2: 80,
     lastUpdate: new Date().toISOString(),
     customer: "Stellantis"
   },
@@ -99,7 +117,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "HEATING MAT CR3 SW",
     materialType: "Mesh",
     associatedLeather: "R000R523A",
-    currentStock: 0,
+    currentStock: 350,
+    stock1: 300,
+    stock2: 50,
     lastUpdate: new Date().toISOString(),
     customer: "Stellantis"
   },
@@ -109,7 +129,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "Heating Mat HES K9 MCM SW OVCTF",
     materialType: "Mesh",
     associatedLeather: "A026K160B",
-    currentStock: 0,
+    currentStock: 190,
+    stock1: 150,
+    stock2: 40,
     lastUpdate: new Date().toISOString(),
     customer: "Stellantis"
   },
@@ -119,7 +141,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "HEATING MAT HES, K9 MCM SW OVCTF",
     materialType: "Mesh",
     associatedLeather: "R003A180A",
-    currentStock: 0,
+    currentStock: 260,
+    stock1: 200,
+    stock2: 60,
     lastUpdate: new Date().toISOString(),
     customer: "Stellantis"
   },
@@ -129,7 +153,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "Heat Mat BJA ph2 Alpine",
     materialType: "Mesh",
     associatedLeather: "A026F717A, A026F718A",
-    currentStock: 0,
+    currentStock: 140,
+    stock1: 100,
+    stock2: 40,
     lastUpdate: new Date().toISOString(),
     customer: "RENAULT"
   },
@@ -139,7 +165,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "XJF HEATING MAT",
     materialType: "Mesh",
     associatedLeather: "A026L148A, A026L137A",
-    currentStock: 0,
+    currentStock: 280,
+    stock1: 220,
+    stock2: 60,
     lastUpdate: new Date().toISOString(),
     customer: "RENAULT"
   },
@@ -149,7 +177,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "SOFT PARA CUERO SINTETICO C519",
     materialType: "Soft",
     associatedLeather: "34340664A",
-    currentStock: 0,
+    currentStock: 160,
+    stock1: 120,
+    stock2: 40,
     lastUpdate: new Date().toISOString(),
     customer: "FORD"
   },
@@ -159,7 +189,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "FOAM PAD SOFT B479 STLINE FOR TEP",
     materialType: "Soft",
     associatedLeather: "34340675B",
-    currentStock: 0,
+    currentStock: 190,
+    stock1: 150,
+    stock2: 40,
     lastUpdate: new Date().toISOString(),
     customer: "FORD"
   },
@@ -169,7 +201,9 @@ export const DEFAULT_REFERENCES: Reference[] = [
     description: "SOFT-FOAM CR3 SW",
     materialType: "Soft",
     associatedLeather: "R000M817A",
-    currentStock: 0,
+    currentStock: 130,
+    stock1: 100,
+    stock2: 30,
     lastUpdate: new Date().toISOString(),
     customer: "Stellantis"
   }
@@ -300,6 +334,16 @@ export async function resetDatabaseToPristineState() {
         adjBatch.delete(docSnap.ref);
       });
       await adjBatch.commit();
+    }
+
+    // 1.5 Delete all current transactions in batches
+    const transSnapshot = await getDocs(collection(db, "transactions"));
+    if (!transSnapshot.empty) {
+      const transBatch = writeBatch(db);
+      transSnapshot.forEach((docSnap) => {
+        transBatch.delete(docSnap.ref);
+      });
+      await transBatch.commit();
     }
 
     // 2. Delete all current boxes in batches

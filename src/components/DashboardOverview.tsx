@@ -1,470 +1,412 @@
 import { useState, useMemo } from "react";
-import { Box, Adjustment, ReferenceSummary, Reference } from "../types";
+import { Box, Adjustment, Reference, InventoryTransaction } from "../types";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend, AreaChart, Area 
+  AreaChart, Area 
 } from "recharts";
 import { 
-  Package, CheckCircle2, AlertTriangle, RefreshCw, Layers, TrendingUp, HelpCircle, Search, Filter
+  Package, ArrowLeftRight, Truck, CheckCircle2, AlertTriangle, Search, Filter, Warehouse, Factory
 } from "lucide-react";
 
 interface DashboardOverviewProps {
   boxes: Box[];
   adjustments: Adjustment[];
   references: Reference[];
+  transactions: InventoryTransaction[];
   onTriggerScan?: () => void;
 }
 
-export default function DashboardOverview({ boxes, adjustments, references = [], onTriggerScan }: DashboardOverviewProps) {
-  const [refSearchQuery, setRefSearchQuery] = useState("");
-  const [refFilterType, setRefFilterType] = useState<"All" | "Mesh" | "Soft">("All");
+export default function DashboardOverview({ 
+  boxes, 
+  adjustments, 
+  references = [], 
+  transactions = [],
+  onTriggerScan 
+}: DashboardOverviewProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [materialFilter, setMaterialFilter] = useState<"All" | "Mesh" | "Soft">("All");
+  const [stockStatusFilter, setStockStatusFilter] = useState<"All" | "Low Stock" | "Normal">("All");
+
+  // Format today's date prefix for comparison
+  const todayStr = useMemo(() => {
+    return new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  }, []);
 
   // 1. Calculate General Metrics
   const metrics = useMemo(() => {
-    const totalBoxes = boxes.length;
-    const totalExpectedParts = boxes.reduce((sum, b) => sum + b.expectedQty, 0);
+    // Total Stock 1 (Warehouse) across all references
+    const totalWarehouseStock = references.reduce((sum, r) => sum + (r.stock1 || 0), 0);
     
-    // Approved adjustments
-    const approvedAdjustments = adjustments.filter(a => a.status === "approved");
-    const pendingAdjustments = adjustments.filter(a => a.status === "pending");
-    
-    const totalDifferences = approvedAdjustments.reduce((sum, a) => sum + a.difference, 0);
-    const absoluteDifferences = approvedAdjustments.reduce((sum, a) => sum + Math.abs(a.difference), 0);
-    
-    // Accuracy Rate = (Approved Counts with exactly 0 Difference) / (Total Approved Counts)
-    const totalApprovedCounts = approvedAdjustments.length;
-    const correctApprovedCounts = approvedAdjustments.filter(a => a.difference === 0).length;
-    const accuracyRate = totalApprovedCounts > 0 
-      ? Math.round((correctApprovedCounts / totalApprovedCounts) * 100) 
-      : 100;
+    // Total Stock 2 (Production) across all references
+    const totalProductionStock = references.reduce((sum, r) => sum + (r.stock2 || 0), 0);
+
+    // Today's Transfers (Stock 1 -> Stock 2)
+    const todaysTransfers = transactions
+      .filter(t => t.timestamp.startsWith(todayStr) && t.movementType === "TRANSFER")
+      .reduce((sum, t) => sum + t.quantity, 0);
+
+    // Today's Deliveries (Stock 2 OUT)
+    const todaysDeliveries = transactions
+      .filter(t => t.timestamp.startsWith(todayStr) && t.movementType === "STOCK 2 OUT")
+      .reduce((sum, t) => sum + t.quantity, 0);
 
     return {
-      totalBoxes,
-      totalExpectedParts,
-      totalDifferences,
-      absoluteDifferences,
-      pendingCount: pendingAdjustments.length,
-      accuracyRate
+      totalWarehouseStock,
+      totalProductionStock,
+      todaysTransfers,
+      todaysDeliveries
     };
-  }, [boxes, adjustments]);
+  }, [references, transactions, todayStr]);
 
-  // 2. References discrepancy analysis
-  const referenceData = useMemo(() => {
-    const summaries: { [ref: string]: { expected: number; actual: number; diff: number; counts: number } } = {};
-    
-    // Compile data from boxes
-    boxes.forEach(b => {
-      if (!summaries[b.reference]) {
-        summaries[b.reference] = { expected: 0, actual: 0, diff: 0, counts: 0 };
-      }
-      summaries[b.reference].expected += b.expectedQty;
+  // Filter and search references for the main list
+  const filteredReferences = useMemo(() => {
+    return references.filter(ref => {
+      const matchesSearch = ref.code.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            ref.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesMaterial = materialFilter === "All" || ref.materialType === materialFilter;
+      
+      const isLowStock = (ref.stock1 || 0) < 150 || (ref.stock2 || 0) < 50;
+      const matchesStockStatus = stockStatusFilter === "All" || 
+                                 (stockStatusFilter === "Low Stock" && isLowStock) || 
+                                 (stockStatusFilter === "Normal" && !isLowStock);
+
+      return matchesSearch && matchesMaterial && matchesStockStatus;
     });
+  }, [references, searchQuery, materialFilter, stockStatusFilter]);
 
-    // Compile approved adjustments to calculate differences
-    adjustments.filter(a => a.status === "approved").forEach(a => {
-      if (summaries[a.reference]) {
-        summaries[a.reference].diff += a.difference;
-      }
-    });
+  // Chart 1: Stock 1 vs Stock 2 distribution (all references)
+  const chartData = useMemo(() => {
+    return references.map(ref => ({
+      name: ref.code,
+      "Warehouse (Stock 1)": ref.stock1 || 0,
+      "Production (Stock 2)": ref.stock2 || 0,
+    }));
+  }, [references]);
 
-    return Object.entries(summaries).map(([ref, data]) => ({
-      reference: ref,
-      discrepancy: data.diff,
-      absDiscrepancy: Math.abs(data.diff),
-      expected: data.expected,
-      name: ref
-    })).sort((a, b) => b.absDiscrepancy - a.absDiscrepancy);
-  }, [boxes, adjustments]);
-
-  // 3. Time Series Data for charts (Last 7 days of adjustments)
-  const chartTimelineData = useMemo(() => {
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
+  // Chart 2: Material Flow History (last 7 days transfers vs deliveries)
+  const timelineChartData = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - i);
       return d.toISOString().split("T")[0];
     }).reverse();
 
-    return last7Days.map(dateStr => {
-      const dayAdjustments = adjustments.filter(
-        a => a.timestamp.startsWith(dateStr) && a.status === "approved"
-      );
-      
-      const partsCounted = dayAdjustments.reduce((sum, a) => sum + a.actualQty, 0);
-      const totalDiff = dayAdjustments.reduce((sum, a) => sum + a.difference, 0);
-      const absoluteDiff = dayAdjustments.reduce((sum, a) => sum + Math.abs(a.difference), 0);
+    return days.map(day => {
+      const dayTransfers = transactions
+        .filter(t => t.timestamp.startsWith(day) && t.movementType === "TRANSFER")
+        .reduce((sum, t) => sum + t.quantity, 0);
 
-      const dateObj = new Date(dateStr);
-      const label = dateObj.toLocaleDateString("en-US", { weekday: 'short', month: 'numeric', day: 'numeric' });
+      const dayDeliveries = transactions
+        .filter(t => t.timestamp.startsWith(day) && t.movementType === "STOCK 2 OUT")
+        .reduce((sum, t) => sum + t.quantity, 0);
 
+      const label = new Date(day).toLocaleDateString("en-US", { month: "short", day: "numeric" });
       return {
         date: label,
-        counted: partsCounted,
-        difference: totalDiff,
-        errorMagnitude: absoluteDiff
+        "Transfers": dayTransfers,
+        "Deliveries": dayDeliveries,
       };
     });
-  }, [adjustments]);
-
-  // Color constants
-  const COLORS = ["#557968", "#789988", "#a5beb0", "#cbdad0", "#416051"];
+  }, [transactions]);
 
   return (
-    <div className="space-y-4" id="dashboard-overview-tab">
+    <div className="space-y-6" id="dashboard-container">
       
-
-
-      {/* Grid of Key Performance Indicators */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="kpi-grid">
+      {/* 4 Summary Cards - Industrial Style (Compact, High-Contrast, Hardware Readout Vibe) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="dashboard-summary-cards">
         
-        {/* KPI 1: Active Cartons */}
-        <div className="bg-[#0f1e36] p-4 rounded-sm border border-[#1e293b] flex items-center gap-4">
-          <div className="p-3 bg-[#0a1322] border border-[#1e293b] rounded-sm text-brand-400">
-            <Layers className="w-5 h-5" />
-          </div>
+        {/* Card 1: Warehouse Stock */}
+        <div className="bg-[#0f172a] border border-slate-800 text-slate-100 p-4 rounded-sm shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Cartons</span>
-            <span className="text-xl font-bold text-white mt-0.5 block">{metrics.totalBoxes}</span>
-            <span className="text-[10px] text-slate-400 font-mono block">
-              {metrics.totalExpectedParts} expected parts
-            </span>
+            <div className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">
+              STOCK 1 : Warehouse Inventory
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-white mt-1 font-mono">
+              {metrics.totalWarehouseStock.toLocaleString()} <span className="text-xs font-sans text-slate-400">PCS</span>
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1 font-mono">
+              Physical material in storeroom
+            </div>
+          </div>
+          <div className="w-12 h-12 bg-slate-800 flex items-center justify-center rounded-sm text-sky-400 border border-slate-700">
+            <Warehouse className="w-6 h-6" />
           </div>
         </div>
 
-        {/* KPI 2: Inventory Accuracy Rate */}
-        <div className="bg-[#0f1e36] p-4 rounded-sm border border-[#1e293b] flex items-center gap-4">
-          <div className="p-3 bg-[#0c2e21] border border-emerald-900 rounded-sm text-emerald-400">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
+        {/* Card 2: Production Stock */}
+        <div className="bg-[#0f172a] border border-slate-800 text-slate-100 p-4 rounded-sm shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Count Accuracy</span>
-            <span className="text-xl font-bold text-emerald-400 mt-0.5 block">{metrics.accuracyRate}%</span>
+            <div className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">
+              STOCK 2 : Production Stock
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-emerald-400 mt-1 font-mono">
+              {metrics.totalProductionStock.toLocaleString()} <span className="text-xs font-sans text-emerald-500">PCS</span>
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1 font-mono">
+              Circulating on assembly lines
+            </div>
+          </div>
+          <div className="w-12 h-12 bg-slate-800 flex items-center justify-center rounded-sm text-emerald-400 border border-slate-700">
+            <Factory className="w-6 h-6" />
           </div>
         </div>
 
-        {/* KPI 3: Net Parts Discrepancy */}
-        <div className="bg-[#0f1e36] p-4 rounded-sm border border-[#1e293b] flex items-center gap-4">
-          <div className={`p-3 border rounded-sm ${metrics.totalDifferences === 0 ? "bg-[#0a1322] border-[#1e293b] text-slate-400" : metrics.totalDifferences > 0 ? "bg-[#092642] border-blue-900 text-blue-400" : "bg-[#2d1110] border-red-900 text-red-400"}`}>
-            <AlertTriangle className="w-5 h-5" />
-          </div>
+        {/* Card 3: Today's Transfers */}
+        <div className="bg-[#0f172a] border border-slate-800 text-slate-100 p-4 rounded-sm shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Net Adjustment</span>
-            <span className={`text-xl font-bold mt-0.5 block ${metrics.totalDifferences === 0 ? "text-white" : metrics.totalDifferences > 0 ? "text-blue-400" : "text-red-400"}`}>
-              {metrics.totalDifferences > 0 ? `+${metrics.totalDifferences}` : metrics.totalDifferences} pcs
-            </span>
+            <div className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">
+              TODAY'S TRANSFERS (1 → 2)
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-amber-400 mt-1 font-mono">
+              {metrics.todaysTransfers.toLocaleString()} <span className="text-xs font-sans text-amber-500">PCS</span>
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1 font-mono">
+              Sent from Warehouse to Line
+            </div>
+          </div>
+          <div className="w-12 h-12 bg-slate-800 flex items-center justify-center rounded-sm text-amber-400 border border-slate-700">
+            <ArrowLeftRight className="w-6 h-6" />
           </div>
         </div>
 
-        {/* KPI 4: Pending Supervisor Sign-offs */}
-        <div className="bg-[#0f1e36] p-4 rounded-sm border border-[#1e293b] flex items-center gap-4">
-          <div className={`p-3 border rounded-sm ${metrics.pendingCount > 0 ? "bg-[#2d210c] border-amber-900 text-amber-400" : "bg-[#0a1322] border-[#1e293b] text-slate-500"}`}>
-            <RefreshCw className="w-5 h-5" />
-          </div>
+        {/* Card 4: Today's Deliveries */}
+        <div className="bg-[#0f172a] border border-slate-800 text-slate-100 p-4 rounded-sm shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pending Actions</span>
-            <span className="text-xl font-bold text-white mt-0.5 block">{metrics.pendingCount}</span>
+            <div className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">
+              TODAY'S DELIVERIES
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-rose-400 mt-1 font-mono">
+              {metrics.todaysDeliveries.toLocaleString()} <span className="text-xs font-sans text-rose-500">PCS</span>
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1 font-mono">
+              Dispatched/Shipped today
+            </div>
+          </div>
+          <div className="w-12 h-12 bg-slate-800 flex items-center justify-center rounded-sm text-rose-400 border border-slate-700">
+            <Truck className="w-6 h-6" />
           </div>
         </div>
 
       </div>
 
-      {/* 17 Predefined References Master Stock Board */}
-      <div className="bg-white p-4 rounded-sm border border-slate-200 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">MASTER STOCK BOARD (17 PREDEFINED REFERENCES)</h3>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search code/desc..."
-                value={refSearchQuery}
-                onChange={(e) => setRefSearchQuery(e.target.value)}
-                className="pl-8 pr-3 py-1 bg-slate-50 border border-slate-200 rounded-sm text-xs font-mono focus:outline-none focus:border-brand-500 focus:bg-white w-full sm:w-48"
-              />
-            </div>
-
-            {/* Filter buttons */}
-            <div className="flex bg-slate-100 p-0.5 rounded-sm shrink-0">
-              {(["All", "Mesh", "Soft"] as const).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setRefFilterType(type)}
-                  className={`px-2.5 py-0.5 text-[10px] font-bold rounded-none uppercase tracking-wider transition-colors cursor-pointer ${
-                    refFilterType === type
-                      ? "bg-slate-700 text-white font-semibold"
-                      : "text-slate-500 hover:text-slate-800"
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* References Table */}
-        <div className="overflow-x-auto border border-slate-200 rounded-none">
-          <table className="w-full text-left text-xs industrial-table">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Reference Code</th>
-                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Description</th>
-                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Material Type</th>
-                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Leather Companion</th>
-                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px] text-right">Current Stock</th>
-                <th className="py-2 px-3 font-bold uppercase tracking-wider text-[10px] text-right">Last Sync</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {references
-                .filter((ref) => {
-                  // Type filter
-                  if (refFilterType !== "All" && ref.materialType !== refFilterType) return false;
-                  // Search query
-                  const q = refSearchQuery.trim().toLowerCase();
-                  if (!q) return true;
-                  return ref.code.toLowerCase().includes(q) || ref.description.toLowerCase().includes(q);
-                })
-                .map((ref) => {
-                  const dateObj = new Date(ref.lastUpdate);
-                  const formattedTime = isNaN(dateObj.getTime()) 
-                    ? "Never" 
-                    : dateObj.toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit"
-                      });
-
-                  return (
-                    <tr key={ref.code} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 font-mono font-bold text-slate-900">{ref.code}</td>
-                      <td className="py-2 px-3 font-normal text-slate-600">{ref.description}</td>
-                      <td className="py-2 px-3">
-                        <span className={`px-1.5 py-0.5 rounded-none text-[9px] font-bold uppercase tracking-wider border ${
-                          ref.materialType === "Mesh" 
-                            ? "bg-blue-50 text-blue-700 border-blue-200" 
-                            : "bg-teal-50 text-teal-700 border-teal-200"
-                        }`}>
-                          {ref.materialType}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 font-mono text-slate-500">{ref.associatedLeather}</td>
-                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
-                        {ref.currentStock === 0 ? (
-                          <span className="text-slate-400">0 pcs</span>
-                        ) : (
-                          <span className="text-brand-600 font-extrabold">{ref.currentStock} pcs</span>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 text-right text-slate-500 font-mono">{formattedTime}</td>
-                    </tr>
-                  );
-                })}
-
-              {references.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
-                    No predefined references found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Main Charts & Discrepancies Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4" id="charts-layout-grid">
+      {/* Visual Analytics Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" id="dashboard-charts-grid">
         
-        {/* Daily Adjustment Timeline Chart */}
-        <div className="bg-white p-4 rounded-sm border border-slate-200 lg:col-span-8 flex flex-col h-[320px]">
-          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Operator Count Activity Log</h3>
-            </div>
-            <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-600">
-              STOCK HISTORY
-            </span>
+        {/* Chart 1: Stock levels */}
+        <div className="bg-white p-4 border border-slate-200 shadow-sm rounded-sm">
+          <div className="mb-4">
+            <h3 className="text-xs uppercase tracking-wider text-slate-500 font-bold font-mono">
+              Stock Levels comparison by reference
+            </h3>
+            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+              Stock 1 (Warehouse) vs Stock 2 (Production lines)
+            </p>
           </div>
-          
-          <div className="flex-1 min-h-0">
+          <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartTimelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" stroke="#94a3b8" fontSize={9} tickLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: "#0f172a", border: "none", color: "#fff", fontFamily: "monospace", fontSize: "11px" }}
+                  itemStyle={{ color: "#fff" }}
+                />
+                <Bar dataKey="Warehouse (Stock 1)" fill="#475569" radius={[1, 1, 0, 0]} />
+                <Bar dataKey="Production (Stock 2)" fill="#10b981" radius={[1, 1, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Chart 2: Material Flow History */}
+        <div className="bg-white p-4 border border-slate-200 shadow-sm rounded-sm">
+          <div className="mb-4">
+            <h3 className="text-xs uppercase tracking-wider text-slate-500 font-bold font-mono">
+              Material Flow Timeline
+            </h3>
+            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+              Total quantity transferred and delivered over the last 7 days
+            </p>
+          </div>
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={timelineChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="colorCounted" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorError" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1}/>
+                  <linearGradient id="colorTransfers" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15}/>
                     <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
                   </linearGradient>
+                  <linearGradient id="colorDeliveries" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15}/>
+                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                  </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="date" stroke="#94a3b8" fontSize={9} tickLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: "#0f1e36", border: "1px solid #1e293b", borderRadius: "2px" }}
-                  labelStyle={{ color: "#ffffff", fontWeight: "bold", fontSize: "11px" }}
-                  itemStyle={{ color: "#94a3b8", fontSize: "11px" }}
+                  contentStyle={{ backgroundColor: "#0f172a", border: "none", color: "#fff", fontFamily: "monospace", fontSize: "11px" }}
                 />
-                <Legend iconType="square" wrapperStyle={{ fontSize: 10 }} />
-                <Area type="monotone" name="Steering Wheels Counted" dataKey="counted" stroke="#2563eb" strokeWidth={1.5} fillOpacity={1} fill="url(#colorCounted)" />
-                <Area type="monotone" name="Absolute Deviation (pcs)" dataKey="errorMagnitude" stroke="#f59e0b" strokeWidth={1.5} fillOpacity={1} fill="url(#colorError)" />
+                <Area type="monotone" dataKey="Transfers" stroke="#f59e0b" fillOpacity={1} fill="url(#colorTransfers)" strokeWidth={2} />
+                <Area type="monotone" dataKey="Deliveries" stroke="#ef4444" fillOpacity={1} fill="url(#colorDeliveries)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* References with Highest Discrepancy Chart */}
-        <div className="bg-white p-4 rounded-sm border border-slate-200 lg:col-span-4 flex flex-col h-[320px]">
-          <div className="border-b border-slate-100 pb-2 mb-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Inventory Deviation Check</h3>
-          </div>
-
-          <div className="flex-1 flex flex-col justify-between min-h-0">
-            {referenceData.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
-                <HelpCircle className="w-8 h-8 text-slate-300" />
-                <p className="text-xs text-slate-400 mt-2">No references registered yet</p>
-              </div>
-            ) : (
-              <div className="flex-1 min-h-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={referenceData.slice(0, 5)} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} />
-                    <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: "#0f1e36", border: "1px solid #1e293b", borderRadius: "2px" }}
-                      itemStyle={{ color: "#ffffff", fontSize: "11px" }}
-                    />
-                    <Bar name="Discrepancy (pcs)" dataKey="discrepancy" fill="#2563eb">
-                      {referenceData.slice(0, 5).map((entry, index) => {
-                        const isNegative = entry.discrepancy < 0;
-                        return (
-                          <Cell 
-                            key={`cell-${index}`} 
-                            fill={entry.discrepancy === 0 ? "#cbd5e1" : isNegative ? "#ef4444" : "#2563eb"} 
-                          />
-                        );
-                      })}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-            
-            <div className="text-[10px] text-slate-500 font-mono bg-slate-50 p-2 border border-slate-100 flex justify-between rounded-none mt-2">
-              <span>🔵 Positive: Overages</span>
-              <span>🔴 Negative: Deficits</span>
-            </div>
-          </div>
-        </div>
-
       </div>
 
-      {/* Discrepancy warning board & Recent log */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4" id="discrepancy-board-layout">
+      {/* Main Material Master Inventory Grid (Extremely Compact, Ultra Clean Industrial Table) */}
+      <div className="bg-white border border-slate-200 rounded-sm shadow-sm" id="reference-inventory-list">
         
-        {/* Most problematic references */}
-        <div className="bg-white p-4 rounded-sm border border-slate-200 md:col-span-5">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 mb-3 border-b border-slate-100 pb-2">Active Deviation Warnings</h3>
+        {/* Table Filters Header */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-1.5 bg-slate-900 rounded-full"></div>
+            <h3 className="text-xs uppercase font-bold tracking-wider text-slate-800 font-mono">
+              Mesh Material Master & Real-Time Stocks
+            </h3>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded-sm">
+              {filteredReferences.length} of {references.length} refs
+            </span>
+          </div>
 
-          <div className="space-y-2" id="problematic-references-list">
-            {referenceData.slice(0, 4).map((entry, i) => {
-              const accuracyColor = entry.discrepancy === 0 
-                ? "text-slate-600 bg-slate-50 border-slate-200" 
-                : entry.discrepancy < 0 
-                  ? "text-red-600 bg-red-50 border-red-200" 
-                  : "text-blue-600 bg-blue-50 border-blue-200";
-
-              return (
-                <div key={entry.reference} className="flex items-center justify-between p-2.5 rounded-none border border-slate-100 bg-slate-50">
-                  <div>
-                    <span className="font-mono text-xs font-bold text-slate-900">{entry.reference}</span>
-                    <p className="text-[10px] text-slate-400">Target Inventory: {entry.expected} pcs</p>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-none border text-xs font-mono font-bold ${accuracyColor}`}>
-                    {entry.discrepancy > 0 ? `+${entry.discrepancy}` : entry.discrepancy} pcs
-                  </span>
-                </div>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-2">
             
-            {referenceData.length === 0 && (
-              <p className="text-xs text-slate-400 text-center py-6">No discrepancies recorded yet.</p>
-            )}
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search reference or description..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 pr-3 py-1 bg-white border border-slate-300 text-xs rounded-sm focus:outline-none focus:border-slate-800 font-mono w-48 sm:w-60"
+              />
+            </div>
+
+            {/* Material Filter */}
+            <select
+              value={materialFilter}
+              onChange={(e) => setMaterialFilter(e.target.value as any)}
+              className="px-2 py-1 bg-white border border-slate-300 text-xs rounded-sm focus:outline-none focus:border-slate-800 font-mono cursor-pointer"
+            >
+              <option value="All">All Materials</option>
+              <option value="Mesh">Mesh Only</option>
+              <option value="Soft">Soft Only</option>
+            </select>
+
+            {/* Stock Status Filter */}
+            <select
+              value={stockStatusFilter}
+              onChange={(e) => setStockStatusFilter(e.target.value as any)}
+              className="px-2 py-1 bg-white border border-slate-300 text-xs rounded-sm focus:outline-none focus:border-slate-800 font-mono cursor-pointer"
+            >
+              <option value="All">All Stocks</option>
+              <option value="Low Stock">Low Stock Alerts</option>
+              <option value="Normal">Normal Stocks</option>
+            </select>
           </div>
         </div>
 
-        {/* Recent stock counts list */}
-        <div className="bg-white p-4 rounded-sm border border-slate-200 md:col-span-7">
-          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Recent Shopfloor Counts</h3>
-            </div>
-          </div>
+        {/* Dense Industrial Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-100 text-slate-600 border-b border-slate-200 text-[10px] uppercase font-mono font-bold">
+                <th className="py-2.5 px-4">Mesh Reference</th>
+                <th className="py-2.5 px-4">Description</th>
+                <th className="py-2.5 px-4 text-center">Type</th>
+                <th className="py-2.5 px-4 text-right bg-slate-50/50 border-x border-slate-200/80">Stock 1 (Warehouse)</th>
+                <th className="py-2.5 px-4 text-right bg-emerald-50/10 border-r border-slate-200/80">Stock 2 (Production)</th>
+                <th className="py-2.5 px-4 text-right">Total Inventory</th>
+                <th className="py-2.5 px-4 text-center">Status</th>
+                <th className="py-2.5 px-4 text-right">Last Update</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {filteredReferences.map((ref) => {
+                const s1 = ref.stock1 || 0;
+                const s2 = ref.stock2 || 0;
+                const total = s1 + s2;
+                const isLow = s1 < 150 || s2 < 50;
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs industrial-table" id="recent-counts-table">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                  <th className="py-2 px-2 font-bold uppercase text-[10px]">Carton ID</th>
-                  <th className="py-2 px-2 font-bold uppercase text-[10px]">Reference</th>
-                  <th className="py-2 px-2 font-bold uppercase text-[10px] text-right">Target</th>
-                  <th className="py-2 px-2 font-bold uppercase text-[10px] text-right">Actual</th>
-                  <th className="py-2 px-2 font-bold uppercase text-[10px] text-right">Diff</th>
-                  <th className="py-2 px-2 font-bold uppercase text-[10px] text-right">Validation</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {adjustments.slice(0, 5).map((adj) => {
-                  const diffColor = adj.difference === 0 
-                    ? "text-slate-400" 
-                    : adj.difference > 0 
-                      ? "text-blue-600 font-bold" 
-                      : "text-red-500 font-bold";
-                  
-                  const statusColors = {
-                    approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                    pending: "bg-amber-50 text-amber-700 border-amber-200",
-                    rejected: "bg-red-50 text-red-700 border-red-200"
-                  };
-
-                  return (
-                    <tr key={adj.id} className="hover:bg-slate-50">
-                      <td className="py-2 px-2 font-mono text-slate-900">{adj.barcode}</td>
-                      <td className="py-2 px-2 font-mono text-slate-600">{adj.reference}</td>
-                      <td className="py-2 px-2 text-right font-mono text-slate-500">{adj.expectedQty}</td>
-                      <td className="py-2 px-2 text-right font-mono text-slate-800">{adj.actualQty}</td>
-                      <td className={`py-2 px-2 text-right font-mono ${diffColor}`}>
-                        {adj.difference > 0 ? `+${adj.difference}` : adj.difference}
-                      </td>
-                      <td className="py-2 px-2 text-right">
-                        <span className={`inline-block px-1.5 py-0.5 rounded-none text-[9px] font-bold border uppercase ${statusColors[adj.status]}`}>
-                          {adj.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-                {adjustments.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-400">
-                      No stock checks recorded yet. Scan a carton to begin.
+                return (
+                  <tr key={ref.id} className="hover:bg-slate-50/80 transition-colors">
+                    
+                    {/* Reference Code */}
+                    <td className="py-2 px-4 font-mono font-bold text-slate-950 select-all">
+                      {ref.code}
                     </td>
+
+                    {/* Description */}
+                    <td className="py-2 px-4 text-slate-600 truncate max-w-xs sm:max-w-md font-sans">
+                      {ref.description}
+                    </td>
+
+                    {/* Material Type */}
+                    <td className="py-2 px-4 text-center">
+                      <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-medium ${
+                        ref.materialType === "Mesh" 
+                          ? "bg-slate-100 text-slate-700" 
+                          : "bg-blue-50 text-blue-700 border border-blue-100"
+                      }`}>
+                        {ref.materialType}
+                      </span>
+                    </td>
+
+                    {/* Stock 1 Quantity */}
+                    <td className="py-2 px-4 text-right bg-slate-50/30 border-x border-slate-100/80 font-mono font-bold">
+                      <span className={s1 < 150 ? "text-amber-600" : "text-slate-800"}>
+                        {s1.toLocaleString()}
+                      </span>
+                    </td>
+
+                    {/* Stock 2 Quantity */}
+                    <td className="py-2 px-4 text-right bg-emerald-50/5 border-r border-slate-100/80 font-mono font-bold text-emerald-600">
+                      <span className={s2 < 50 ? "text-red-500" : "text-emerald-600"}>
+                        {s2.toLocaleString()}
+                      </span>
+                    </td>
+
+                    {/* Total Quantity */}
+                    <td className="py-2 px-4 text-right font-mono font-bold text-slate-900">
+                      {total.toLocaleString()}
+                    </td>
+
+                    {/* Alert / Status */}
+                    <td className="py-2 px-4 text-center">
+                      {isLow ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          <AlertTriangle className="w-2.5 h-2.5" />
+                          LOW
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          OK
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Last Update Date */}
+                    <td className="py-2 px-4 text-right text-[10px] text-slate-400 font-mono">
+                      {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
+                    </td>
+
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+
+              {filteredReferences.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-400 font-mono text-xs">
+                    No references found matching search criteria.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
       </div>

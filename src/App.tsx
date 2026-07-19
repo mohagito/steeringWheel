@@ -4,7 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState } from "./seeder";
-import { Box, Adjustment, User, Reference, Delivery, Production } from "./types";
+import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction } from "./types";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
 import OperatorWorkspace from "./components/OperatorWorkspace";
@@ -26,6 +26,7 @@ export default function App() {
   const [references, setReferences] = useState<Reference[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [productions, setProductions] = useState<Production[]>([]);
+  const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production">("dashboard");
@@ -38,6 +39,7 @@ export default function App() {
     let unsubUsers: (() => void) | null = null;
     let unsubDeliveries: (() => void) | null = null;
     let unsubProductions: (() => void) | null = null;
+    let unsubTransactions: (() => void) | null = null;
 
     async function initApp() {
       try {
@@ -133,6 +135,21 @@ export default function App() {
         }
       );
 
+      unsubTransactions = onSnapshot(
+        collection(db, "transactions"),
+        (snapshot) => {
+          const transList: InventoryTransaction[] = [];
+          snapshot.forEach((doc) => {
+            transList.push({ id: doc.id, ...doc.data() } as InventoryTransaction);
+          });
+          transList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setTransactions(transList);
+        },
+        (error) => {
+          console.error("Error subscribing to transactions:", error);
+        }
+      );
+
       unsubUsers = onSnapshot(
         collection(db, "users"), 
         (snapshot) => {
@@ -158,6 +175,7 @@ export default function App() {
       if (unsubReferences) unsubReferences();
       if (unsubDeliveries) unsubDeliveries();
       if (unsubProductions) unsubProductions();
+      if (unsubTransactions) unsubTransactions();
       if (unsubUsers) unsubUsers();
     };
   }, []);
@@ -190,22 +208,27 @@ export default function App() {
       refCodesArray.map(ref => getDoc(doc(db, "references", ref)))
     );
     
-    const refSnapMap: Record<string, number> = {};
+    const refSnapMap: Record<string, { stock1: number; stock2: number }> = {};
     refSnaps.forEach((snap: any) => {
       if (snap.exists()) {
-        refSnapMap[snap.id] = snap.data()?.currentStock || 0;
+        refSnapMap[snap.id] = {
+          stock1: snap.data()?.stock1 || 0,
+          stock2: snap.data()?.stock2 || 0
+        };
       } else {
-        refSnapMap[snap.id] = 0;
+        refSnapMap[snap.id] = { stock1: 0, stock2: 0 };
       }
     });
 
     deliveriesData.forEach((delivery, index) => {
       const refCode = delivery.reference;
       const qty = delivery.quantity;
-      const currentStock = refSnapMap[refCode] || 0;
+      const refStock = refSnapMap[refCode] || { stock1: 0, stock2: 0 };
       
-      const stockAfter = Math.max(0, currentStock - qty);
-      refSnapMap[refCode] = stockAfter; // update locally in case of duplicate references in input
+      const newStock1 = Math.max(0, refStock.stock1 - qty);
+      const newStock2 = Math.max(0, refStock.stock2 - qty);
+      const newTotal = newStock1 + newStock2;
+      refSnapMap[refCode] = { stock1: newStock1, stock2: newStock2 }; // update locally
 
       const newId = `del-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
       const newDelivery: Delivery = {
@@ -217,47 +240,25 @@ export default function App() {
 
       batch.set(doc(db, "deliveries", newId), cleanUndefined(newDelivery));
       batch.set(doc(db, "references", refCode), {
-        currentStock: stockAfter,
+        stock1: newStock1,
+        stock2: newStock2,
+        currentStock: newTotal,
         lastUpdate: timestamp
       }, { merge: true });
 
-      // Decrement corresponding quantity from active warehouse boxes to keep the stock numbers perfectly in sync!
-      const componentBoxes = [...boxes]
-        .filter(b => b.reference.toUpperCase() === refCode.toUpperCase())
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-      let remainingToDeduct = qty;
-      for (const box of componentBoxes) {
-        if (remainingToDeduct <= 0) break;
-
-        const currentQty = box.expectedQty || 0;
-        const deduction = Math.min(currentQty, remainingToDeduct);
-        const newQty = currentQty - deduction;
-        remainingToDeduct -= deduction;
-
-        // Update the box in firestore
-        batch.update(doc(db, "boxes", box.id), {
-          expectedQty: newQty,
-          updatedAt: timestamp
-        });
-
-        // Log an Adjustment record for tracking
-        const adjId = `adj-consume-delivery-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
-        const adj: Adjustment = {
-          id: adjId,
-          barcode: box.barcode,
-          reference: refCode,
-          expectedQty: currentQty,
-          actualQty: newQty,
-          difference: -deduction,
-          operatorName: currentUser.fullName,
-          timestamp,
-          status: "approved",
-          comment: `Consumed automatically on delivery of reference ${refCode}`,
-          materialType: box.materialType
-        };
-        batch.set(doc(db, "adjustments", adjId), cleanUndefined(adj));
-      }
+      // Also add to transactions log for reports!
+      const transId = `trans-admin-del-${Date.now()}-${index}`;
+      batch.set(doc(db, "transactions", transId), {
+        id: transId,
+        reference: refCode,
+        movementType: "STOCK 2 OUT",
+        stock: "Stock 2",
+        quantity: qty,
+        operatorName: currentUser.fullName,
+        timestamp,
+        notes: `Admin Dispatch: Invoice ${delivery.invoiceNumber} - Note: ${delivery.notes || "None"}`,
+        deliveryType: "Normal Delivery"
+      });
     });
 
     await batch.commit();
@@ -274,21 +275,26 @@ export default function App() {
       productionEntries.map(p => getDoc(doc(db, "references", p.reference)))
     );
     
-    const refSnapMap: Record<string, number> = {};
+    const refSnapMap: Record<string, { stock1: number; stock2: number }> = {};
     refSnaps.forEach((snap: any) => {
       if (snap.exists()) {
-        refSnapMap[snap.id] = snap.data()?.currentStock || 0;
+        refSnapMap[snap.id] = {
+          stock1: snap.data()?.stock1 || 0,
+          stock2: snap.data()?.stock2 || 0
+        };
       } else {
-        refSnapMap[snap.id] = 0;
+        refSnapMap[snap.id] = { stock1: 0, stock2: 0 };
       }
     });
 
     productionEntries.forEach((entry, index) => {
       const refCode = entry.reference;
-      const currentStock = refSnapMap[refCode] || 0;
+      const refStock = refSnapMap[refCode] || { stock1: 0, stock2: 0 };
       
-      const stockAfter = Math.max(0, currentStock - entry.quantity);
-      refSnapMap[refCode] = stockAfter; // update locally in case of duplicate references in input
+      const newStock1 = Math.max(0, refStock.stock1 - entry.quantity);
+      const newStock2 = Math.max(0, refStock.stock2 - entry.quantity);
+      const newTotal = newStock1 + newStock2;
+      refSnapMap[refCode] = { stock1: newStock1, stock2: newStock2 }; // update locally
 
       const newId = `prod-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
       const newProduction: Production = {
@@ -300,9 +306,25 @@ export default function App() {
 
       batch.set(doc(db, "productions", newId), cleanUndefined(newProduction));
       batch.set(doc(db, "references", refCode), {
-        currentStock: stockAfter,
+        stock1: newStock1,
+        stock2: newStock2,
+        currentStock: newTotal,
         lastUpdate: timestamp
       }, { merge: true });
+
+      // Add to unified transactions log!
+      const transId = `trans-admin-prod-${Date.now()}-${index}`;
+      batch.set(doc(db, "transactions", transId), {
+        id: transId,
+        reference: refCode,
+        movementType: "STOCK 2 OUT",
+        stock: "Stock 2",
+        quantity: entry.quantity,
+        operatorName: currentUser.fullName,
+        timestamp,
+        notes: `Admin Production Consumption: ${entry.notes || "None"}`,
+        deliveryType: "Mini Project"
+      });
     });
 
     await batch.commit();
@@ -314,14 +336,18 @@ export default function App() {
     const refDocRef = doc(db, "references", refCode);
     const refSnap = await getDoc(refDocRef);
     
-    let currentStock = 0;
+    let currentStock1 = 0;
+    let currentStock2 = 0;
     if (refSnap.exists()) {
-      currentStock = refSnap.data().currentStock || 0;
+      const refData = refSnap.data();
+      currentStock1 = refData.stock1 || 0;
+      currentStock2 = refData.stock2 || 0;
     }
     
-    const stockBefore = currentStock;
+    const stockBefore = currentStock1;
     const stockAdded = adjustmentData.actualQty; // Real Counted Quantity added
-    const stockAfter = stockBefore + stockAdded;
+    const stockAfter = stockAdded; // In physical adjustment, we override Stock 1 with the counted qty!
+    const newTotal = stockAfter + currentStock2;
 
     // Save adjustment record to Firestore with stock tracking info
     const newId = `adj-${Date.now()}`;
@@ -331,15 +357,16 @@ export default function App() {
       timestamp: new Date().toISOString(),
       status: "approved", // Automatically approved/added on operators save
       stockBefore,
-      stockAdded,
+      stockAdded: stockAdded - stockBefore,
       stockAfter
     };
 
     await setDoc(doc(db, "adjustments", newId), cleanUndefined(newAdjustment));
 
-    // Update reference currentStock
+    // Update reference stock
     await setDoc(refDocRef, {
-      currentStock: stockAfter,
+      stock1: stockAfter,
+      currentStock: newTotal,
       lastUpdate: new Date().toISOString()
     }, { merge: true });
 
@@ -350,12 +377,24 @@ export default function App() {
       barcode: adjustmentData.barcode,
       reference: refCode,
       expectedQty: adjustmentData.actualQty, // Baseline is updated
-      location: "Zone A",
+      location: "Warehouse Storeroom",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      materialType: adjustmentData.materialType || "Mesh",
-      invoiceNumber: adjustmentData.invoiceNumber || "",
-      palletQuality: adjustmentData.palletQuality || ""
+      materialType: adjustmentData.materialType || "Mesh"
+    });
+
+    // Also add to transactions log!
+    const transId = `trans-adj-${Date.now()}`;
+    await setDoc(doc(db, "transactions", transId), {
+      id: transId,
+      barcode: adjustmentData.barcode,
+      reference: refCode,
+      movementType: "STOCK 1 IN",
+      stock: "Stock 1",
+      quantity: adjustmentData.actualQty,
+      operatorName: adjustmentData.operatorName,
+      timestamp: new Date().toISOString(),
+      notes: `Warehouse adjustment count: Override Stock 1`
     });
   };
 
@@ -704,6 +743,7 @@ export default function App() {
                   boxes={boxes} 
                   adjustments={adjustments} 
                   references={references}
+                  transactions={transactions}
                   onTriggerScan={currentUser.role !== "admin" ? () => setActiveTab("operator") : undefined}
                 />
               )}
@@ -713,6 +753,7 @@ export default function App() {
                   boxes={boxes} 
                   adjustments={adjustments} 
                   references={references}
+                  transactions={transactions}
                   currentUser={currentUser}
                   onDeleteBox={handleDeleteBox}
                   onUpdateBox={handleUpdateBox}
