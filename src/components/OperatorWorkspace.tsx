@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Box, Adjustment, User, Reference } from "../types";
-import { doc, getDoc, setDoc, collection, addDoc, writeBatch } from "firebase/firestore";
+import { doc, getDoc, setDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { 
-  Scan, ArrowLeftRight, Truck, Check, AlertCircle, ArrowRight, Play, RefreshCw, Layers
+  Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon
 } from "lucide-react";
 
 interface OperatorWorkspaceProps {
@@ -15,761 +15,506 @@ interface OperatorWorkspaceProps {
 }
 
 export default function OperatorWorkspace({ 
-  boxes, 
-  adjustments, 
+  boxes = [], 
+  adjustments = [], 
   references = [], 
   currentUser, 
   onSubmitAdjustment 
 }: OperatorWorkspaceProps) {
   
-  // Tabs: "stock1_in" (Receiving), "transfer" (Warehouse -> Production), "stock2_out" (Deliveries)
-  const [activeSubTab, setActiveSubTab] = useState<"stock1_in" | "transfer" | "stock2_out">("stock1_in");
-
-  // Form States
-  const [barcode, setBarcode] = useState("");
-  const [selectedRefCode, setSelectedRefCode] = useState("");
-  const [quantity, setQuantity] = useState("");
-  const [notes, setNotes] = useState("");
+  // Persisted Invoice Input
+  const [invoiceNumber, setInvoiceNumber] = useState(() => localStorage.getItem("op_invoice") || "");
   
-  // Specific to Stock 2 OUT
-  const [deliveryType, setDeliveryType] = useState<"Mini Project" | "Normal Delivery">("Mini Project");
+  // Scan Inputs (Cleared after every successful box)
+  const [referenceCode, setReferenceCode] = useState("");
+  const [quantity, setQuantity] = useState("");
 
   // UX Feedback States
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Refs for auto-focusing
-  const barcodeInputRef = useRef<HTMLInputElement>(null);
-  const transferQtyRef = useRef<HTMLInputElement>(null);
-  const deliveryQtyRef = useRef<HTMLInputElement>(null);
-  const qtyInputRef = useRef<HTMLInputElement>(null);
+  // Input Refs for hands-free barcode wedge flow
+  const invoiceRef = useRef<HTMLInputElement>(null);
+  const referenceRef = useRef<HTMLInputElement>(null);
+  const quantityRef = useRef<HTMLInputElement>(null);
 
-  // Play auditory beeps for shopfloor scan confirmations
-  const playBeep = (frequency: number, duration: number) => {
+  // Sync Invoice to localStorage
+  useEffect(() => {
+    localStorage.setItem("op_invoice", invoiceNumber);
+  }, [invoiceNumber]);
+
+  // Audio Feedbacks for blind shopfloor scanning
+  const playBeep = (frequency: number, duration: number, type: OscillatorType = "sine") => {
     try {
       const context = new (window.AudioContext || (window as any).webkitAudioContext)();
       const osc = context.createOscillator();
       const gain = context.createGain();
-      osc.type = "sine";
+      osc.type = type;
       osc.frequency.setValueAtTime(frequency, context.currentTime);
-      gain.gain.setValueAtTime(0.06, context.currentTime);
+      gain.gain.setValueAtTime(0.05, context.currentTime);
       osc.connect(gain);
       gain.connect(context.destination);
       osc.start();
       osc.stop(context.currentTime + duration);
     } catch (e) {
-      console.warn("Audio Context beep blocked by browser permission.");
+      console.warn("Audio feedback blocked by browser policies.");
     }
   };
 
-  const playSuccessBeep = () => playBeep(880, 0.12);
-  const playErrorBeep = () => playBeep(330, 0.25);
-  const playScanBeep = () => playBeep(600, 0.08);
+  const playScanBeep = () => playBeep(650, 0.08);
+  const playSuccessBeep = () => {
+    playBeep(880, 0.1, "sine");
+    setTimeout(() => playBeep(1100, 0.12, "sine"), 100);
+  };
+  const playErrorBeep = () => playBeep(220, 0.3, "sawtooth");
 
-  // Auto-focus barcode input on mount, tab changes, and after saves
+  // Default focus on mount: if invoice is blank, focus invoice; otherwise go straight to scanning reference!
   useEffect(() => {
     const focusTimer = setTimeout(() => {
-      if (activeSubTab === "stock1_in") {
-        barcodeInputRef.current?.focus();
-      } else if (activeSubTab === "transfer") {
-        transferQtyRef.current?.focus();
-      } else if (activeSubTab === "stock2_out") {
-        deliveryQtyRef.current?.focus();
+      if (!invoiceNumber.trim()) {
+        invoiceRef.current?.focus();
+      } else {
+        referenceRef.current?.focus();
       }
     }, 150);
-
     return () => clearTimeout(focusTimer);
-  }, [activeSubTab, successMsg]);
+  }, []);
 
-  // Keep barcode input focused on click elsewhere in the card to facilitate continuous scanning
-  const handleCardClick = () => {
-    if (activeSubTab === "stock1_in") {
-      barcodeInputRef.current?.focus();
-    }
-  };
+  // Live lookup of Master Reference data for instant visual feedback
+  const matchedReference = useMemo(() => {
+    const code = referenceCode.trim().toUpperCase();
+    if (!code) return null;
+    return references.find(r => r.code.toUpperCase() === code) || null;
+  }, [referenceCode, references]);
 
-  // Handle barcode scanning Enter key
-  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // Handle Enter key on Invoice Input -> jump to Reference
+  const handleInvoiceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      if (barcode.trim()) {
+      if (invoiceNumber.trim()) {
         playScanBeep();
-        // Automatically focus on quantity field to speed up input
-        qtyInputRef.current?.focus();
+        referenceRef.current?.focus();
       }
     }
   };
 
-  // Form Reset Helper
-  const resetForm = () => {
-    setBarcode("");
-    setSelectedRefCode("");
-    setQuantity("");
-    setNotes("");
+  // Handle Enter key on Reference Input -> automatic validation & jump to Quantity
+  const handleReferenceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const trimmed = referenceCode.trim().toUpperCase();
+      if (!trimmed) {
+        setErrorMsg("Reference code cannot be empty.");
+        playErrorBeep();
+        return;
+      }
+      
+      const exists = references.some(r => r.code.toUpperCase() === trimmed);
+      if (!exists) {
+        setErrorMsg(`Reference "${trimmed}" not found in master list!`);
+        playErrorBeep();
+        return;
+      }
+
+      setErrorMsg("");
+      playScanBeep();
+      // Jumps automatically to quantity scan field
+      quantityRef.current?.focus();
+    }
   };
 
-  // 1. Submit STOCK 1 IN Transaction
-  const handleStock1InSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Handle Enter key on Quantity Input -> Submit automatically
+  const handleQuantityKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const qtyVal = parseInt(quantity);
+      if (isNaN(qtyVal) || qtyVal <= 0) {
+        setErrorMsg("Please scan or enter a valid Quantity.");
+        playErrorBeep();
+        return;
+      }
+      // Submit form programmatically
+      submitTransaction();
+    }
+  };
+
+  // Form Submit Execution
+  const submitTransaction = async () => {
     setErrorMsg("");
     setSuccessMsg("");
 
-    if (!barcode.trim()) {
-      setErrorMsg("Please scan or enter carton barcode.");
-      playErrorBeep();
-      return;
-    }
-    if (!selectedRefCode) {
-      setErrorMsg("Please select a mesh reference.");
-      playErrorBeep();
-      return;
-    }
+    const cleanInvoice = invoiceNumber.trim().toUpperCase();
+    const cleanRef = referenceCode.trim().toUpperCase();
     const qtyVal = parseInt(quantity);
+
+    if (!cleanInvoice) {
+      setErrorMsg("Please fill in the Invoice Number first.");
+      invoiceRef.current?.focus();
+      playErrorBeep();
+      return;
+    }
+    if (!cleanRef) {
+      setErrorMsg("Please scan or enter the Reference Number.");
+      referenceRef.current?.focus();
+      playErrorBeep();
+      return;
+    }
+
+    const refData = references.find(r => r.code.toUpperCase() === cleanRef);
+    if (!refData) {
+      setErrorMsg(`Reference "${cleanRef}" does not exist in master data.`);
+      referenceRef.current?.focus();
+      playErrorBeep();
+      return;
+    }
+
     if (isNaN(qtyVal) || qtyVal <= 0) {
-      setErrorMsg("Please enter a valid received quantity.");
+      setErrorMsg("Please enter a valid Quantity.");
+      quantityRef.current?.focus();
       playErrorBeep();
       return;
     }
 
     setSubmitting(true);
     try {
-      const batch = writeBatch(db);
       const timestamp = new Date().toISOString();
+      const batch = writeBatch(db);
 
-      // Read current reference stock
-      const refDocRef = doc(db, "references", selectedRefCode);
+      // 1. Retrieve latest stock values
+      const refDocRef = doc(db, "references", refData.code);
       const refSnap = await getDoc(refDocRef);
-      
       let currentStock1 = 0;
       let currentStock2 = 0;
       if (refSnap.exists()) {
-        const refData = refSnap.data();
-        currentStock1 = refData.stock1 || 0;
-        currentStock2 = refData.stock2 || 0;
+        const data = refSnap.data();
+        currentStock1 = data.stock1 || 0;
+        currentStock2 = data.stock2 || 0;
       }
 
       const newStock1 = currentStock1 + qtyVal;
       const newTotal = newStock1 + currentStock2;
 
-      // Update reference stock in Firestore
+      // 2. Update Reference Stock
       batch.update(refDocRef, {
         stock1: newStock1,
         currentStock: newTotal,
         lastUpdate: timestamp
       });
 
-      // Save/overwrite Carton Box record
-      const boxDocRef = doc(db, "boxes", barcode.trim().toUpperCase());
+      // 3. Create unique Box Barcode and save Box Document
+      const boxBarcode = `BOX-${cleanRef}-${cleanInvoice}-${Date.now().toString().slice(-4)}`;
+      const boxDocRef = doc(db, "boxes", boxBarcode);
       batch.set(boxDocRef, {
-        id: barcode.trim().toUpperCase(),
-        barcode: barcode.trim().toUpperCase(),
-        reference: selectedRefCode,
+        id: boxBarcode,
+        barcode: boxBarcode,
+        reference: refData.code,
         expectedQty: qtyVal,
         location: "Warehouse Storeroom",
         createdAt: timestamp,
         updatedAt: timestamp,
-        materialType: references.find(r => r.code === selectedRefCode)?.materialType || "Mesh"
+        materialType: refData.materialType || "Mesh",
+        invoiceNumber: cleanInvoice,
+        palletQuality: ""
       });
 
-      // Add unified transaction log
+      // 4. Create Transaction Log for Stock 1 IN
       const transId = `trans-s1in-${Date.now()}`;
       const transDocRef = doc(db, "transactions", transId);
       batch.set(transDocRef, {
         id: transId,
-        barcode: barcode.trim().toUpperCase(),
-        reference: selectedRefCode,
+        barcode: boxBarcode,
+        reference: refData.code,
         movementType: "STOCK 1 IN",
         stock: "Stock 1",
         quantity: qtyVal,
         operatorName: currentUser.fullName,
         timestamp,
-        notes: notes.trim() || `Received carton: ${barcode.trim().toUpperCase()}`
+        notes: `Received via Operator Terminal. Invoice: ${cleanInvoice}`,
+        invoiceNumber: cleanInvoice,
+        palletQuality: ""
       });
 
-      await batch.commit();
-
-      playSuccessBeep();
-      setSuccessMsg(`Carton ${barcode.trim().toUpperCase()} received successfully. +${qtyVal} added to Stock 1.`);
-      resetForm();
-      barcodeInputRef.current?.focus();
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(`Transaction failed: ${err.message || err}`);
-      playErrorBeep();
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // 2. Submit TRANSFER (Warehouse -> Production)
-  const handleTransferSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg("");
-    setSuccessMsg("");
-
-    if (!selectedRefCode) {
-      setErrorMsg("Please select a reference to transfer.");
-      playErrorBeep();
-      return;
-    }
-    const qtyVal = parseInt(quantity);
-    if (isNaN(qtyVal) || qtyVal <= 0) {
-      setErrorMsg("Please enter a valid transfer quantity.");
-      playErrorBeep();
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const batch = writeBatch(db);
-      const timestamp = new Date().toISOString();
-
-      // Read current reference stock
-      const refDocRef = doc(db, "references", selectedRefCode);
-      const refSnap = await getDoc(refDocRef);
-      
-      let currentStock1 = 0;
-      let currentStock2 = 0;
-      if (refSnap.exists()) {
-        const refData = refSnap.data();
-        currentStock1 = refData.stock1 || 0;
-        currentStock2 = refData.stock2 || 0;
-      }
-
-      const newStock1 = currentStock1;
-      const newStock2 = currentStock2 + qtyVal;
-      const newTotal = newStock1 + newStock2;
-
-      // Update reference stock in Firestore
-      batch.update(refDocRef, {
-        stock2: newStock2,
-        currentStock: newTotal,
-        lastUpdate: timestamp
-      });
-
-      // Add unified transaction log
-      const transId = `trans-trsf-${Date.now()}`;
-      const transDocRef = doc(db, "transactions", transId);
-      batch.set(transDocRef, {
-        id: transId,
-        reference: selectedRefCode,
-        movementType: "TRANSFER",
-        stock: "Stock 1 -> Stock 2",
-        quantity: qtyVal,
+      // 5. Create Adjustment Log for supervisor traceability
+      const adjId = `adj-${Date.now()}`;
+      const adjDocRef = doc(db, "adjustments", adjId);
+      batch.set(adjDocRef, {
+        id: adjId,
+        barcode: boxBarcode,
+        reference: refData.code,
+        expectedQty: qtyVal,
+        actualQty: qtyVal,
+        difference: 0,
         operatorName: currentUser.fullName,
         timestamp,
-        notes: notes.trim() || `Transferred from Warehouse to Production Lines`
+        status: "approved",
+        materialType: refData.materialType || "Mesh",
+        stockBefore: currentStock1,
+        stockAdded: qtyVal,
+        stockAfter: newStock1,
+        invoiceNumber: cleanInvoice,
+        palletQuality: ""
       });
 
       await batch.commit();
 
+      // UI Success Feedbacks
       playSuccessBeep();
-      setSuccessMsg(`Transferred ${qtyVal} pcs of ${selectedRefCode} from Warehouse to Production Stock.`);
-      resetForm();
+      setSuccessMsg(`SUCCESS: Saved ${qtyVal} pcs of ${refData.code} to Stock 1.`);
+      
+      // Clear scanned items
+      setReferenceCode("");
+      setQuantity("");
+      
+      // Automatic Focus back to the Reference input field for hands-free workflow!
+      setTimeout(() => {
+        referenceRef.current?.focus();
+      }, 50);
+
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(`Transfer failed: ${err.message || err}`);
+      setErrorMsg(`Database error: ${err.message || err}`);
       playErrorBeep();
     } finally {
       setSubmitting(false);
     }
   };
 
-  // 3. Submit STOCK 2 OUT (Deliveries)
-  const handleStock2OutSubmit = async (e: React.FormEvent) => {
+  // Form Submit Wrapper
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    submitTransaction();
+  };
+
+  // Quick Action to Clear scan inputs
+  const handleClearInputs = () => {
+    setReferenceCode("");
+    setQuantity("");
     setErrorMsg("");
     setSuccessMsg("");
-
-    if (!selectedRefCode) {
-      setErrorMsg("Please select a reference for delivery.");
-      playErrorBeep();
-      return;
-    }
-    const qtyVal = parseInt(quantity);
-    if (isNaN(qtyVal) || qtyVal <= 0) {
-      setErrorMsg("Please enter a valid delivery quantity.");
-      playErrorBeep();
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const batch = writeBatch(db);
-      const timestamp = new Date().toISOString();
-
-      // Read current reference stock
-      const refDocRef = doc(db, "references", selectedRefCode);
-      const refSnap = await getDoc(refDocRef);
-      
-      let currentStock1 = 0;
-      let currentStock2 = 0;
-      if (refSnap.exists()) {
-        const refData = refSnap.data();
-        currentStock1 = refData.stock1 || 0;
-        currentStock2 = refData.stock2 || 0;
-      }
-
-      if (currentStock2 < qtyVal) {
-        setErrorMsg(`Insufficient Production stock (Stock 2: ${currentStock2}). Cannot dispatch ${qtyVal}.`);
-        playErrorBeep();
-        setSubmitting(false);
-        return;
-      }
-
-      const newStock1 = Math.max(0, currentStock1 - qtyVal);
-      const newStock2 = currentStock2 - qtyVal;
-      const newTotal = newStock1 + newStock2;
-
-      // Update reference stock in Firestore
-      batch.update(refDocRef, {
-        stock1: newStock1,
-        stock2: newStock2,
-        currentStock: newTotal,
-        lastUpdate: timestamp
-      });
-
-      // Add unified transaction log
-      const transId = `trans-s2out-${Date.now()}`;
-      const transDocRef = doc(db, "transactions", transId);
-      batch.set(transDocRef, {
-        id: transId,
-        reference: selectedRefCode,
-        movementType: "STOCK 2 OUT",
-        stock: "Stock 2",
-        quantity: qtyVal,
-        operatorName: currentUser.fullName,
-        timestamp,
-        notes: notes.trim() || `Delivery type: ${deliveryType}`,
-        deliveryType
-      });
-
-      await batch.commit();
-
-      playSuccessBeep();
-      setSuccessMsg(`Dispatched ${qtyVal} pcs of ${selectedRefCode} via ${deliveryType}. Stock 2 updated.`);
-      resetForm();
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(`Delivery failed: ${err.message || err}`);
-      playErrorBeep();
-    } finally {
-      setSubmitting(false);
-    }
+    playScanBeep();
+    referenceRef.current?.focus();
   };
+
+  // Get active lists of scanned boxes on this invoice
+  const recentScansList = useMemo(() => {
+    const cleanInvoice = invoiceNumber.trim().toUpperCase();
+    if (!cleanInvoice) return [];
+
+    return boxes
+      .filter(b => b.invoiceNumber?.toUpperCase() === cleanInvoice)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5);
+  }, [boxes, invoiceNumber]);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6" id="operator-workspace-container">
+    <div className="max-w-md mx-auto space-y-6" id="operator-workspace-handsfree-station">
       
-      {/* Operator Terminal Header */}
-      <div className="bg-[#0f172a] text-slate-100 p-5 rounded-sm border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+      {/* Industrial Session Header */}
+      <div className="bg-[#1e293b] text-slate-100 p-4 rounded-md border border-slate-700 shadow-md flex items-center justify-between">
         <div>
-          <div className="text-[10px] text-slate-400 font-mono uppercase tracking-widest">
-            STATION TERMINAL
+          <div className="text-[9px] text-sky-400 font-mono uppercase tracking-widest font-bold">
+            FAST TERMINAL STATION
           </div>
-          <h2 className="text-lg font-bold text-white tracking-tight font-display mt-0.5">
-            Active Session: {currentUser.fullName}
+          <h2 className="text-sm font-bold text-white tracking-tight mt-0.5">
+            Operator: {currentUser.fullName}
           </h2>
-          <p className="text-[11px] text-slate-400 mt-1 font-mono">
-            Location: Shopfloor / Factory Line • Role: Operator
-          </p>
+          <div className="flex items-center gap-1 mt-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-[9px] text-slate-400 font-mono">
+              Keyboard Wedge Active (HID Mode)
+            </span>
+          </div>
         </div>
-        <div className="flex gap-1.5" id="operator-terminal-action-tabs">
-          <button
-            onClick={() => { setActiveSubTab("stock1_in"); resetForm(); }}
-            className={`px-4 py-2 text-xs font-mono font-bold uppercase transition-all rounded-sm border cursor-pointer ${
-              activeSubTab === "stock1_in"
-                ? "bg-sky-600 border-sky-500 text-white shadow-md"
-                : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            1. STOCK 1 IN (Receiving)
-          </button>
-          <button
-            onClick={() => { setActiveSubTab("transfer"); resetForm(); }}
-            className={`px-4 py-2 text-xs font-mono font-bold uppercase transition-all rounded-sm border cursor-pointer ${
-              activeSubTab === "transfer"
-                ? "bg-amber-600 border-amber-500 text-white shadow-md"
-                : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            2. TRANSFER (1 → 2)
-          </button>
-          <button
-            onClick={() => { setActiveSubTab("stock2_out"); resetForm(); }}
-            className={`px-4 py-2 text-xs font-mono font-bold uppercase transition-all rounded-sm border cursor-pointer ${
-              activeSubTab === "stock2_out"
-                ? "bg-emerald-600 border-emerald-500 text-white shadow-md"
-                : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            3. STOCK 2 OUT (Deliveries)
-          </button>
-        </div>
+        
+        <span className={`px-2 py-0.5 text-[10px] font-mono font-black uppercase rounded border ${
+          currentUser.fullName.includes("SHIFT A") || currentUser.username.toLowerCase().includes("a")
+            ? "bg-sky-500/10 border-sky-400/30 text-sky-400"
+            : "bg-purple-500/10 border-purple-400/30 text-purple-400"
+        }`}>
+          {currentUser.fullName}
+        </span>
       </div>
 
-      {/* Main Form Terminal Card */}
-      <div 
-        onClick={handleCardClick}
-        className="bg-white border border-slate-300/80 rounded-sm shadow-md p-6 sm:p-8 cursor-default"
-        id="operator-form-card"
-      >
+      {/* Simplified Scan Card */}
+      <div className="bg-white border-2 border-slate-300 rounded-md shadow-lg p-6" id="operator-scanning-panel">
         
-        {/* Status Messages */}
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-5">
+          <div className="flex items-center gap-2">
+            <Scan className="w-4 h-4 text-slate-700" />
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 font-mono">
+              Continuous Receiving Flow
+            </h3>
+          </div>
+          <span className="text-[9px] font-mono text-slate-400">
+            AUTO-FOCUS ENABLED
+          </span>
+        </div>
+
+        {/* Dynamic Status Notifications */}
         {successMsg && (
-          <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono rounded-sm flex items-start gap-2.5 animate-fadeIn">
-            <Check className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
+          <div className="mb-4 p-3 bg-emerald-50 border border-emerald-300 text-emerald-850 text-xs font-mono rounded flex items-start gap-2 animate-fadeIn">
+            <Check className="w-3.5 h-3.5 mt-0.5 text-emerald-600 shrink-0" />
             <div>
-              <span className="font-bold">SYSTEM OK:</span> {successMsg}
+              <span className="font-bold">OK:</span> {successMsg}
             </div>
           </div>
         )}
 
         {errorMsg && (
-          <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-mono rounded-sm flex items-start gap-2.5 animate-fadeIn">
-            <AlertCircle className="w-4 h-4 mt-0.5 text-rose-600 shrink-0" />
+          <div className="mb-4 p-3 bg-rose-50 border border-rose-300 text-rose-850 text-xs font-mono rounded flex items-start gap-2 animate-fadeIn">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 text-rose-600 shrink-0" />
             <div>
-              <span className="font-bold">SYSTEM ERROR:</span> {errorMsg}
+              <span className="font-bold">ERROR:</span> {errorMsg}
             </div>
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* TAB 1: STOCK 1 IN                                         */}
-        {/* ========================================================= */}
-        {activeSubTab === "stock1_in" && (
-          <form onSubmit={handleStock1InSubmit} className="space-y-6">
-            <div className="border-l-4 border-sky-500 pl-3">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 font-mono">
-                Stock 1 IN — Carton Box Receiving Flow
-              </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Scan carton barcode with USB reader, select the predefined reference, and enter quantity.
-              </p>
+        <form onSubmit={handleFormSubmit} className="space-y-5">
+          
+          {/* INVOICE NUMBER */}
+          <div className="space-y-1">
+            <label className="block text-xs font-mono font-bold text-slate-700 uppercase">
+              1. Enter Invoice Number (Press Enter)
+            </label>
+            <div className="relative">
+              <FileText className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                ref={invoiceRef}
+                type="text"
+                required
+                placeholder="Invoice / delivery note number..."
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                onKeyDown={handleInvoiceKeyDown}
+                className="w-full pl-9 pr-3 py-2 border-2 border-slate-250 focus:border-slate-900 rounded text-xs font-mono uppercase focus:outline-none focus:ring-0 transition-colors"
+                id="op-invoice-field"
+                autoComplete="off"
+              />
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Carton Barcode Field */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  1. Scan Carton Barcode <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <Scan className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    ref={barcodeInputRef}
-                    type="text"
-                    required
-                    placeholder="Wedge scan carton code here..."
-                    value={barcode}
-                    onKeyDown={handleBarcodeKeyDown}
-                    onChange={(e) => setBarcode(e.target.value)}
-                    className="pl-10 pr-3 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border-2 border-slate-300 focus:border-slate-900 rounded-sm w-full text-sm font-mono tracking-wider focus:outline-none transition-colors uppercase"
-                    id="scanner-barcode-input"
-                    autoComplete="off"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-400 font-mono">
-                  USB Keyboard Emulator (HID) will automatically trigger. Press Enter/scan to skip to quantity.
-                </p>
-              </div>
-
-              {/* Reference Selection */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  2. Select Mesh Reference <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={selectedRefCode}
-                  onChange={(e) => setSelectedRefCode(e.target.value)}
-                  className="w-full py-2.5 px-3 bg-slate-50 border-2 border-slate-300 focus:border-slate-900 focus:bg-white focus:outline-none text-sm font-mono rounded-sm cursor-pointer"
-                  id="operator-select-reference-s1in"
-                >
-                  <option value="">-- CHOOSE A PREDEFINED REF ({references.length}) --</option>
-                  {references.map((r) => (
-                    <option key={r.id} value={r.code}>
-                      {r.code} - {r.description.slice(0, 45)} ({r.materialType})
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-400 font-mono">
-                  Master data references are fixed and non-editable.
-                </p>
-              </div>
-
-              {/* Received Quantity Field */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  3. Received Quantity <span className="text-red-500">*</span>
-                </label>
-                <input
-                  ref={qtyInputRef}
-                  type="number"
-                  required
-                  min="1"
-                  placeholder="e.g. 100"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="py-2 px-3 bg-slate-50 focus:bg-white border-2 border-slate-300 focus:border-slate-900 focus:outline-none w-full text-sm font-mono rounded-sm"
-                  id="operator-quantity-s1in"
-                />
-              </div>
-
-              {/* Optional Notes */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  Notes / Comments <span className="text-slate-400 font-normal">(Optional)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Box slightly damaged, verified OK"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="py-2 px-3 bg-slate-50 focus:bg-white border-2 border-slate-300 focus:border-slate-900 focus:outline-none w-full text-sm font-mono rounded-sm"
-                  id="operator-notes-s1in"
-                />
-              </div>
-
+          {/* REFERENCE CODE */}
+          <div className="space-y-1 border-t border-slate-100 pt-4">
+            <label className="block text-xs font-mono font-bold text-slate-700 uppercase">
+              2. Scan Reference Number (Barcode)
+            </label>
+            <div className="relative">
+              <Scan className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                ref={referenceRef}
+                type="text"
+                required
+                placeholder="Wedge scan reference..."
+                value={referenceCode}
+                onChange={(e) => setReferenceCode(e.target.value)}
+                onKeyDown={handleReferenceKeyDown}
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-slate-100/30 focus:bg-white border-2 border-slate-300 focus:border-slate-900 rounded text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-colors animate-pulse-border"
+                id="op-reference-field"
+                autoComplete="off"
+              />
             </div>
-
-            <div className="pt-4 border-t border-slate-200 flex justify-end">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white font-mono font-bold text-xs uppercase tracking-wider rounded-sm shadow-md transition-all cursor-pointer flex items-center gap-2"
-                id="btn-save-s1in"
-              >
-                {submitting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    RECORDING TRANS...
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    SAVE TRANSACTION
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* ========================================================= */}
-        {/* TAB 2: TRANSFER (WAREHOUSE -> PRODUCTION)                 */}
-        {/* ========================================================= */}
-        {activeSubTab === "transfer" && (
-          <form onSubmit={handleTransferSubmit} className="space-y-6">
-            <div className="border-l-4 border-amber-500 pl-3">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 font-mono">
-                Warehouse → Production Line Transfer (1 → 2)
-              </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Record the transfer of physical material from warehouse storage (Stock 1) directly onto the production floor (Stock 2).
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Reference Selection */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  1. Select Reference <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={selectedRefCode}
-                  onChange={(e) => setSelectedRefCode(e.target.value)}
-                  className="w-full py-2.5 px-3 bg-slate-50 border-2 border-slate-300 focus:border-slate-900 focus:bg-white focus:outline-none text-sm font-mono rounded-sm cursor-pointer"
-                  id="operator-select-reference-trsf"
-                >
-                  <option value="">-- CHOOSE REFERENCE ({references.length}) --</option>
-                  {references.map((r) => (
-                    <option key={r.id} value={r.code}>
-                      {r.code} [Stock 1: {r.stock1 || 0} pcs] - {r.description.slice(0, 40)}
-                    </option>
-                  ))}
-                </select>
+            
+            {/* Live Master Data visual confirmation feedback */}
+            {matchedReference ? (
+              <div className="p-2 bg-emerald-50 border border-emerald-100 rounded text-[10px] font-mono text-emerald-800 flex justify-between items-center animate-fadeIn">
+                <span className="truncate mr-2">Verified: <strong>{matchedReference.description}</strong></span>
+                <span className="px-1 py-0.2 bg-emerald-100 rounded text-[8px] font-black uppercase tracking-wider shrink-0">
+                  {matchedReference.materialType}
+                </span>
               </div>
-
-              {/* Transfer Quantity */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  2. Quantity to Transfer <span className="text-red-500">*</span>
-                </label>
-                <input
-                  ref={transferQtyRef}
-                  type="number"
-                  required
-                  min="1"
-                  placeholder="e.g. 50"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="py-2 px-3 bg-slate-50 focus:bg-white border-2 border-slate-300 focus:border-slate-900 focus:outline-none w-full text-sm font-mono rounded-sm"
-                  id="operator-quantity-trsf"
-                />
+            ) : referenceCode ? (
+              <div className="p-2 bg-amber-50 border border-amber-200 rounded text-[10px] font-mono text-amber-800">
+                ⚠️ Searching reference registry... Press Enter to confirm.
               </div>
+            ) : null}
+          </div>
 
-              {/* Optional Notes */}
-              <div className="space-y-2 md:col-span-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  Notes / Destination Line <span className="text-slate-400 font-normal">(Optional)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Sent to Line 4 - Shift B production run"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="py-2 px-3 bg-slate-50 focus:bg-white border-2 border-slate-300 focus:border-slate-900 focus:outline-none w-full text-sm font-mono rounded-sm"
-                  id="operator-notes-trsf"
-                />
-              </div>
+          {/* QUANTITY FIELD */}
+          <div className="space-y-1">
+            <label className="block text-xs font-mono font-bold text-slate-700 uppercase">
+              3. Scan Quantity (Barcode)
+            </label>
+            <input
+              ref={quantityRef}
+              type="number"
+              required
+              min="1"
+              placeholder="Wedge scan quantity..."
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              onKeyDown={handleQuantityKeyDown}
+              className="w-full px-3 py-2 bg-slate-50 hover:bg-slate-100/30 focus:bg-white border-2 border-slate-300 focus:border-slate-900 rounded text-xs font-mono font-black focus:outline-none transition-colors"
+              id="op-quantity-field"
+              autoComplete="off"
+            />
+          </div>
 
-            </div>
-
-            <div className="pt-4 border-t border-slate-200 flex justify-end">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-mono font-bold text-xs uppercase tracking-wider rounded-sm shadow-md transition-all cursor-pointer flex items-center gap-2"
-                id="btn-save-trsf"
-              >
-                {submitting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    EXECUTING TRANSFER...
-                  </>
-                ) : (
-                  <>
-                    <ArrowLeftRight className="w-4 h-4" />
-                    CONFIRM TRANSFER (1 → 2)
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* ========================================================= */}
-        {/* TAB 3: STOCK 2 OUT (DELIVERIES)                            */}
-        {/* ========================================================= */}
-        {activeSubTab === "stock2_out" && (
-          <form onSubmit={handleStock2OutSubmit} className="space-y-6">
-            <div className="border-l-4 border-emerald-500 pl-3">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 font-mono">
-                Stock 2 OUT — Customer Deliveries / Dispatches
-              </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Dispatch completed mesh parts from the production lines (Stock 2). Only two valid delivery types are supported.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Reference Selection */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  1. Select Reference <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={selectedRefCode}
-                  onChange={(e) => setSelectedRefCode(e.target.value)}
-                  className="w-full py-2.5 px-3 bg-slate-50 border-2 border-slate-300 focus:border-slate-900 focus:bg-white focus:outline-none text-sm font-mono rounded-sm cursor-pointer"
-                  id="operator-select-reference-s2out"
-                >
-                  <option value="">-- CHOOSE REFERENCE ({references.length}) --</option>
-                  {references.map((r) => (
-                    <option key={r.id} value={r.code}>
-                      {r.code} [Stock 2: {r.stock2 || 0} pcs] - {r.description.slice(0, 40)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Delivery Type */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  2. Delivery Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={deliveryType}
-                  onChange={(e) => setDeliveryType(e.target.value as any)}
-                  className="w-full py-2.5 px-3 bg-slate-50 border-2 border-slate-300 focus:border-slate-900 focus:bg-white focus:outline-none text-sm font-mono rounded-sm cursor-pointer"
-                  id="operator-deliverytype-s2out"
-                >
-                  <option value="Mini Project">Mini Project (PRECOSIDO)</option>
-                  <option value="Normal Delivery">Normal Delivery (Villanova - Portugal)</option>
-                </select>
-              </div>
-
-              {/* Delivery Quantity */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  3. Quantity to Deliver <span className="text-red-500">*</span>
-                </label>
-                <input
-                  ref={deliveryQtyRef}
-                  type="number"
-                  required
-                  min="1"
-                  placeholder="e.g. 80"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="py-2 px-3 bg-slate-50 focus:bg-white border-2 border-slate-300 focus:border-slate-900 focus:outline-none w-full text-sm font-mono rounded-sm"
-                  id="operator-quantity-s2out"
-                />
-              </div>
-
-              {/* Optional Notes */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase font-bold text-slate-700">
-                  Notes / Invoice Number <span className="text-slate-400 font-normal">(Optional)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Invoice #2847A"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="py-2 px-3 bg-slate-50 focus:bg-white border-2 border-slate-300 focus:border-slate-900 focus:outline-none w-full text-sm font-mono rounded-sm"
-                  id="operator-notes-s2out"
-                />
-              </div>
-
-            </div>
-
-            <div className="pt-4 border-t border-slate-200 flex justify-end">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-bold text-xs uppercase tracking-wider rounded-sm shadow-md transition-all cursor-pointer flex items-center gap-2"
-                id="btn-save-s2out"
-              >
-                {submitting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    PROCESSING DISPATCH...
-                  </>
-                ) : (
-                  <>
-                    <Truck className="w-4 h-4" />
-                    RECORD DELIVERY OUT
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        )}
-
+          {/* Manual Submit or Clear Controls */}
+          <div className="pt-3 border-t border-slate-200 flex gap-2">
+            <button
+              type="button"
+              onClick={handleClearInputs}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-750 font-mono font-bold text-[10px] uppercase tracking-wider rounded border border-slate-300 transition-colors cursor-pointer"
+            >
+              Clear
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 px-4 py-2 bg-[#1e293b] hover:bg-[#0f172a] text-white font-mono font-bold text-[11px] uppercase tracking-wider rounded shadow transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              id="op-submit-trigger"
+            >
+              {submitting ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  SAVING...
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  RECORD &amp; CONTINUE
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
 
-      {/* Helpful Operator Tips Footer */}
-      <div className="bg-slate-200/80 p-4 rounded-sm border border-slate-300 text-[11px] text-slate-600 font-mono">
-        <span className="font-bold">OPERATIONAL TRACEABILITY PROTOCOL:</span> Continuous autofocus is enabled. You can scan barcodes directly at any time. Auditory check signals correspond to system feedback status (High success frequency vs. Low error frequency).
+      {/* Invoice Specific Scanned Registry */}
+      {recentScansList.length > 0 && (
+        <div className="bg-white border border-slate-300 rounded shadow-md p-4 space-y-2.5" id="operator-invoice-batch">
+          <div className="flex items-center justify-between border-b border-slate-150 pb-1.5">
+            <span className="text-[10px] font-bold font-mono text-slate-700 uppercase">
+              Invoice scans list ({recentScansList.length})
+            </span>
+            <span className="text-[9px] font-mono text-slate-400 uppercase">
+              Last Scans
+            </span>
+          </div>
+          <div className="divide-y divide-slate-100 text-xs font-mono">
+            {recentScansList.map((box, idx) => (
+              <div key={box.id} className="py-1.5 flex items-center justify-between text-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="w-3.5 h-3.5 rounded bg-slate-100 text-[9px] flex items-center justify-center text-slate-500 font-bold">
+                    {recentScansList.length - idx}
+                  </span>
+                  <span className="font-bold text-slate-900">{box.reference}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-slate-800 bg-slate-50 px-1.5 py-0.2 rounded border border-slate-200">
+                    {box.expectedQty} PCS
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Industrial MES Disclaimer */}
+      <div className="bg-slate-100 p-3 rounded border border-slate-350 text-[10px] text-slate-500 font-mono">
+        <span className="font-bold uppercase text-slate-700">Hands-Free Mode:</span> Input fields are chain-linked. Scanning a barcode automatically jumps to the next input or saves the box immediately without manual mouse or keyboard interaction.
       </div>
 
     </div>
