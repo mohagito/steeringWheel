@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { 
-  collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, getDoc, writeBatch
+  collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, getDoc, getDocs, writeBatch
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState } from "./seeder";
@@ -208,27 +208,46 @@ export default function App() {
       refCodesArray.map(ref => getDoc(doc(db, "references", ref)))
     );
     
-    const refSnapMap: Record<string, { stock1: number; stock2: number }> = {};
+    const refSnapMap: Record<string, { stock1: number; stock2: number; stock3: number }> = {};
     refSnaps.forEach((snap: any) => {
       if (snap.exists()) {
+        const d = snap.data();
         refSnapMap[snap.id] = {
-          stock1: snap.data()?.stock1 || 0,
-          stock2: snap.data()?.stock2 || 0
+          stock1: d?.stock1 || 0,
+          stock2: d?.stock2 || 0,
+          stock3: d?.stock3 || 0
         };
       } else {
-        refSnapMap[snap.id] = { stock1: 0, stock2: 0 };
+        refSnapMap[snap.id] = { stock1: 0, stock2: 0, stock3: 0 };
       }
     });
 
     deliveriesData.forEach((delivery, index) => {
       const refCode = delivery.reference;
       const qty = delivery.quantity;
-      const refStock = refSnapMap[refCode] || { stock1: 0, stock2: 0 };
-      
-      const newStock1 = Math.max(0, refStock.stock1 - qty);
-      const newStock2 = Math.max(0, refStock.stock2 - qty);
-      const newTotal = newStock1 + newStock2;
-      refSnapMap[refCode] = { stock1: newStock1, stock2: newStock2 }; // update locally
+      const refStock = refSnapMap[refCode] || { stock1: 0, stock2: 0, stock3: 0 };
+      const isPrecosido = delivery.deliveryType === "PRECOSIDO";
+
+      let newStock1 = refStock.stock1;
+      let newStock2 = refStock.stock2;
+      let newStock3 = refStock.stock3;
+      let movementType: "STOCK 2 OUT" | "STOCK 3 OUT" = "STOCK 3 OUT";
+      let stockLabel = "Stock 3";
+
+      if (isPrecosido) {
+        // PRECOSIDO deliveries deduct from STOCK 2 (Mallas Pegadas)
+        newStock2 = Math.max(0, refStock.stock2 - qty);
+        movementType = "STOCK 2 OUT";
+        stockLabel = "Stock 2";
+      } else {
+        // VILLANOVA / Normal deliveries deduct from STOCK 3 (Mallas in Steering Wheels)
+        newStock3 = Math.max(0, refStock.stock3 - qty);
+        movementType = "STOCK 3 OUT";
+        stockLabel = "Stock 3";
+      }
+
+      const newTotal = newStock1 + newStock2 + newStock3;
+      refSnapMap[refCode] = { stock1: newStock1, stock2: newStock2, stock3: newStock3 }; // update locally
 
       const newId = `del-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
       const newDelivery: Delivery = {
@@ -240,31 +259,92 @@ export default function App() {
 
       batch.set(doc(db, "deliveries", newId), cleanUndefined(newDelivery));
       batch.set(doc(db, "references", refCode), {
-        stock1: newStock1,
         stock2: newStock2,
+        stock3: newStock3,
         currentStock: newTotal,
         lastUpdate: timestamp
       }, { merge: true });
 
-      // Also add to transactions log for reports!
-      const transId = `trans-admin-del-${Date.now()}-${index}`;
+      // Add to transactions log
+      const transId = `trans-del-${Date.now()}-${index}`;
       batch.set(doc(db, "transactions", transId), {
         id: transId,
         reference: refCode,
-        movementType: "STOCK 2 OUT",
-        stock: "Stock 2",
+        movementType,
+        stock: stockLabel,
         quantity: qty,
         operatorName: currentUser.fullName,
         timestamp,
-        notes: `Admin Dispatch: Invoice ${delivery.invoiceNumber} - Note: ${delivery.notes || "None"}`,
-        deliveryType: "Normal Delivery"
+        notes: `Delivery (${delivery.deliveryType || "Villanova"}): Invoice ${delivery.invoiceNumber} - Note: ${delivery.notes || "None"}`,
+        deliveryType: delivery.deliveryType || "Villanova",
+        stock2Before: refStock.stock2,
+        stock2After: newStock2,
+        stock3Before: refStock.stock3,
+        stock3After: newStock3
       });
     });
 
     await batch.commit();
   };
 
-  // Action: Operator logs production consumption in a batch
+  // Action: Operator logs Transfer from Stock 1 (Untouched Mesh) to Stock 2 (Mallas Pegadas)
+  const handleSubmitTransfer = async (transferEntries: { reference: string; quantity: number; notes?: string }[]) => {
+    if (!currentUser) return;
+    const batch = writeBatch(db);
+    const timestamp = new Date().toISOString();
+
+    const refSnaps = await Promise.all(
+      transferEntries.map(t => getDoc(doc(db, "references", t.reference)))
+    );
+
+    const refSnapMap: Record<string, { stock1: number; stock2: number; stock3: number }> = {};
+    refSnaps.forEach((snap: any) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        refSnapMap[snap.id] = {
+          stock1: d?.stock1 || 0,
+          stock2: d?.stock2 || 0,
+          stock3: d?.stock3 || 0
+        };
+      } else {
+        refSnapMap[snap.id] = { stock1: 0, stock2: 0, stock3: 0 };
+      }
+    });
+
+    transferEntries.forEach((entry, index) => {
+      const refCode = entry.reference;
+      const refStock = refSnapMap[refCode] || { stock1: 0, stock2: 0, stock3: 0 };
+
+      // Transfer: Deducts Stock 1 (Untouched) and Adds to Stock 2 (Mallas Pegadas)
+      const newStock1 = Math.max(0, refStock.stock1 - entry.quantity);
+      const newStock2 = refStock.stock2 + entry.quantity;
+      const newTotal = newStock1 + newStock2 + refStock.stock3;
+      refSnapMap[refCode] = { ...refStock, stock1: newStock1, stock2: newStock2 };
+
+      const transId = `trans-trf-${Date.now()}-${index}`;
+      batch.set(doc(db, "transactions", transId), {
+        id: transId,
+        reference: refCode,
+        movementType: "TRANSFER S1->S2",
+        stock: "Stock 1 -> Stock 2",
+        quantity: entry.quantity,
+        operatorName: currentUser.fullName,
+        timestamp,
+        notes: `Mallas Pegadas / Gluing Transfer: ${entry.notes || "None"}`
+      });
+
+      batch.set(doc(db, "references", refCode), {
+        stock1: newStock1,
+        stock2: newStock2,
+        currentStock: newTotal,
+        lastUpdate: timestamp
+      }, { merge: true });
+    });
+
+    await batch.commit();
+  };
+
+  // Action: Operator logs production output (Moves quantity from Stock 2 WIP to Stock 3 Finished Goods)
   const handleSubmitProduction = async (productionEntries: { date: string; reference: string; quantity: number; notes?: string }[]) => {
     if (!currentUser) return;
     const batch = writeBatch(db);
@@ -275,26 +355,29 @@ export default function App() {
       productionEntries.map(p => getDoc(doc(db, "references", p.reference)))
     );
     
-    const refSnapMap: Record<string, { stock1: number; stock2: number }> = {};
+    const refSnapMap: Record<string, { stock1: number; stock2: number; stock3: number }> = {};
     refSnaps.forEach((snap: any) => {
       if (snap.exists()) {
+        const d = snap.data();
         refSnapMap[snap.id] = {
-          stock1: snap.data()?.stock1 || 0,
-          stock2: snap.data()?.stock2 || 0
+          stock1: d?.stock1 || 0,
+          stock2: d?.stock2 || 0,
+          stock3: d?.stock3 || 0
         };
       } else {
-        refSnapMap[snap.id] = { stock1: 0, stock2: 0 };
+        refSnapMap[snap.id] = { stock1: 0, stock2: 0, stock3: 0 };
       }
     });
 
     productionEntries.forEach((entry, index) => {
       const refCode = entry.reference;
-      const refStock = refSnapMap[refCode] || { stock1: 0, stock2: 0 };
+      const refStock = refSnapMap[refCode] || { stock1: 0, stock2: 0, stock3: 0 };
       
-      const newStock1 = Math.max(0, refStock.stock1 - entry.quantity);
+      // Production Completion: Deducts from Stock 2 (WIP) and adds to Stock 3 (Finished Goods)
       const newStock2 = Math.max(0, refStock.stock2 - entry.quantity);
-      const newTotal = newStock1 + newStock2;
-      refSnapMap[refCode] = { stock1: newStock1, stock2: newStock2 }; // update locally
+      const newStock3 = refStock.stock3 + entry.quantity;
+      const newTotal = refStock.stock1 + newStock2 + newStock3;
+      refSnapMap[refCode] = { ...refStock, stock2: newStock2, stock3: newStock3 }; // update locally
 
       const newId = `prod-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
       const newProduction: Production = {
@@ -306,24 +389,27 @@ export default function App() {
 
       batch.set(doc(db, "productions", newId), cleanUndefined(newProduction));
       batch.set(doc(db, "references", refCode), {
-        stock1: newStock1,
         stock2: newStock2,
+        stock3: newStock3,
         currentStock: newTotal,
         lastUpdate: timestamp
       }, { merge: true });
 
-      // Add to unified transactions log!
-      const transId = `trans-admin-prod-${Date.now()}-${index}`;
+      // Add to unified transactions log
+      const transId = `trans-prod-${Date.now()}-${index}`;
       batch.set(doc(db, "transactions", transId), {
         id: transId,
         reference: refCode,
-        movementType: "STOCK 2 OUT",
-        stock: "Stock 2",
+        movementType: "STOCK 2 OUT / STOCK 3 IN",
+        stock: "Stock 2 -> Stock 3",
         quantity: entry.quantity,
         operatorName: currentUser.fullName,
         timestamp,
-        notes: `Admin Production Consumption: ${entry.notes || "None"}`,
-        deliveryType: "Mini Project"
+        notes: `Production Output: ${entry.notes || "None"}`,
+        stock2Before: refStock.stock2,
+        stock2After: newStock2,
+        stock3Before: refStock.stock3,
+        stock3After: newStock3
       });
     });
 
@@ -444,27 +530,166 @@ export default function App() {
     await setDoc(doc(db, "boxes", boxData.id), newBox);
   };
 
-  // Action: Admin deletes a box
+  // Action: Admin or Supervisor deletes a box
   const handleDeleteBox = async (boxId: string) => {
-    await deleteDoc(doc(db, "boxes", boxId));
+    let boxRef = doc(db, "boxes", boxId);
+    let boxSnap = await getDoc(boxRef);
+
+    // Fallback lookup if not found by direct ID
+    if (!boxSnap.exists()) {
+      const q = query(collection(db, "boxes"));
+      const qSnap = await getDocs(q);
+      const found = qSnap.docs.find(d => d.id === boxId || d.data().barcode === boxId || d.data().id === boxId);
+      if (found) {
+        boxRef = doc(db, "boxes", found.id);
+        boxSnap = await getDoc(boxRef);
+      }
+    }
+
+    if (boxSnap.exists()) {
+      const boxData = boxSnap.data() as Box;
+      const refCode = boxData.reference;
+      const boxQty = boxData.expectedQty || 0;
+
+      await deleteDoc(boxRef);
+
+      if (refCode) {
+        let refDocRef = doc(db, "references", refCode);
+        let refSnap = await getDoc(refDocRef);
+
+        if (!refSnap.exists()) {
+          const refsSnap = await getDocs(collection(db, "references"));
+          const foundRef = refsSnap.docs.find(d => 
+            d.id.toUpperCase() === refCode.toUpperCase() || 
+            (d.data().code && d.data().code.toUpperCase() === refCode.toUpperCase())
+          );
+          if (foundRef) {
+            refDocRef = doc(db, "references", foundRef.id);
+            refSnap = await getDoc(refDocRef);
+          }
+        }
+
+        if (refSnap.exists()) {
+          const refData = refSnap.data();
+          const curS1 = refData.stock1 || 0;
+          const curS2 = refData.stock2 || 0;
+          const curS3 = refData.stock3 || 0;
+
+          const newS1 = Math.max(0, curS1 - boxQty);
+          const newTotal = newS1 + curS2 + curS3;
+          const timestamp = new Date().toISOString();
+
+          await updateDoc(refDocRef, {
+            stock1: newS1,
+            currentStock: newTotal,
+            lastUpdate: timestamp
+          });
+
+          // Log transaction
+          const transId = `trans-delbox-${Date.now()}`;
+          await setDoc(doc(db, "transactions", transId), {
+            id: transId,
+            barcode: boxData.barcode || boxId,
+            reference: refCode,
+            movementType: "STOCK 1 REMOVED",
+            stock: "Stock 1",
+            quantity: boxQty,
+            operatorName: currentUser?.fullName || "System",
+            timestamp,
+            notes: `Deleted carton box ${boxData.barcode || boxId} (${boxQty} PCS removed)`
+          });
+        }
+      }
+    } else {
+      await deleteDoc(boxRef);
+    }
   };
 
   // Action: Admin updates a box
   const handleUpdateBox = async (boxId: string, updatedFields: Partial<Box>) => {
     const boxRef = doc(db, "boxes", boxId);
-    await updateDoc(boxRef, {
-      ...updatedFields,
-      updatedAt: new Date().toISOString()
-    });
+    const boxSnap = await getDoc(boxRef);
+
+    if (boxSnap.exists()) {
+      const boxData = boxSnap.data() as Box;
+      const oldQty = boxData.expectedQty || 0;
+      const newQty = updatedFields.expectedQty !== undefined ? updatedFields.expectedQty : oldQty;
+      const delta = newQty - oldQty;
+
+      await updateDoc(boxRef, {
+        ...updatedFields,
+        updatedAt: new Date().toISOString()
+      });
+
+      if (delta !== 0 && boxData.reference) {
+        const refDocRef = doc(db, "references", boxData.reference);
+        const refSnap = await getDoc(refDocRef);
+        if (refSnap.exists()) {
+          const refData = refSnap.data();
+          const curS1 = refData.stock1 || 0;
+          const curS2 = refData.stock2 || 0;
+          const curS3 = refData.stock3 || 0;
+
+          const newS1 = Math.max(0, curS1 + delta);
+          const newTotal = newS1 + curS2 + curS3;
+          const timestamp = new Date().toISOString();
+
+          await updateDoc(refDocRef, {
+            stock1: newS1,
+            currentStock: newTotal,
+            lastUpdate: timestamp
+          });
+
+          const transId = `trans-updbox-${Date.now()}`;
+          await setDoc(doc(db, "transactions", transId), {
+            id: transId,
+            barcode: boxData.barcode || boxId,
+            reference: boxData.reference,
+            movementType: delta > 0 ? "STOCK 1 IN" : "STOCK 1 REMOVED",
+            stock: "Stock 1",
+            quantity: Math.abs(delta),
+            operatorName: currentUser?.fullName || "System",
+            timestamp,
+            notes: `Updated carton box ${boxData.barcode || boxId} qty from ${oldQty} to ${newQty} PCS`
+          });
+        }
+      }
+    }
   };
 
-  // Action: Admin updates a reference
+  // Action: Admin updates a reference directly
   const handleUpdateReference = async (refId: string, updatedFields: Partial<Reference>) => {
     const refRef = doc(db, "references", refId);
-    await updateDoc(refRef, {
-      ...updatedFields,
-      lastUpdate: new Date().toISOString()
-    });
+    const refSnap = await getDoc(refRef);
+    if (refSnap.exists()) {
+      const currentData = refSnap.data() as Reference;
+      const s1 = updatedFields.stock1 !== undefined ? updatedFields.stock1 : (currentData.stock1 || 0);
+      const s2 = updatedFields.stock2 !== undefined ? updatedFields.stock2 : (currentData.stock2 || 0);
+      const s3 = updatedFields.stock3 !== undefined ? updatedFields.stock3 : (currentData.stock3 || 0);
+      const newTotal = Math.max(0, s1 + s2 + s3);
+
+      const timestamp = new Date().toISOString();
+      await updateDoc(refRef, {
+        ...updatedFields,
+        stock1: Math.max(0, s1),
+        stock2: Math.max(0, s2),
+        stock3: Math.max(0, s3),
+        currentStock: newTotal,
+        lastUpdate: timestamp
+      });
+
+      const transId = `trans-updref-${Date.now()}`;
+      await setDoc(doc(db, "transactions", transId), {
+        id: transId,
+        reference: currentData.code || refId,
+        movementType: "STOCK ADJUSTMENT",
+        stock: "Reference Direct Update",
+        quantity: Math.abs(newTotal - (currentData.currentStock || 0)),
+        operatorName: currentUser?.fullName || "System",
+        timestamp,
+        notes: `Direct reference stock adjustment: S1=${s1}, S2=${s2}, S3=${s3}`
+      });
+    }
   };
 
   // Action: Admin adds a user profile
@@ -744,6 +969,8 @@ export default function App() {
                   adjustments={adjustments} 
                   references={references}
                   transactions={transactions}
+                  currentUser={currentUser}
+                  onNavigateTab={(tab) => setActiveTab(tab)}
                   onTriggerScan={currentUser.role !== "admin" ? () => setActiveTab("operator") : undefined}
                 />
               )}

@@ -143,9 +143,6 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
             <h1 className="font-display text-xl font-bold tracking-tight text-white mb-2 uppercase border-b-2 border-brand-500 pb-1.5">
               Stock Control System
             </h1>
-            <p className="text-slate-400 text-xs font-normal leading-relaxed max-w-sm mt-3">
-              Verify and reconcile physical stock counts.
-            </p>
           </div>
 
           <div className="mt-8 md:mt-0 text-center md:text-left text-[10px] text-slate-500 font-mono">

@@ -5,6 +5,7 @@ import {
   Truck, Search, Package, AlertCircle, Plus, Calendar, FileText, 
   BarChart2, User as UserIcon, CheckCircle, TrendingDown, ArrowUpRight, HelpCircle, Trash2
 } from "lucide-react";
+import Swal from "sweetalert2";
 
 interface DeliveriesWorkspaceProps {
   deliveries: Delivery[];
@@ -26,6 +27,7 @@ export default function DeliveriesWorkspace({
 }: DeliveriesWorkspaceProps) {
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [customer, setCustomer] = useState("");
+  const [deliveryType, setDeliveryType] = useState<"PRECOSIDO" | "Villanova" | "Normal Delivery">("Villanova");
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<DispatchRow[]>([{ referenceCode: "", quantity: "" }]);
 
@@ -107,11 +109,18 @@ export default function DeliveriesWorkspace({
         return;
       }
 
-      // Check stock warning
+      // Check stock warning against correct stock level (Stock 2 for Precosido, Stock 3 for Villanova)
       const refObj = references.find((r) => r.code === row.referenceCode);
-      const currentStock = refObj ? refObj.currentStock : 0;
-      if (deliverQty > currentStock) {
-        warnings.push(`Part ${row.referenceCode}: Quantity (${deliverQty} pcs) exceeds warehouse stock (${currentStock} pcs)`);
+      if (deliveryType === "PRECOSIDO") {
+        const stock2Val = refObj ? (refObj.stock2 || 0) : 0;
+        if (deliverQty > stock2Val) {
+          warnings.push(`Part ${row.referenceCode}: Quantity (${deliverQty} pcs) exceeds Stock 2 Glued Mesh (${stock2Val} pcs)`);
+        }
+      } else {
+        const stock3Val = refObj ? (refObj.stock3 || 0) : 0;
+        if (deliverQty > stock3Val) {
+          warnings.push(`Part ${row.referenceCode}: Quantity (${deliverQty} pcs) exceeds Stock 3 Steering Wheels (${stock3Val} pcs)`);
+        }
       }
 
       submissions.push({
@@ -119,15 +128,28 @@ export default function DeliveriesWorkspace({
         quantity: deliverQty,
         invoiceNumber: cleanedInvoice,
         customer: cleanedCustomer,
+        deliveryType,
         notes: notes.trim() || undefined
       });
     }
 
     if (warnings.length > 0) {
-      const confirmProceed = window.confirm(
-        `Warning:\n${warnings.join("\n")}\n\nDo you still want to proceed with this dispatch?`
-      );
-      if (!confirmProceed) return;
+      const result = await Swal.fire({
+        title: "Dispatch Warning",
+        html: `
+          <div class="text-left text-xs font-mono space-y-1 bg-amber-50 p-3 border border-amber-200 text-amber-900 rounded-none mb-3">
+            ${warnings.map(w => `<p>⚠️ ${w}</p>`).join("")}
+          </div>
+          <p class="text-sm font-sans font-bold text-slate-800">Do you still want to proceed with this customer delivery dispatch?</p>
+        `,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#2563eb",
+        cancelButtonColor: "#64748b",
+        confirmButtonText: "Yes, Proceed Dispatch",
+        cancelButtonText: "Cancel"
+      });
+      if (!result.isConfirmed) return;
     }
 
     setSubmitting(true);
@@ -252,7 +274,7 @@ export default function DeliveriesWorkspace({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5" id="delivery-dispatch-form">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 {/* Invoice Number */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
@@ -265,7 +287,7 @@ export default function DeliveriesWorkspace({
                       placeholder="e.g. Pk84683"
                       value={invoiceNumber}
                       onChange={(e) => setInvoiceNumber(e.target.value)}
-                      className="w-full pl-8.5 pr-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold uppercase"
+                      className="w-full pl-8.5 pr-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold uppercase"
                       required
                     />
                   </div>
@@ -274,7 +296,7 @@ export default function DeliveriesWorkspace({
                 {/* Destination Customer */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Customer / Destination
+                    Customer
                   </label>
                   <input
                     type="text"
@@ -285,13 +307,30 @@ export default function DeliveriesWorkspace({
                     required
                   />
                 </div>
+
+                {/* Delivery Category Type */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Delivery Type
+                  </label>
+                  <select
+                    value={deliveryType}
+                    onChange={(e) => setDeliveryType(e.target.value as any)}
+                    className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white font-mono font-bold text-slate-800 cursor-pointer"
+                  >
+                    <option value="Villanova">Villanova (Stock 3 Wheels)</option>
+                    <option value="PRECOSIDO">PRECOSIDO (Stock 2 Glued Mesh)</option>
+                  </select>
+                </div>
               </div>
 
               {/* Multiple Reference Rows */}
               <div className="space-y-3.5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    References to Deliver
+                    {deliveryType === "PRECOSIDO" 
+                      ? "References to Deliver (Deducts Stock 2 Glued Mesh)" 
+                      : "References to Deliver (Deducts Stock 3 Steering Wheels)"}
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
                     {rows.length} reference{rows.length > 1 ? "s" : ""}
@@ -331,7 +370,7 @@ export default function DeliveriesWorkspace({
                               <option value="">-- Select Reference --</option>
                               {references.map((ref) => (
                                 <option key={ref.code} value={ref.code}>
-                                  {ref.code} ({ref.currentStock} pcs)
+                                  {ref.code} (S3 Finished: {ref.stock3 || 0} pcs)
                                 </option>
                               ))}
                             </select>

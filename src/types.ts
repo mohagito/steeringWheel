@@ -12,7 +12,8 @@ export interface Box {
   id: string; // Matches barcode
   barcode: string;
   reference: string;
-  expectedQty: number;
+  expectedQty: number; // Barcode label quantity
+  actualQty?: number;  // Real manually counted quantity
   location: string;
   createdAt: string;
   updatedAt: string;
@@ -50,6 +51,7 @@ export interface Delivery {
   operatorName: string;
   timestamp: string;
   customer: string;
+  deliveryType?: "PRECOSIDO" | "Villanova" | "Mini Project" | "Normal Delivery";
   notes?: string;
 }
 
@@ -69,24 +71,32 @@ export interface Reference {
   description: string;
   materialType: "Mesh" | "Soft";
   associatedLeather: string;
-  currentStock: number;
-  stock1: number; // STOCK 1 - Warehouse Stock
-  stock2: number; // STOCK 2 - Production Stock
+  currentStock: number; // Total combined across stocks
+  stock1: number; // STOCK 1 - Warehouse Stock (Raw Materials)
+  stock2: number; // STOCK 2 - Production Stock (WIP)
+  stock3: number; // STOCK 3 - Finished Goods Stock
   lastUpdate: string;
   customer?: string;
+  minStockThreshold?: number;
 }
 
 export interface InventoryTransaction {
   id: string;
   barcode?: string;
   reference: string;
-  movementType: "STOCK 1 IN" | "STOCK 1 OUT" | "STOCK 2 IN" | "STOCK 2 OUT" | "TRANSFER";
-  stock: "Stock 1" | "Stock 2" | "Stock 1 -> Stock 2";
+  movementType: "STOCK 1 IN" | "STOCK 1 OUT" | "TRANSFER S1->S2" | "STOCK 2 IN" | "STOCK 2 OUT" | "STOCK 2 OUT / STOCK 3 IN" | "STOCK 3 IN" | "STOCK 3 OUT" | "TRANSFER" | "DELIVERY";
+  stock: "Stock 1" | "Stock 2" | "Stock 3" | "Stock 1 -> Stock 2" | "Stock 2 -> Stock 3";
   quantity: number;
   operatorName: string;
   timestamp: string;
   notes?: string;
-  deliveryType?: "Mini Project" | "Normal Delivery";
+  deliveryType?: "PRECOSIDO" | "Villanova" | "Mini Project" | "Normal Delivery";
+  stock1Before?: number;
+  stock1After?: number;
+  stock2Before?: number;
+  stock2After?: number;
+  stock3Before?: number;
+  stock3After?: number;
 }
 
 export interface ReferenceSummary {

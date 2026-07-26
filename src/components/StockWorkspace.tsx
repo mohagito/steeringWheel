@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from "react";
 import { Box, Adjustment, Reference, User, InventoryTransaction } from "../types";
 import { 
-  Search, Filter, ArrowLeftRight, Clock, Trash2, Edit2, Check, X, Download, FileText, Calendar, UserCheck, Tag, Info
+  Search, Filter, ArrowLeftRight, Clock, Trash2, Edit2, Check, X, Download, FileText, Calendar, UserCheck, Tag, Info,
+  Boxes, Factory, CheckCircle2, FileSpreadsheet, Layers, Sparkles
 } from "lucide-react";
+import Swal from "sweetalert2";
 
 interface StockWorkspaceProps {
   boxes: Box[];
@@ -26,27 +28,38 @@ export default function StockWorkspace({
   onUpdateReference
 }: StockWorkspaceProps) {
   
-  // Local navigation tab: "warehouse" (Stock 1), "production" (Stock 2), "reports" (Reports Suite)
-  const [activeSubTab, setActiveSubTab] = useState<"warehouse" | "production" | "reports">("warehouse");
+  // Local navigation tab: "warehouse" (Stock 1), "production" (Stock 2), "finished" (Stock 3), "reports" (Reports Suite)
+  const [activeSubTab, setActiveSubTab] = useState<"warehouse" | "production" | "finished" | "reports">("warehouse");
 
   // Filter States (Dashboard & Inventory Views)
   const [searchQuery, setSearchQuery] = useState("");
   const [materialFilter, setMaterialFilter] = useState<"All" | "Mesh" | "Soft">("All");
 
-  // Box Editing / Management States (Admins only)
+  // Box Editing / Management States (Admins & Supervisors)
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
   const [editedBoxQty, setEditedBoxQty] = useState<number>(0);
   const [editedBoxLoc, setEditedBoxLoc] = useState<string>("");
+
+  // Reference Stock Direct Adjustment States
+  const [editingRefId, setEditingRefId] = useState<string | null>(null);
+  const [editingRefStage, setEditingRefStage] = useState<"stock1" | "stock2" | "stock3">("stock1");
+  const [editingRefQty, setEditingRefQty] = useState<number>(0);
+
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // -------------------------------------------------------------
   // REPORTS SUITE STATES
   // -------------------------------------------------------------
-  const [reportType, setReportType] = useState<"history" | "received" | "transfers" | "deliveries" | "s1_stock" | "s2_stock">("history");
+  const [reportType, setReportType] = useState<"history" | "received" | "transfers" | "deliveries" | "s1_stock" | "s2_stock" | "s3_stock">("history");
   const [repRefFilter, setRepRefFilter] = useState("All");
   const [repDateFilter, setRepDateFilter] = useState("");
   const [repOperatorFilter, setRepOperatorFilter] = useState("All");
   const [repMovementFilter, setRepMovementFilter] = useState("All");
+
+  // Overall totals calculation for the top KPI summary cards
+  const totalStock1 = useMemo(() => references.reduce((acc, r) => acc + (r.stock1 || 0), 0), [references]);
+  const totalStock2 = useMemo(() => references.reduce((acc, r) => acc + (r.stock2 || 0), 0), [references]);
+  const totalStock3 = useMemo(() => references.reduce((acc, r) => acc + (r.stock3 || 0), 0), [references]);
 
   // Get unique operators from transactions for the filter dropdown
   const operatorsList = useMemo(() => {
@@ -58,15 +71,14 @@ export default function StockWorkspace({
   const reportData = useMemo(() => {
     let baseData: any[] = [];
 
-    // 1. Select the base dataset based on Report Type
     if (reportType === "history") {
       baseData = transactions;
     } else if (reportType === "received") {
       baseData = transactions.filter(t => t.movementType === "STOCK 1 IN");
     } else if (reportType === "transfers") {
-      baseData = transactions.filter(t => t.movementType === "TRANSFER");
+      baseData = transactions.filter(t => t.movementType === "TRANSFER" || t.movementType === "TRANSFER S1->S2");
     } else if (reportType === "deliveries") {
-      baseData = transactions.filter(t => t.movementType === "STOCK 2 OUT");
+      baseData = transactions.filter(t => t.movementType === "STOCK 3 OUT" || t.movementType === "DELIVERY");
     } else if (reportType === "s1_stock") {
       baseData = references.map(r => ({
         id: r.id,
@@ -85,13 +97,23 @@ export default function StockWorkspace({
         quantity: r.stock2 || 0,
         description: r.description,
         materialType: r.materialType,
-        movementType: "STOCK 2 (Production)",
+        movementType: "STOCK 2 (WIP)",
+        operatorName: "System",
+        timestamp: r.lastUpdate
+      }));
+    } else if (reportType === "s3_stock") {
+      baseData = references.map(r => ({
+        id: r.id,
+        reference: r.code,
+        quantity: r.stock3 || 0,
+        description: r.description,
+        materialType: r.materialType,
+        movementType: "STOCK 3 (Finished Goods)",
         operatorName: "System",
         timestamp: r.lastUpdate
       }));
     }
 
-    // 2. Apply Filters (Reference, Date, Operator, Movement Type)
     return baseData.filter(item => {
       const refCode = item.reference || item.code || "";
       const matchesRef = repRefFilter === "All" || refCode.toUpperCase() === repRefFilter.toUpperCase();
@@ -100,7 +122,6 @@ export default function StockWorkspace({
       const matchesDate = !repDateFilter || dateStr.startsWith(repDateFilter);
 
       const matchesOp = repOperatorFilter === "All" || item.operatorName === repOperatorFilter;
-      
       const matchesMove = repMovementFilter === "All" || item.movementType === repMovementFilter;
 
       return matchesRef && matchesDate && matchesOp && matchesMove;
@@ -108,17 +129,22 @@ export default function StockWorkspace({
 
   }, [reportType, repRefFilter, repDateFilter, repOperatorFilter, repMovementFilter, transactions, references]);
 
-  // 3. Export filtered report to Excel/CSV
+  // Export filtered report to Excel/CSV
   const handleExportCSV = () => {
     if (reportData.length === 0) {
-      alert("No data available to export.");
+      Swal.fire({
+        title: "No Data",
+        text: "No data available to export.",
+        icon: "info",
+        confirmButtonColor: "#2563eb"
+      });
       return;
     }
 
     let headers: string[] = [];
     let rows: string[][] = [];
 
-    if (reportType === "s1_stock" || reportType === "s2_stock") {
+    if (reportType === "s1_stock" || reportType === "s2_stock" || reportType === "s3_stock") {
       headers = ["Reference Code", "Description", "Material Type", "Current Stock (PCS)", "Last Update"];
       rows = reportData.map(row => [
         row.reference,
@@ -154,9 +180,6 @@ export default function StockWorkspace({
     document.body.removeChild(link);
   };
 
-  // -------------------------------------------------------------
-  // STOCK ACTIONS (Admins only)
-  // -------------------------------------------------------------
   const handleSaveBoxChange = async (boxId: string) => {
     if (!onUpdateBox) return;
     try {
@@ -174,17 +197,57 @@ export default function StockWorkspace({
 
   const handleDeleteBoxAction = async (boxId: string) => {
     if (!onDeleteBox) return;
-    if (!window.confirm("Are you sure you want to permanently delete this carton record from Stock 1?")) return;
-    try {
-      await onDeleteBox(boxId);
-      setStatusMsg({ type: "success", text: "Carton deleted successfully." });
-      setTimeout(() => setStatusMsg(null), 3000);
-    } catch (err: any) {
-      setStatusMsg({ type: "error", text: `Failed to delete: ${err.message || err}` });
+
+    const result = await Swal.fire({
+      title: "Delete Carton Box?",
+      text: `Are you sure you want to permanently delete carton record "${boxId}" from Stock 1? The stock level for this reference will automatically be deducted.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Delete Carton",
+      cancelButtonText: "Cancel"
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await onDeleteBox(boxId);
+        await Swal.fire({
+          title: "Carton Deleted!",
+          text: "The carton was successfully deleted and Stock 1 quantity updated.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false
+        });
+        setStatusMsg({ type: "success", text: "Carton deleted successfully and stock updated." });
+        setTimeout(() => setStatusMsg(null), 3000);
+      } catch (err: any) {
+        console.error(err);
+        await Swal.fire({
+          title: "Error Deleting Carton",
+          text: err?.message || "Failed to delete carton box.",
+          icon: "error",
+          confirmButtonColor: "#2563eb"
+        });
+        setStatusMsg({ type: "error", text: `Failed to delete: ${err.message || err}` });
+      }
     }
   };
 
-  // Filter references based on basic search query in Inventory Tabs
+  const handleSaveRefStockChange = async (refId: string) => {
+    if (!onUpdateReference) return;
+    try {
+      await onUpdateReference(refId, {
+        [editingRefStage]: Math.max(0, Number(editingRefQty))
+      });
+      setStatusMsg({ type: "success", text: `Reference ${editingRefStage.toUpperCase()} stock level updated successfully.` });
+      setEditingRefId(null);
+      setTimeout(() => setStatusMsg(null), 3000);
+    } catch (err: any) {
+      setStatusMsg({ type: "error", text: `Failed to update reference stock: ${err.message || err}` });
+    }
+  };
+
   const filteredReferences = useMemo(() => {
     return references.filter(ref => {
       const matchesSearch = ref.code.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -195,53 +258,132 @@ export default function StockWorkspace({
   }, [references, searchQuery, materialFilter]);
 
   return (
-    <div className="space-y-6" id="stock-workspace-container">
+    <div className="space-y-6 max-w-7xl mx-auto" id="stock-workspace-container">
       
-      {/* Sub Tab Navigation */}
-      <div className="flex justify-between items-center bg-slate-200 p-1 border border-slate-300 rounded-sm" id="stock-sub-tabs-bar">
-        <div className="flex gap-1">
+      {/* Visual KPI Summary Dashboard Cards (Zeeve.io inspired) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        {/* Card 1: Stock 1 Raw Warehouse */}
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 shadow-inner">
+            <Boxes className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 1 (Warehouse)</p>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{totalStock1.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
+            <span className="inline-block mt-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+              Raw Storeroom
+            </span>
+          </div>
+        </div>
+
+        {/* Card 2: Stock 2 Production WIP */}
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 shadow-inner">
+            <Factory className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2 (Gluing WIP)</p>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{totalStock2.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
+            <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+              In Assembly Line
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3: Stock 3 Finished Goods */}
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 shadow-inner">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 3 (Finished)</p>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{totalStock3.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
+            <span className="inline-block mt-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+              Ready for Shipment
+            </span>
+          </div>
+        </div>
+
+        {/* Card 4: Master References */}
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 shadow-inner">
+            <Layers className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Master References</p>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{references.length} <span className="text-xs font-medium text-slate-400">Active</span></h3>
+            <span className="inline-block mt-1 text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+              Catalog Items
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Modern Floating Pill Tab Bar */}
+      <div className="bg-white/80 backdrop-blur-md p-2 rounded-3xl border border-slate-200/70 shadow-lg shadow-slate-200/30 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2" id="stock-sub-tabs-bar">
+        <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => setActiveSubTab("warehouse")}
-            className={`px-4 py-2 font-mono text-xs font-bold uppercase rounded-sm cursor-pointer transition-all ${
+            className={`px-4 py-2.5 text-xs font-bold rounded-2xl cursor-pointer transition-all flex items-center gap-2 ${
               activeSubTab === "warehouse"
-                ? "bg-white text-slate-900 shadow-xs border-b border-slate-400"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/40"
+                ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
             }`}
           >
-            1. Warehouse Inventory (Stock 1)
+            <Boxes className="w-4 h-4" />
+            <span>1. Warehouse Raw (Stock 1)</span>
           </button>
+          
           <button
             onClick={() => setActiveSubTab("production")}
-            className={`px-4 py-2 font-mono text-xs font-bold uppercase rounded-sm cursor-pointer transition-all ${
+            className={`px-4 py-2.5 text-xs font-bold rounded-2xl cursor-pointer transition-all flex items-center gap-2 ${
               activeSubTab === "production"
-                ? "bg-white text-slate-900 shadow-xs border-b border-slate-400"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/40"
+                ? "bg-amber-500 text-white shadow-md shadow-amber-500/25"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
             }`}
           >
-            2. Production Stock (Stock 2)
+            <Factory className="w-4 h-4" />
+            <span>2. Production WIP (Stock 2)</span>
           </button>
+          
+          <button
+            onClick={() => setActiveSubTab("finished")}
+            className={`px-4 py-2.5 text-xs font-bold rounded-2xl cursor-pointer transition-all flex items-center gap-2 ${
+              activeSubTab === "finished"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/25"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>3. Finished Goods (Stock 3)</span>
+          </button>
+          
           <button
             onClick={() => setActiveSubTab("reports")}
-            className={`px-4 py-2 font-mono text-xs font-bold uppercase rounded-sm cursor-pointer transition-all ${
+            className={`px-4 py-2.5 text-xs font-bold rounded-2xl cursor-pointer transition-all flex items-center gap-2 ${
               activeSubTab === "reports"
-                ? "bg-white text-slate-900 shadow-xs border-b border-slate-400"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/40"
+                ? "bg-purple-600 text-white shadow-md shadow-purple-500/25"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
             }`}
           >
-            3. Traceability Reports Suite
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>4. Traceability Reports</span>
           </button>
         </div>
 
-        <div className="hidden sm:flex items-center gap-1.5 text-[10px] font-mono text-slate-500 mr-2 uppercase">
-          <span>Active Operator: {currentUser.fullName}</span>
+        <div className="hidden lg:flex items-center gap-2 text-xs font-semibold text-slate-500 pr-3">
+          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+          <span>Logged in: {currentUser.fullName}</span>
         </div>
       </div>
 
       {statusMsg && (
-        <div className={`p-4 rounded-sm text-xs font-mono border ${
+        <div className={`p-4 rounded-2xl text-xs font-semibold border shadow-xs animate-fadeIn ${
           statusMsg.type === "success" 
-            ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
-            : "bg-rose-50 border-rose-200 text-rose-800"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-900" 
+            : "bg-rose-50 border-rose-200 text-rose-900"
         }`}>
           {statusMsg.text}
         </div>
@@ -254,29 +396,35 @@ export default function StockWorkspace({
         <div className="space-y-6">
           
           {/* Main Stock 1 References List */}
-          <div className="bg-white border border-slate-200 shadow-sm rounded-sm">
-            <div className="p-4 border-b border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 bg-sky-600 rounded-sm"></div>
-                <h3 className="text-xs font-bold uppercase font-mono tracking-wider text-slate-800">
-                  Stock 1 - Warehouse Storeroom Levels
+          <div className="bg-white border border-slate-100 shadow-xl shadow-slate-200/40 rounded-3xl overflow-hidden p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Boxes className="w-5 h-5 text-blue-600" />
+                  Stock 1 - Warehouse Raw Inventory
                 </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Untouched raw materials stored in warehouse
+                </p>
               </div>
 
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Filter references..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="px-2 py-1 bg-white border border-slate-300 text-xs rounded-sm focus:outline-none focus:border-slate-800 font-mono w-40"
-                />
+              <div className="flex gap-2.5 w-full sm:w-auto">
+                <div className="relative flex-1 sm:flex-none">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search references..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full sm:w-48 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 text-xs rounded-2xl font-mono focus:outline-none transition-all"
+                  />
+                </div>
                 <select
                   value={materialFilter}
                   onChange={(e) => setMaterialFilter(e.target.value as any)}
-                  className="px-2 py-1 bg-white border border-slate-300 text-xs rounded-sm focus:outline-none focus:border-slate-800 font-mono"
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-blue-500 cursor-pointer"
                 >
-                  <option value="All">All types</option>
+                  <option value="All">All Types</option>
                   <option value="Mesh">Mesh</option>
                   <option value="Soft">Soft</option>
                 </select>
@@ -286,26 +434,80 @@ export default function StockWorkspace({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-600 border-b border-slate-200 text-[10px] uppercase font-mono font-bold">
-                    <th className="py-2 px-4">Reference Code</th>
-                    <th className="py-2 px-4">Description</th>
-                    <th className="py-2 px-4">Material Type</th>
-                    <th className="py-2 px-4 text-right">Warehouse Qty (Stock 1)</th>
-                    <th className="py-2 px-4 text-right">Last Update</th>
+                  <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
+                    <th className="py-3 px-4">Reference Code</th>
+                    <th className="py-3 px-4">Description</th>
+                    <th className="py-3 px-4">Material Type</th>
+                    <th className="py-3 px-4 text-right">Warehouse Qty (Stock 1)</th>
+                    <th className="py-3 px-4 text-right">Last Update</th>
+                    {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                      <th className="py-3 px-4 text-center">Actions</th>
+                    )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                <tbody className="divide-y divide-slate-100 text-xs">
                   {filteredReferences.map(ref => (
-                    <tr key={ref.id} className="hover:bg-slate-50/50">
-                      <td className="py-2 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
-                      <td className="py-2 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
-                      <td className="py-2 px-4 font-mono">{ref.materialType}</td>
-                      <td className="py-2 px-4 text-right font-mono font-bold text-sky-600">
-                        {(ref.stock1 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans">PCS</span>
+                    <tr key={ref.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
+                      <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-mono text-[10px] font-bold rounded-full">
+                          {ref.materialType}
+                        </span>
                       </td>
-                      <td className="py-2 px-4 text-right text-[10px] text-slate-400 font-mono">
+                      <td className="py-3 px-4 text-right font-mono font-extrabold text-blue-600 text-sm">
+                        {editingRefId === ref.id && editingRefStage === "stock1" ? (
+                          <input
+                            type="number"
+                            min="0"
+                            value={editingRefQty}
+                            onChange={(e) => setEditingRefQty(Number(e.target.value))}
+                            className="w-24 text-right border border-blue-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
+                          />
+                        ) : (
+                          <>
+                            {(ref.stock1 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
+                          </>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
                         {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
                       </td>
+                      {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                        <td className="py-2 px-4 text-center">
+                          {editingRefId === ref.id && editingRefStage === "stock1" ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => handleSaveRefStockChange(ref.id)}
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
+                                title="Save Stock"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setEditingRefId(null)}
+                                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl cursor-pointer"
+                                title="Cancel"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingRefId(ref.id);
+                                setEditingRefStage("stock1");
+                                setEditingRefQty(ref.stock1 || 0);
+                              }}
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                              title="Edit/Deduct Stock 1"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -314,15 +516,20 @@ export default function StockWorkspace({
           </div>
 
           {/* Carton Box Inventory List (Scanned cartons list) */}
-          <div className="bg-white border border-slate-200 shadow-sm rounded-sm">
-            <div className="p-4 border-b border-slate-200 bg-slate-50/60 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-slate-500" />
-                <h3 className="text-xs font-bold uppercase font-mono tracking-wider text-slate-800">
-                  Stock 1 - Carton Boxes Registry (Traceability)
-                </h3>
+          <div className="bg-white border border-slate-100 shadow-xl shadow-slate-200/40 rounded-3xl overflow-hidden p-6">
+            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <FileText className="w-5 h-5 text-slate-700" />
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                    Stock 1 - Carton Boxes Registry (Traceability)
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Individual carton box records logged by operators
+                  </p>
+                </div>
               </div>
-              <span className="text-[10px] font-mono text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded-sm">
+              <span className="text-xs font-bold font-mono text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
                 {boxes.length} Active Cartons
               </span>
             </div>
@@ -330,54 +537,63 @@ export default function StockWorkspace({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-600 border-b border-slate-200 text-[10px] uppercase font-mono font-bold">
-                    <th className="py-2 px-4">Box Barcode</th>
-                    <th className="py-2 px-4">Reference</th>
-                    <th className="py-2 px-4">Location</th>
-                    <th className="py-2 px-4 text-right">Quantity</th>
-                    <th className="py-2 px-4 text-right">Scanned At</th>
-                    {currentUser.role === "admin" && <th className="py-2 px-4 text-center">Actions</th>}
+                  <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
+                    <th className="py-3 px-4">Box Barcode</th>
+                    <th className="py-3 px-4">Reference</th>
+                    <th className="py-3 px-4">Location</th>
+                    <th className="py-3 px-4 text-right">Quantity</th>
+                    <th className="py-3 px-4 text-right">Scanned At</th>
+                    {(currentUser.role === "admin" || currentUser.role === "supervisor") && <th className="py-3 px-4 text-center">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-mono">
                   {boxes.map(box => (
-                    <tr key={box.id} className="hover:bg-slate-50/50">
-                      <td className="py-2 px-4 text-slate-900 font-bold">{box.barcode}</td>
-                      <td className="py-2 px-4">{box.reference}</td>
-                      <td className="py-2 px-4 text-slate-500 font-sans text-[11px]">{box.location}</td>
-                      <td className="py-2 px-4 text-right font-bold text-slate-850">
+                    <tr key={box.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4 text-slate-900 font-bold">{box.barcode}</td>
+                      <td className="py-3 px-4 font-bold text-blue-700">{box.reference}</td>
+                      <td className="py-3 px-4 text-slate-500 font-sans text-xs">{box.location}</td>
+                      <td className="py-3 px-4 text-right font-extrabold text-slate-900">
                         {editingBoxId === box.id ? (
                           <input
                             type="number"
                             value={editedBoxQty}
                             onChange={(e) => setEditedBoxQty(Number(e.target.value))}
-                            className="w-16 text-right border border-slate-400 px-1 py-0.5 font-mono text-xs rounded-sm"
+                            className="w-20 text-right border border-blue-400 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
                           />
+                        ) : box.actualQty !== undefined && box.actualQty !== box.expectedQty ? (
+                          <div>
+                            <span className="font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                              Real: {box.actualQty} PCS
+                            </span>
+                            <span className="block text-[10px] text-slate-400 font-normal mt-0.5">
+                              Label: {box.expectedQty} (Diff: {box.actualQty - box.expectedQty > 0 ? '+' : ''}{box.actualQty - box.expectedQty})
+                            </span>
+                          </div>
                         ) : (
-                          (box.expectedQty || 0).toLocaleString()
+                          <span>{(box.actualQty ?? box.expectedQty ?? 0).toLocaleString()} PCS</span>
                         )}
                       </td>
-                      <td className="py-2 px-4 text-right text-[10px] text-slate-400">
+                      <td className="py-3 px-4 text-right text-[11px] text-slate-400">
                         {box.createdAt ? new Date(box.createdAt).toLocaleString() : "N/A"}
                       </td>
-                      {currentUser.role === "admin" && (
-                        <td className="py-1 px-4 text-center">
-                          <div className="flex items-center justify-center gap-1">
+                      {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                        <td className="py-2 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
                             {editingBoxId === box.id ? (
                               <>
                                 <button
                                   onClick={() => handleSaveBoxChange(box.id)}
-                                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-sm cursor-pointer"
+                                  className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
                                   title="Save Changes"
                                 >
-                                  <Check className="w-3.5 h-3.5" />
+                                  <Check className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => setEditingBoxId(null)}
-                                  className="p-1 text-slate-500 hover:bg-slate-100 rounded-sm cursor-pointer"
+                                  className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer"
                                   title="Cancel"
                                 >
-                                  <X className="w-3.5 h-3.5" />
+                                  <X className="w-4 h-4" />
                                 </button>
                               </>
                             ) : (
@@ -388,17 +604,17 @@ export default function StockWorkspace({
                                     setEditedBoxQty(box.expectedQty || 0);
                                     setEditedBoxLoc(box.location || "");
                                   }}
-                                  className="p-1 text-sky-600 hover:bg-sky-50 rounded-sm cursor-pointer"
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-xl cursor-pointer"
                                   title="Edit Quantity"
                                 >
-                                  <Edit2 className="w-3.5 h-3.5" />
+                                  <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteBoxAction(box.id)}
-                                  className="p-1 text-rose-600 hover:bg-rose-50 rounded-sm cursor-pointer"
+                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer"
                                   title="Delete Carton"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               </>
                             )}
@@ -427,29 +643,35 @@ export default function StockWorkspace({
       {/* ========================================================= */}
       {activeSubTab === "production" && (
         <div className="space-y-6">
-          <div className="bg-white border border-slate-200 shadow-sm rounded-sm">
-            <div className="p-4 border-b border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 bg-emerald-600 rounded-sm"></div>
-                <h3 className="text-xs font-bold uppercase font-mono tracking-wider text-slate-800">
-                  Stock 2 - Production Floor Material Levels
+          <div className="bg-white border border-slate-100 shadow-xl shadow-slate-200/40 rounded-3xl overflow-hidden p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Factory className="w-5 h-5 text-amber-500" />
+                  Stock 2 - Production Floor Material Levels (Mallas Pegadas)
                 </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Materials transferred to gluing and active production lines
+                </p>
               </div>
 
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Filter references..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="px-2 py-1 bg-white border border-slate-300 text-xs rounded-sm focus:outline-none focus:border-slate-800 font-mono w-40"
-                />
+              <div className="flex gap-2.5 w-full sm:w-auto">
+                <div className="relative flex-1 sm:flex-none">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search references..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full sm:w-48 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 text-xs rounded-2xl font-mono focus:outline-none transition-all"
+                  />
+                </div>
                 <select
                   value={materialFilter}
                   onChange={(e) => setMaterialFilter(e.target.value as any)}
-                  className="px-2 py-1 bg-white border border-slate-300 text-xs rounded-sm focus:outline-none focus:border-slate-800 font-mono"
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-amber-500 cursor-pointer"
                 >
-                  <option value="All">All types</option>
+                  <option value="All">All Types</option>
                   <option value="Mesh">Mesh</option>
                   <option value="Soft">Soft</option>
                 </select>
@@ -459,26 +681,80 @@ export default function StockWorkspace({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-600 border-b border-slate-200 text-[10px] uppercase font-mono font-bold">
-                    <th className="py-2 px-4">Reference Code</th>
-                    <th className="py-2 px-4">Description</th>
-                    <th className="py-2 px-4">Material Type</th>
-                    <th className="py-2 px-4 text-right">Production Qty (Stock 2)</th>
-                    <th className="py-2 px-4 text-right">Last Update</th>
+                  <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
+                    <th className="py-3 px-4">Reference Code</th>
+                    <th className="py-3 px-4">Description</th>
+                    <th className="py-3 px-4">Material Type</th>
+                    <th className="py-3 px-4 text-right">Production Qty (Stock 2)</th>
+                    <th className="py-3 px-4 text-right">Last Update</th>
+                    {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                      <th className="py-3 px-4 text-center">Actions</th>
+                    )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                <tbody className="divide-y divide-slate-100 text-xs">
                   {filteredReferences.map(ref => (
-                    <tr key={ref.id} className="hover:bg-slate-50/50">
-                      <td className="py-2 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
-                      <td className="py-2 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
-                      <td className="py-2 px-4 font-mono">{ref.materialType}</td>
-                      <td className="py-2 px-4 text-right font-mono font-bold text-emerald-600">
-                        {(ref.stock2 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans">PCS</span>
+                    <tr key={ref.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
+                      <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2.5 py-1 bg-amber-50 text-amber-700 font-mono text-[10px] font-bold rounded-full">
+                          {ref.materialType}
+                        </span>
                       </td>
-                      <td className="py-2 px-4 text-right text-[10px] text-slate-400 font-mono">
+                      <td className="py-3 px-4 text-right font-mono font-extrabold text-amber-600 text-sm">
+                        {editingRefId === ref.id && editingRefStage === "stock2" ? (
+                          <input
+                            type="number"
+                            min="0"
+                            value={editingRefQty}
+                            onChange={(e) => setEditingRefQty(Number(e.target.value))}
+                            className="w-24 text-right border border-amber-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
+                          />
+                        ) : (
+                          <>
+                            {(ref.stock2 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
+                          </>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
                         {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
                       </td>
+                      {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                        <td className="py-2 px-4 text-center">
+                          {editingRefId === ref.id && editingRefStage === "stock2" ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => handleSaveRefStockChange(ref.id)}
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
+                                title="Save Stock"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setEditingRefId(null)}
+                                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl cursor-pointer"
+                                title="Cancel"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingRefId(ref.id);
+                                setEditingRefStage("stock2");
+                                setEditingRefQty(ref.stock2 || 0);
+                              }}
+                              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                              title="Edit/Deduct Stock 2"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -489,22 +765,150 @@ export default function StockWorkspace({
       )}
 
       {/* ========================================================= */}
-      {/* TAB 3: TRACEABILITY REPORTS SUITE                         */}
+      {/* TAB 3: FINISHED GOODS STOCK (STOCK 3)                     */}
+      {/* ========================================================= */}
+      {activeSubTab === "finished" && (
+        <div className="space-y-6">
+          <div className="bg-white border border-slate-100 shadow-xl shadow-slate-200/40 rounded-3xl overflow-hidden p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  Stock 3 - Finished Goods Storeroom Levels
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Completed assembled items ready for shipping to clients
+                </p>
+              </div>
+
+              <div className="flex gap-2.5 w-full sm:w-auto">
+                <div className="relative flex-1 sm:flex-none">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search references..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full sm:w-48 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 text-xs rounded-2xl font-mono focus:outline-none transition-all"
+                  />
+                </div>
+                <select
+                  value={materialFilter}
+                  onChange={(e) => setMaterialFilter(e.target.value as any)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  <option value="All">All Types</option>
+                  <option value="Mesh">Mesh</option>
+                  <option value="Soft">Soft</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
+                    <th className="py-3 px-4">Reference Code</th>
+                    <th className="py-3 px-4">Description</th>
+                    <th className="py-3 px-4">Material Type</th>
+                    <th className="py-3 px-4 text-right">Finished Goods Qty (Stock 3)</th>
+                    <th className="py-3 px-4 text-right">Last Update</th>
+                    {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                      <th className="py-3 px-4 text-center">Actions</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {filteredReferences.map(ref => (
+                    <tr key={ref.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
+                      <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-mono text-[10px] font-bold rounded-full">
+                          {ref.materialType}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-extrabold text-emerald-600 text-sm">
+                        {editingRefId === ref.id && editingRefStage === "stock3" ? (
+                          <input
+                            type="number"
+                            min="0"
+                            value={editingRefQty}
+                            onChange={(e) => setEditingRefQty(Number(e.target.value))}
+                            className="w-24 text-right border border-emerald-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
+                          />
+                        ) : (
+                          <>
+                            {(ref.stock3 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
+                          </>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
+                        {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
+                      </td>
+                      {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                        <td className="py-2 px-4 text-center">
+                          {editingRefId === ref.id && editingRefStage === "stock3" ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => handleSaveRefStockChange(ref.id)}
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
+                                title="Save Stock"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setEditingRefId(null)}
+                                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl cursor-pointer"
+                                title="Cancel"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingRefId(ref.id);
+                                setEditingRefStage("stock3");
+                                setEditingRefQty(ref.stock3 || 0);
+                              }}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                              title="Edit/Deduct Stock 3"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 4: TRACEABILITY REPORTS SUITE                         */}
       {/* ========================================================= */}
       {activeSubTab === "reports" && (
         <div className="space-y-6">
           
           {/* Controls Panel */}
-          <div className="bg-white border border-slate-200 p-5 rounded-sm shadow-sm space-y-4">
+          <div className="bg-white border border-slate-100 p-6 rounded-3xl shadow-xl shadow-slate-200/40 space-y-5">
             
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <FileText className="w-5 h-5 text-slate-700" />
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+              <div className="p-2.5 bg-purple-50 text-purple-600 rounded-2xl">
+                <FileSpreadsheet className="w-6 h-6" />
+              </div>
               <div>
-                <h3 className="text-xs uppercase font-bold tracking-wider text-slate-800 font-mono">
-                  Custom Reports Generator
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  Custom Reports &amp; Traceability Suite
                 </h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Select and filter trace-data. Export dynamically compiled sheets to standard Excel/CSV formats.
+                <p className="text-xs text-slate-400">
+                  Compile custom stock logs and export formatted sheets to CSV / Excel
                 </p>
               </div>
             </div>
@@ -513,33 +917,34 @@ export default function StockWorkspace({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               
               {/* Report Category Selection */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-mono uppercase font-bold text-slate-500">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
                   1. Report Type
                 </label>
                 <select
                   value={reportType}
                   onChange={(e) => setReportType(e.target.value as any)}
-                  className="w-full py-1.5 px-2 bg-slate-50 border border-slate-300 text-xs rounded-sm font-mono focus:outline-none focus:border-slate-800 cursor-pointer"
+                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-purple-500 cursor-pointer"
                 >
                   <option value="history">Full Transaction History</option>
                   <option value="received">Material Received (S1 IN)</option>
                   <option value="transfers">Warehouse-Production Transfers</option>
-                  <option value="deliveries">Production Deliveries (S2 OUT)</option>
-                  <option value="s1_stock">Current Warehouse Stock (S1)</option>
-                  <option value="s2_stock">Current Production Stock (S2)</option>
+                  <option value="deliveries">Customer Deliveries (S3 OUT)</option>
+                  <option value="s1_stock">Current Warehouse Raw Stock (S1)</option>
+                  <option value="s2_stock">Current Production WIP Stock (S2)</option>
+                  <option value="s3_stock">Current Finished Goods Stock (S3)</option>
                 </select>
               </div>
 
               {/* Reference Selection */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-mono uppercase font-bold text-slate-500">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
                   2. Reference Filter
                 </label>
                 <select
                   value={repRefFilter}
                   onChange={(e) => setRepRefFilter(e.target.value)}
-                  className="w-full py-1.5 px-2 bg-slate-50 border border-slate-300 text-xs rounded-sm font-mono focus:outline-none focus:border-slate-800 cursor-pointer"
+                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-purple-500 cursor-pointer"
                 >
                   <option value="All">All References</option>
                   {references.map(r => (
@@ -549,30 +954,30 @@ export default function StockWorkspace({
               </div>
 
               {/* Date Selection */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-mono uppercase font-bold text-slate-500">
-                  3. Date (YYYY-MM-DD)
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
+                  3. Date Filter
                 </label>
                 <div className="relative">
-                  <Calendar className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="date"
                     value={repDateFilter}
                     onChange={(e) => setRepDateFilter(e.target.value)}
-                    className="w-full pl-7 pr-2 py-1.5 bg-slate-50 border border-slate-300 text-xs rounded-sm font-mono focus:outline-none focus:border-slate-800"
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
               </div>
 
               {/* Operator Selection */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-mono uppercase font-bold text-slate-500">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
                   4. Operator Name
                 </label>
                 <select
                   value={repOperatorFilter}
                   onChange={(e) => setRepOperatorFilter(e.target.value)}
-                  className="w-full py-1.5 px-2 bg-slate-50 border border-slate-300 text-xs rounded-sm font-mono focus:outline-none focus:border-slate-800 cursor-pointer"
+                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-purple-500 cursor-pointer"
                 >
                   {operatorsList.map(op => (
                     <option key={op} value={op}>{op}</option>
@@ -581,15 +986,15 @@ export default function StockWorkspace({
               </div>
 
               {/* Movement Type Selection */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-mono uppercase font-bold text-slate-500">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
                   5. Movement Type
                 </label>
                 <select
                   disabled={reportType !== "history"}
                   value={repMovementFilter}
                   onChange={(e) => setRepMovementFilter(e.target.value)}
-                  className="w-full py-1.5 px-2 bg-slate-50 border border-slate-300 text-xs rounded-sm font-mono focus:outline-none focus:border-slate-800 cursor-pointer disabled:bg-slate-200 disabled:text-slate-400"
+                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-purple-500 cursor-pointer disabled:bg-slate-100 disabled:text-slate-400"
                 >
                   <option value="All">All Movements</option>
                   <option value="STOCK 1 IN">STOCK 1 IN</option>
@@ -601,53 +1006,50 @@ export default function StockWorkspace({
             </div>
 
             {/* Execution Buttons */}
-            <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
-              <span className="text-[10px] font-mono text-slate-500">
+            <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
+              <span className="text-xs font-mono text-slate-500">
                 Matches found: <strong className="text-slate-900">{reportData.length} entries</strong>
               </span>
               <button
                 onClick={handleExportCSV}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-mono text-xs font-bold uppercase rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase rounded-2xl shadow-lg shadow-purple-500/20 flex items-center gap-2 transition-all cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5" />
-                Export to Excel (CSV)
+                <Download className="w-4 h-4" />
+                Export CSV / Excel
               </button>
             </div>
 
           </div>
 
           {/* Results Table Panel */}
-          <div className="bg-white border border-slate-200 shadow-sm rounded-sm">
-            <div className="p-4 border-b border-slate-200 bg-slate-50/60 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-slate-500" />
-                <h3 className="text-xs font-bold uppercase font-mono tracking-wider text-slate-800">
-                  Compiled Report Results Output
-                </h3>
-              </div>
+          <div className="bg-white border border-slate-100 shadow-xl shadow-slate-200/40 rounded-3xl overflow-hidden p-6">
+            <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-slate-100">
+              <Info className="w-5 h-5 text-purple-600" />
+              <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                Report Output Results
+              </h3>
             </div>
 
             <div className="overflow-x-auto">
-              {reportType === "s1_stock" || reportType === "s2_stock" ? (
-                // Stock-specific columns table format
+              {reportType === "s1_stock" || reportType === "s2_stock" || reportType === "s3_stock" ? (
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-600 border-b border-slate-200 text-[10px] uppercase font-mono font-bold">
-                      <th className="py-2.5 px-4">Predefined Reference</th>
-                      <th className="py-2.5 px-4">Description</th>
-                      <th className="py-2.5 px-4">Material Type</th>
-                      <th className="py-2.5 px-4 text-right">Current Stock Qty</th>
-                      <th className="py-2.5 px-4 text-right">Last System Sync</th>
+                    <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
+                      <th className="py-3 px-4">Reference Code</th>
+                      <th className="py-3 px-4">Description</th>
+                      <th className="py-3 px-4">Material Type</th>
+                      <th className="py-3 px-4 text-right">Current Stock Qty</th>
+                      <th className="py-3 px-4 text-right">Last System Sync</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-mono">
                     {reportData.map((row, index) => (
-                      <tr key={index} className="hover:bg-slate-50/50">
-                        <td className="py-2 px-4 font-bold text-slate-900">{row.reference}</td>
-                        <td className="py-2 px-4 font-sans text-slate-600 truncate max-w-xs">{row.description}</td>
-                        <td className="py-2 px-4">{row.materialType}</td>
-                        <td className="py-2 px-4 text-right text-slate-850 font-bold">{row.quantity.toLocaleString()}</td>
-                        <td className="py-2 px-4 text-right text-slate-400 text-[10px]">
+                      <tr key={index} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4 font-bold text-slate-900">{row.reference}</td>
+                        <td className="py-3 px-4 font-sans text-slate-600 truncate max-w-xs">{row.description}</td>
+                        <td className="py-3 px-4">{row.materialType}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 font-extrabold text-sm">{row.quantity.toLocaleString()}</td>
+                        <td className="py-3 px-4 text-right text-slate-400 text-[11px]">
                           {row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A"}
                         </td>
                       </tr>
@@ -662,43 +1064,42 @@ export default function StockWorkspace({
                   </tbody>
                 </table>
               ) : (
-                // Standard transactions log format
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-600 border-b border-slate-200 text-[10px] uppercase font-mono font-bold">
-                      <th className="py-2.5 px-4">Timestamp</th>
-                      <th className="py-2.5 px-4">Movement Type</th>
-                      <th className="py-2.5 px-4">Reference</th>
-                      <th className="py-2.5 px-4">Source Stock</th>
-                      <th className="py-2.5 px-4 text-right">Quantity</th>
-                      <th className="py-2.5 px-4">Operator</th>
-                      <th className="py-2.5 px-4">Notes</th>
+                    <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
+                      <th className="py-3 px-4">Timestamp</th>
+                      <th className="py-3 px-4">Movement Type</th>
+                      <th className="py-3 px-4">Reference</th>
+                      <th className="py-3 px-4">Source Stock</th>
+                      <th className="py-3 px-4 text-right">Quantity</th>
+                      <th className="py-3 px-4">Operator</th>
+                      <th className="py-3 px-4">Notes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-mono">
                     {reportData.map((row, index) => (
-                      <tr key={index} className="hover:bg-slate-50/50">
-                        <td className="py-2 px-4 text-[10px] text-slate-400">
+                      <tr key={index} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4 text-[11px] text-slate-400">
                           {row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A"}
                         </td>
-                        <td className="py-2 px-4">
-                          <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${
+                        <td className="py-3 px-4">
+                          <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${
                             row.movementType === "STOCK 1 IN" 
-                              ? "bg-sky-50 text-sky-700 border-sky-100" 
+                              ? "bg-blue-50 text-blue-700" 
                               : row.movementType === "TRANSFER"
-                              ? "bg-amber-50 text-amber-700 border-amber-100"
-                              : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-emerald-50 text-emerald-700"
                           }`}>
                             {row.movementType}
                           </span>
                         </td>
-                        <td className="py-2 px-4 font-bold text-slate-900">{row.reference}</td>
-                        <td className="py-2 px-4 text-slate-500 text-[11px]">{row.stock}</td>
-                        <td className="py-2 px-4 text-right font-bold text-slate-850">
+                        <td className="py-3 px-4 font-bold text-slate-900">{row.reference}</td>
+                        <td className="py-3 px-4 text-slate-500 text-xs">{row.stock}</td>
+                        <td className="py-3 px-4 text-right font-extrabold text-slate-900 text-sm">
                           {row.quantity.toLocaleString()}
                         </td>
-                        <td className="py-2 px-4 text-[11px] text-slate-700 font-sans">{row.operatorName}</td>
-                        <td className="py-2 px-4 text-[11px] text-slate-500 font-sans max-w-xs truncate" title={row.notes}>
+                        <td className="py-3 px-4 text-xs text-slate-700 font-sans">{row.operatorName}</td>
+                        <td className="py-3 px-4 text-xs text-slate-500 font-sans max-w-xs truncate" title={row.notes}>
                           {row.notes}
                         </td>
                       </tr>
@@ -722,3 +1123,4 @@ export default function StockWorkspace({
     </div>
   );
 }
+

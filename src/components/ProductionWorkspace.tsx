@@ -5,6 +5,7 @@ import {
   Factory, Search, Package, AlertCircle, Plus, Calendar, FileText, 
   BarChart2, User as UserIcon, CheckCircle, TrendingDown, ArrowUpRight, HelpCircle, Trash2
 } from "lucide-react";
+import Swal from "sweetalert2";
 
 interface ProductionWorkspaceProps {
   productions: Production[];
@@ -112,11 +113,11 @@ export default function ProductionWorkspace({
         return;
       }
 
-      // Check stock warning
+      // Check stock warning against Stock 2 (WIP)
       const refObj = references.find((r) => r.code === row.referenceCode);
-      const currentStock = refObj ? refObj.currentStock : 0;
-      if (consumeQty > currentStock) {
-        warnings.push(`Part ${row.referenceCode}: Quantity (${consumeQty} pcs) exceeds warehouse stock (${currentStock} pcs)`);
+      const stock2Val = refObj ? (refObj.stock2 || 0) : 0;
+      if (consumeQty > stock2Val) {
+        warnings.push(`Part ${row.referenceCode}: Production output quantity (${consumeQty} pcs) exceeds current Stock 2 WIP (${stock2Val} pcs)`);
       }
 
       submissions.push({
@@ -128,10 +129,22 @@ export default function ProductionWorkspace({
     }
 
     if (warnings.length > 0) {
-      const confirmProceed = window.confirm(
-        `Warning:\n${warnings.join("\n")}\n\nDo you still want to proceed with logging this production consumption? This will deduct the parts from warehouse stock.`
-      );
-      if (!confirmProceed) return;
+      const result = await Swal.fire({
+        title: "Production Warning",
+        html: `
+          <div class="text-left text-xs font-mono space-y-1 bg-amber-50 p-3 border border-amber-200 text-amber-900 rounded-none mb-3">
+            ${warnings.map(w => `<p>⚠️ ${w}</p>`).join("")}
+          </div>
+          <p class="text-sm font-sans font-bold text-slate-800">Do you still want to proceed with logging this production output? It will move parts from Stock 2 WIP to Stock 3 Finished Goods.</p>
+        `,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#2563eb",
+        cancelButtonColor: "#64748b",
+        confirmButtonText: "Yes, Log Production",
+        cancelButtonText: "Cancel"
+      });
+      if (!result.isConfirmed) return;
     }
 
     setSubmitting(true);
@@ -338,7 +351,7 @@ export default function ProductionWorkspace({
                               <option value="">-- Select Reference --</option>
                               {references.map((ref) => (
                                 <option key={ref.code} value={ref.code}>
-                                  {ref.code} ({ref.currentStock} pcs in stock)
+                                  {ref.code} (S2 WIP: {ref.stock2 || 0} | S3 Finished: {ref.stock3 || 0})
                                 </option>
                               ))}
                             </select>
@@ -349,7 +362,7 @@ export default function ProductionWorkspace({
                             <input
                               type="number"
                               min="1"
-                              placeholder="Quantity"
+                              placeholder="Qty Out"
                               value={row.quantity}
                               onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
                               className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 font-mono font-bold"
@@ -362,10 +375,8 @@ export default function ProductionWorkspace({
                           <div className="flex items-center justify-between text-[10px] font-mono px-0.5">
                             <span className="text-slate-400 truncate max-w-[150px]">{selectedRefObj.description}</span>
                             <div className="flex gap-2">
-                              <span className="text-slate-400">Stock:</span>
-                              <span className={`font-bold ${selectedRefObj.currentStock > 0 ? "text-emerald-600" : "text-rose-500"}`}>
-                                {selectedRefObj.currentStock} pcs
-                              </span>
+                              <span className="text-slate-400">S2 WIP: <strong className="text-amber-600">{selectedRefObj.stock2 || 0}</strong></span>
+                              <span className="text-slate-400">S3 Finished: <strong className="text-emerald-600">{selectedRefObj.stock3 || 0}</strong></span>
                             </div>
                           </div>
                         )}
@@ -448,7 +459,6 @@ export default function ProductionWorkspace({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Production Consumption Ledger</h3>
-                <p className="text-[11px] text-slate-400 font-medium">Daily traceability log of parts used on assembly line</p>
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">

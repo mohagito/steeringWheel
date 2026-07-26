@@ -3,6 +3,7 @@ import { User, UserRole } from "../types";
 import { 
   Plus, Trash2, Users, RefreshCw, Check, AlertCircle 
 } from "lucide-react";
+import Swal from "sweetalert2";
 
 interface AdminWorkspaceProps {
   users: User[];
@@ -17,7 +18,6 @@ export default function AdminWorkspace({
   onDeleteUser,
   onCleanDatabase,
 }: AdminWorkspaceProps) {
-  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
 
   // State for User Form
@@ -66,12 +66,89 @@ export default function AdminWorkspace({
       setNewFullName("");
       setNewPin("");
       setNewRole("operator");
+      
+      Swal.fire({
+        title: "User Created!",
+        text: `Successfully created user profile for ${newFullName.trim()}.`,
+        icon: "success",
+        timer: 1800,
+        showConfirmButton: false
+      });
+
       setTimeout(() => setUserSuccess(false), 2000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       setUserError("Error creating user account.");
+      Swal.fire("Error", err?.message || "Error creating user account.", "error");
     } finally {
       setUserSubmitLoading(false);
+    }
+  };
+
+  // Handle User Delete with SweetAlert
+  const handleDeleteUser = async (u: User) => {
+    const result = await Swal.fire({
+      title: `Delete user @${u.username}?`,
+      text: `Are you sure you want to permanently delete profile for ${u.fullName}?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Delete User",
+      cancelButtonText: "Cancel"
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await onDeleteUser(u.id);
+        await Swal.fire({
+          title: "User Deleted",
+          text: `Profile for ${u.fullName} was removed.`,
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false
+        });
+      } catch (err: any) {
+        console.error(err);
+        await Swal.fire("Error", err?.message || "Failed to delete user.", "error");
+      }
+    }
+  };
+
+  // Handle Reset Database with SweetAlert
+  const handleResetDatabase = async () => {
+    const result = await Swal.fire({
+      title: "Reset Database to 0 Stock?",
+      text: "CRITICAL: Are you absolutely sure you want to reset all inventory counts, cartons, and transaction history to 0? This action is permanent and cannot be undone!",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, RESET EVERYTHING TO 0!",
+      cancelButtonText: "Cancel / Keep Data"
+    });
+
+    if (result.isConfirmed) {
+      try {
+        setIsResetting(true);
+        await onCleanDatabase();
+        await Swal.fire({
+          title: "Database Reset Complete!",
+          text: "All reference inventory counts, carton records, and transactions have been reset to 0 stock starting state.",
+          icon: "success",
+          confirmButtonColor: "#2563eb"
+        });
+      } catch (e: any) {
+        console.error(e);
+        await Swal.fire({
+          title: "Reset Failed",
+          text: e?.message || "Failed to reset database.",
+          icon: "error",
+          confirmButtonColor: "#2563eb"
+        });
+      } finally {
+        setIsResetting(false);
+      }
     }
   };
 
@@ -227,33 +304,14 @@ export default function AdminWorkspace({
                     
                     {/* Cannot delete Gonzalo for safety */}
                     {u.username !== "gonzalo" && (
-                      deletingUserId === u.id ? (
-                        <div className="flex items-center gap-1.5" id={`confirm-delete-user-container-${u.id}`}>
-                          <button
-                            onClick={() => {
-                              onDeleteUser(u.id);
-                              setDeletingUserId(null);
-                            }}
-                            className="px-1.5 py-0.5 bg-red-600 hover:bg-red-700 text-white border border-red-700 text-[9px] font-bold cursor-pointer"
-                          >
-                            CONFIRM
-                          </button>
-                          <button
-                            onClick={() => setDeletingUserId(null)}
-                            className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 border border-slate-300 text-[9px] font-bold cursor-pointer"
-                          >
-                            CANCEL
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setDeletingUserId(u.id)}
-                          id={`delete-user-${u.id}`}
-                          className="p-1 text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-none transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )
+                      <button
+                        onClick={() => handleDeleteUser(u)}
+                        id={`delete-user-${u.id}`}
+                        className="p-1 text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-none transition-colors cursor-pointer"
+                        title="Delete User"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -273,26 +331,9 @@ export default function AdminWorkspace({
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-mono text-xs">
           <div className="space-y-1">
             <p className="font-bold text-slate-800">Reset System Database to Pristine State</p>
-            <p className="text-slate-500 text-[11px]">
-              This will completely wipe out all box records, adjustment audits, production histories, and deliveries. 
-              All official references will be initialized with 0 stock, creating a clean starting point for official production use.
-            </p>
           </div>
           <button
-            onClick={async () => {
-              if (window.confirm("CRITICAL: Are you absolutely sure you want to reset the entire database to 0 stock? This action is permanent and cannot be undone.")) {
-                try {
-                  setIsResetting(true);
-                  await onCleanDatabase();
-                  alert("Success: Database has been reset to 0 stock starting point!");
-                } catch (e) {
-                  console.error(e);
-                  alert("Error: Failed to reset database.");
-                } finally {
-                  setIsResetting(false);
-                }
-              }
-            }}
+            onClick={handleResetDatabase}
             disabled={isResetting}
             id="admin-reset-db-btn"
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold border border-red-700 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 select-none uppercase"
