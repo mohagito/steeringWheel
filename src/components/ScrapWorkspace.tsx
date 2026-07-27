@@ -4,6 +4,7 @@ import {
   Trash2, Calendar, Hash, AlertTriangle, CheckCircle2, 
   Search, ShieldAlert, ArrowDownRight, Layers, Flame, FileText, RefreshCw, Filter
 } from "lucide-react";
+import Swal from "sweetalert2";
 
 interface ScrapWorkspaceProps {
   scraps: ScrapEntry[];
@@ -515,8 +516,31 @@ export default function ScrapWorkspace({
                         <td className="py-3 px-3 text-right whitespace-nowrap">
                           <button
                             onClick={async () => {
-                              if (confirm(`Revert scrap entry for ${s.reference} (-${s.quantity} PCS)? This will restore ${s.quantity} PCS back to ${s.stockDeductedFrom}.`)) {
-                                await onDeleteScrap(s.id);
+                              const result = await Swal.fire({
+                                title: "Revert Scrap Entry?",
+                                text: `Revert scrap entry for ${s.reference} (-${s.quantity} PCS)? This will restore ${s.quantity} PCS back to ${s.stockDeductedFrom}.`,
+                                icon: "warning",
+                                showCancelButton: true,
+                                confirmButtonColor: "#dc2626",
+                                cancelButtonColor: "#64748b",
+                                confirmButtonText: "Yes, Revert & Restore Stock",
+                                cancelButtonText: "Cancel"
+                              });
+
+                              if (result.isConfirmed) {
+                                try {
+                                  await onDeleteScrap(s.id);
+                                  await Swal.fire({
+                                    title: "Scrap Entry Reverted",
+                                    text: `Successfully restored ${s.quantity} PCS to ${s.stockDeductedFrom} for ${s.reference}.`,
+                                    icon: "success",
+                                    timer: 1800,
+                                    showConfirmButton: false
+                                  });
+                                } catch (err: any) {
+                                  console.error(err);
+                                  await Swal.fire("Error", err?.message || "Failed to revert scrap entry.", "error");
+                                }
                               }
                             }}
                             title="Delete and restore stock"

@@ -336,6 +336,7 @@ export async function resetDatabaseToPristineState() {
     await clearCollection("boxes");
     await clearCollection("deliveries");
     await clearCollection("productions");
+    await clearCollection("scraps");
 
     // 2. Reset master references to pristine state with 0 stock
     await clearCollection("references");
