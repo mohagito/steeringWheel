@@ -80,11 +80,25 @@ export interface Reference {
   minStockThreshold?: number;
 }
 
+export interface ScrapEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  reference: string;
+  quantity: number;
+  condition: "CON COLA" | "SIN COLA"; // CON COLA -> Stock 3, SIN COLA -> Stock 2
+  notes?: string;
+  supervisorName: string;
+  timestamp: string;
+  stockDeductedFrom: "Stock 2" | "Stock 3";
+  stockBefore: number;
+  stockAfter: number;
+}
+
 export interface InventoryTransaction {
   id: string;
   barcode?: string;
   reference: string;
-  movementType: "STOCK 1 IN" | "STOCK 1 OUT" | "TRANSFER S1->S2" | "STOCK 2 IN" | "STOCK 2 OUT" | "STOCK 2 OUT / STOCK 3 IN" | "STOCK 3 IN" | "STOCK 3 OUT" | "TRANSFER" | "DELIVERY";
+  movementType: "STOCK 1 IN" | "STOCK 1 OUT" | "TRANSFER S1->S2" | "STOCK 2 IN" | "STOCK 2 OUT" | "STOCK 2 OUT / STOCK 3 IN" | "STOCK 3 IN" | "STOCK 3 OUT" | "TRANSFER" | "DELIVERY" | "SCRAP (CON COLA)" | "SCRAP (SIN COLA)";
   stock: "Stock 1" | "Stock 2" | "Stock 3" | "Stock 1 -> Stock 2" | "Stock 2 -> Stock 3";
   quantity: number;
   operatorName: string;

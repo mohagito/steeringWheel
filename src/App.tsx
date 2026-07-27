@@ -4,7 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState } from "./seeder";
-import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction } from "./types";
+import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry } from "./types";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
 import OperatorWorkspace from "./components/OperatorWorkspace";
@@ -13,10 +13,11 @@ import AdminWorkspace from "./components/AdminWorkspace";
 import StockWorkspace from "./components/StockWorkspace";
 import DeliveriesWorkspace from "./components/DeliveriesWorkspace";
 import ProductionWorkspace from "./components/ProductionWorkspace";
+import ScrapWorkspace from "./components/ScrapWorkspace";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
-  RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory
+  RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2
 } from "lucide-react";
 
 export default function App() {
@@ -27,9 +28,10 @@ export default function App() {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [productions, setProductions] = useState<Production[]>([]);
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
+  const [scraps, setScraps] = useState<ScrapEntry[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "scrap">("dashboard");
 
   // Sync state with Firestore on mount
   useEffect(() => {
@@ -40,6 +42,7 @@ export default function App() {
     let unsubDeliveries: (() => void) | null = null;
     let unsubProductions: (() => void) | null = null;
     let unsubTransactions: (() => void) | null = null;
+    let unsubScraps: (() => void) | null = null;
 
     async function initApp() {
       try {
@@ -150,6 +153,21 @@ export default function App() {
         }
       );
 
+      unsubScraps = onSnapshot(
+        collection(db, "scraps"),
+        (snapshot) => {
+          const scrapList: ScrapEntry[] = [];
+          snapshot.forEach((doc) => {
+            scrapList.push({ id: doc.id, ...doc.data() } as ScrapEntry);
+          });
+          scrapList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setScraps(scrapList);
+        },
+        (error) => {
+          console.error("Error subscribing to scraps:", error);
+        }
+      );
+
       unsubUsers = onSnapshot(
         collection(db, "users"), 
         (snapshot) => {
@@ -176,6 +194,7 @@ export default function App() {
       if (unsubDeliveries) unsubDeliveries();
       if (unsubProductions) unsubProductions();
       if (unsubTransactions) unsubTransactions();
+      if (unsubScraps) unsubScraps();
       if (unsubUsers) unsubUsers();
     };
   }, []);
@@ -413,6 +432,114 @@ export default function App() {
       });
     });
 
+    await batch.commit();
+  };
+
+  // Action: Supervisor logs NOK / Scrap Mesh entry
+  const handleSubmitScrap = async (scrapData: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter" | "stockDeductedFrom">) => {
+    if (!currentUser) return;
+    const batch = writeBatch(db);
+    const timestamp = new Date().toISOString();
+    const refCode = scrapData.reference;
+    const qty = scrapData.quantity;
+    const isConCola = scrapData.condition === "CON COLA";
+
+    const refDocRef = doc(db, "references", refCode);
+    const refSnap = await getDoc(refDocRef);
+
+    let currentStock1 = 0;
+    let currentStock2 = 0;
+    let currentStock3 = 0;
+
+    if (refSnap.exists()) {
+      const d = refSnap.data();
+      currentStock1 = d.stock1 || 0;
+      currentStock2 = d.stock2 || 0;
+      currentStock3 = d.stock3 || 0;
+    }
+
+    const stockBefore = isConCola ? currentStock3 : currentStock2;
+    const stockAfter = Math.max(0, stockBefore - qty);
+    const stockDeductedFrom: "Stock 2" | "Stock 3" = isConCola ? "Stock 3" : "Stock 2";
+
+    const newStock2 = isConCola ? currentStock2 : stockAfter;
+    const newStock3 = isConCola ? stockAfter : currentStock3;
+    const newTotal = currentStock1 + newStock2 + newStock3;
+
+    const scrapId = `scrap-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const newScrap: ScrapEntry = {
+      ...scrapData,
+      id: scrapId,
+      supervisorName: currentUser.fullName,
+      timestamp,
+      stockDeductedFrom,
+      stockBefore,
+      stockAfter
+    };
+
+    // 1. Save scrap record
+    batch.set(doc(db, "scraps", scrapId), cleanUndefined(newScrap));
+
+    // 2. Update reference stock
+    batch.set(refDocRef, {
+      stock2: newStock2,
+      stock3: newStock3,
+      currentStock: newTotal,
+      lastUpdate: timestamp
+    }, { merge: true });
+
+    // 3. Add to transactions audit log
+    const transId = `trans-scrap-${Date.now()}`;
+    batch.set(doc(db, "transactions", transId), {
+      id: transId,
+      reference: refCode,
+      movementType: isConCola ? "SCRAP (CON COLA)" : "SCRAP (SIN COLA)",
+      stock: stockDeductedFrom,
+      quantity: qty,
+      operatorName: currentUser.fullName,
+      timestamp,
+      notes: `NOK Scrap (${scrapData.condition}): Date ${scrapData.date} - ${scrapData.notes || "No defect details"}`,
+      stock2Before: currentStock2,
+      stock2After: newStock2,
+      stock3Before: currentStock3,
+      stock3After: newStock3
+    });
+
+    await batch.commit();
+  };
+
+  // Action: Supervisor deletes / reverts a scrap entry
+  const handleDeleteScrap = async (scrapId: string) => {
+    const scrapToDel = scraps.find(s => s.id === scrapId);
+    if (!scrapToDel) return;
+
+    const batch = writeBatch(db);
+    const refCode = scrapToDel.reference;
+    const qty = scrapToDel.quantity;
+    const isConCola = scrapToDel.condition === "CON COLA";
+
+    const refDocRef = doc(db, "references", refCode);
+    const refSnap = await getDoc(refDocRef);
+
+    if (refSnap.exists()) {
+      const d = refSnap.data();
+      const s1 = d.stock1 || 0;
+      const s2 = d.stock2 || 0;
+      const s3 = d.stock3 || 0;
+
+      const newStock2 = isConCola ? s2 : s2 + qty;
+      const newStock3 = isConCola ? s3 + qty : s3;
+      const newTotal = s1 + newStock2 + newStock3;
+
+      batch.set(refDocRef, {
+        stock2: newStock2,
+        stock3: newStock3,
+        currentStock: newTotal,
+        lastUpdate: new Date().toISOString()
+      }, { merge: true });
+    }
+
+    batch.delete(doc(db, "scraps", scrapId));
     await batch.commit();
   };
 
@@ -835,6 +962,24 @@ export default function App() {
               </button>
             )}
 
+            {/* SCRAP Tab */}
+            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
+              <button
+                onClick={() => setActiveTab("scrap")}
+                id="nav-tab-scrap"
+                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                  activeTab === "scrap"
+                    ? "text-rose-400 font-bold bg-[#0f1e36] border-rose-500"
+                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Trash2 className="w-4 h-4 shrink-0" />
+                  <span>SCRAP (NOK)</span>
+                </div>
+              </button>
+            )}
+
             {/* Operator Tab */}
             {currentUser.role !== "admin" && (
               <button
@@ -933,6 +1078,7 @@ export default function App() {
 
               {activeTab === "deliveries" && "Customer Deliveries & Dispatches"}
               {activeTab === "production" && "Daily Production Consumption"}
+              {activeTab === "scrap" && "SCRAP & NOK Mesh Management"}
               {activeTab === "operator" && "Inventory Count Workspace"}
               {activeTab === "supervisor" && "Supervisor Validation & Sign-offs"}
               {activeTab === "admin" && "Administrative Control Center"}
@@ -1005,6 +1151,16 @@ export default function App() {
                   references={references}
                   currentUser={currentUser}
                   onSubmitProduction={handleSubmitProduction}
+                />
+              )}
+
+              {activeTab === "scrap" && (currentUser.role === "supervisor" || currentUser.role === "admin") && (
+                <ScrapWorkspace
+                  scraps={scraps}
+                  references={references}
+                  currentUser={currentUser}
+                  onSubmitScrap={handleSubmitScrap}
+                  onDeleteScrap={handleDeleteScrap}
                 />
               )}
 

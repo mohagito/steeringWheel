@@ -244,14 +244,14 @@ export default function OperatorWorkspace({
     setSuccessMsg("");
     setAutoCorrectNotice("");
 
-    const cleanInvoice = invoiceNumber.trim().toUpperCase();
+    const cleanInvoice = invoiceNumber.trim().toUpperCase() || (opMode === "TRANSFER" ? "PEGADAS" : "");
     const rawRef = referenceCode.trim();
     const expectedQtyVal = parseInt(quantity);
     const actualQtyVal = opMode === "TRANSFER"
       ? expectedQtyVal
       : (actualQuantity.trim() !== "" ? parseInt(actualQuantity) : expectedQtyVal);
 
-    if (!cleanInvoice) {
+    if (opMode === "INTAKE" && !cleanInvoice) {
       setErrorMsg("Please fill in the Invoice Number first.");
       invoiceRef.current?.focus();
       playErrorBeep();
@@ -536,10 +536,12 @@ export default function OperatorWorkspace({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                {opMode === "INTAKE" ? "1. Incoming Truck Intake (Stock 1)" : "2. Send Mesh to Gluing (Stock 1 → 2)"}
+                {opMode === "INTAKE" ? "1. Incoming Truck Intake (Stock 1)" : "2. Send Mesh to Pegadas (Stock 1 → Stock 2)"}
               </h3>
               <p className="text-[11px] text-slate-400">
-                Continuous hands-free barcode scanning station
+                {opMode === "INTAKE" 
+                  ? "Continuous hands-free barcode scanning station"
+                  : "Remove meshes from Stock 1 room warehouse to Pegadas"}
               </p>
             </div>
           </div>
@@ -564,6 +566,7 @@ export default function OperatorWorkspace({
               setErrorMsg("");
               setSuccessMsg("");
               setAutoCorrectNotice("");
+              setTimeout(() => invoiceRef.current?.focus(), 50);
             }}
             className={`py-2.5 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
               opMode === "INTAKE"
@@ -581,6 +584,7 @@ export default function OperatorWorkspace({
               setErrorMsg("");
               setSuccessMsg("");
               setAutoCorrectNotice("");
+              setTimeout(() => referenceRef.current?.focus(), 50);
             }}
             className={`py-2.5 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
               opMode === "TRANSFER"
@@ -617,32 +621,34 @@ export default function OperatorWorkspace({
 
         <form onSubmit={handleFormSubmit} className="space-y-5">
           
-          {/* INVOICE NUMBER */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
-              1. Invoice / Delivery Note Number
-            </label>
-            <div className="relative">
-              <FileText className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                ref={invoiceRef}
-                type="text"
-                required
-                placeholder="Type or scan invoice number..."
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                onKeyDown={handleInvoiceKeyDown}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-2xl text-xs font-mono uppercase focus:outline-none transition-all"
-                id="op-invoice-field"
-                autoComplete="off"
-              />
+          {/* INVOICE NUMBER (Only for Intake from New Truck) */}
+          {opMode === "INTAKE" && (
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                1. Invoice / Delivery Note Number
+              </label>
+              <div className="relative">
+                <FileText className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  ref={invoiceRef}
+                  type="text"
+                  required
+                  placeholder="Type or scan invoice number..."
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  onKeyDown={handleInvoiceKeyDown}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-2xl text-xs font-mono uppercase focus:outline-none transition-all"
+                  id="op-invoice-field"
+                  autoComplete="off"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* REFERENCE CODE */}
-          <div className="space-y-1.5 pt-2">
+          <div className="space-y-1.5 pt-1">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between">
-              <span>2. Reference Code (Scan Barcode)</span>
+              <span>{opMode === "INTAKE" ? "2. Reference Code (Scan Barcode)" : "1. Reference Code (Scan Barcode)"}</span>
               <span className="text-[10px] text-blue-600 font-normal font-mono">Smart Prefix Match Enabled</span>
             </label>
             <div>
@@ -680,23 +686,23 @@ export default function OperatorWorkspace({
             ) : null}
           </div>
 
-          {/* QUANTITY FIELDS (Single Qty for TRANSFER, Dual Qty for INTAKE) */}
+          {/* QUANTITY FIELDS (Single Qty for Pegadas TRANSFER, Dual Qty for Truck INTAKE) */}
           {opMode === "TRANSFER" ? (
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between">
-                <span>3. Quantity (Transfer PCS)</span>
-                <span className="text-[10px] text-slate-400 font-normal">S1 ➔ S2</span>
+                <span>2. Quantity (Transfer to Pegadas PCS)</span>
+                <span className="text-[10px] text-amber-600 font-semibold font-mono">Stock 1 ➔ Stock 2 (Pegadas)</span>
               </label>
               <input
                 ref={quantityRef}
                 type="number"
                 required
                 min="1"
-                placeholder="Enter PCS quantity to transfer..."
+                placeholder="Enter PCS quantity to send to Pegadas..."
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 onKeyDown={handleQuantityKeyDown}
-                className="w-full px-4 py-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-2xl text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all"
+                className="w-full px-4 py-3 bg-amber-50/40 focus:bg-white border-2 border-amber-200 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 rounded-2xl text-xs font-mono font-extrabold text-slate-900 focus:outline-none transition-all"
                 id="op-quantity-field"
                 autoComplete="off"
               />
