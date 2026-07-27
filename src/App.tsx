@@ -498,7 +498,7 @@ export default function App() {
       quantity: qty,
       operatorName: currentUser.fullName,
       timestamp,
-      notes: `NOK Scrap (${scrapData.condition}): Date ${scrapData.date} - ${scrapData.notes || "No defect details"}`,
+      notes: `NOK Scrap (${scrapData.condition}): Date ${scrapData.date}${scrapData.invoiceNumber ? ` | Scrap Invoice: ${scrapData.invoiceNumber}` : ""}`,
       stock2Before: currentStock2,
       stock2After: newStock2,
       stock3Before: currentStock3,

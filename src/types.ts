@@ -86,6 +86,7 @@ export interface ScrapEntry {
   reference: string;
   quantity: number;
   condition: "CON COLA" | "SIN COLA"; // CON COLA -> Stock 3, SIN COLA -> Stock 2
+  invoiceNumber?: string; // Scrap delivery invoice for traceability
   notes?: string;
   supervisorName: string;
   timestamp: string;

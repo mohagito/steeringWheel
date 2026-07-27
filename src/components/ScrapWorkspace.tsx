@@ -28,6 +28,7 @@ export default function ScrapWorkspace({
   const [reference, setReference] = useState("");
   const [quantity, setQuantity] = useState("");
   const [condition, setCondition] = useState<"CON COLA" | "SIN COLA">("CON COLA");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
 
   // UX Feedback States
   const [submitting, setSubmitting] = useState(false);
@@ -83,6 +84,7 @@ export default function ScrapWorkspace({
         reference: cleanRef,
         quantity: qtyVal,
         condition,
+        invoiceNumber: invoiceNumber.trim().toUpperCase(),
         notes: ""
       });
 
@@ -91,6 +93,7 @@ export default function ScrapWorkspace({
       // Reset entry inputs (keep date)
       setReference("");
       setQuantity("");
+      setInvoiceNumber("");
       
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch (err: any) {
@@ -111,6 +114,7 @@ export default function ScrapWorkspace({
       const matchesSearch = 
         s.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
         s.supervisorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (s.invoiceNumber && s.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase()));
       
       const matchesCondition = conditionFilter === "ALL" || s.condition === conditionFilter;
@@ -341,6 +345,24 @@ export default function ScrapWorkspace({
               />
             </div>
 
+            {/* 5. SCRAP DELIVERY INVOICE */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between">
+                <span>5. Scrap Delivery Invoice #</span>
+                <span className="text-[10px] text-slate-400 font-normal">For Traceability</span>
+              </label>
+              <div className="relative">
+                <FileText className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="e.g. INV-SCRAP-2026-001..."
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 rounded-2xl text-xs font-mono font-bold uppercase text-slate-900 focus:outline-none transition-all"
+                />
+              </div>
+            </div>
+
             {/* SUBMIT BUTTON */}
             <div className="pt-2">
               <button
@@ -445,6 +467,7 @@ export default function ScrapWorkspace({
                     <th className="py-3 px-3">Reference</th>
                     <th className="py-3 px-3">Condition</th>
                     <th className="py-3 px-3 text-right">Qty (NOK)</th>
+                    <th className="py-3 px-3">Scrap Invoice #</th>
                     <th className="py-3 px-3">Stock Deducted</th>
                     <th className="py-3 px-3">Supervisor</th>
                     {onDeleteScrap && <th className="py-3 px-3 text-right">Action</th>}
@@ -470,6 +493,16 @@ export default function ScrapWorkspace({
                       </td>
                       <td className="py-3 px-3 font-mono font-black text-rose-600 text-right text-sm whitespace-nowrap">
                         -{s.quantity} PCS
+                      </td>
+                      <td className="py-3 px-3 font-mono text-xs whitespace-nowrap">
+                        {s.invoiceNumber ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-800 rounded-md font-bold text-[11px] border border-slate-200/80">
+                            <FileText className="w-3 h-3 text-rose-600 shrink-0" />
+                            {s.invoiceNumber}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px] italic">—</span>
+                        )}
                       </td>
                       <td className="py-3 px-3 font-mono text-[11px] whitespace-nowrap text-slate-600">
                         <span className="font-bold text-slate-800">{s.stockDeductedFrom}</span>
