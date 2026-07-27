@@ -1,8 +1,143 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Default deny all unmapped documents and collections
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUser(d) {
+      return d.username is string && d.username.size() > 0 && d.username.size() <= 64
+          && d.fullName is string && d.fullName.size() > 0 && d.fullName.size() <= 100
+          && d.role in ['operator', 'supervisor', 'admin']
+          && d.pin is string && d.pin.size() >= 4 && d.pin.size() <= 8;
+    }
+
+    function isValidBox(d) {
+      return d.barcode is string && d.barcode.size() > 0 && d.barcode.size() <= 64
+          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
+          && d.expectedQty is number && d.expectedQty >= 0
+          && d.location is string && d.location.size() <= 100;
+    }
+
+    function isValidAdjustment(d) {
+      return d.barcode is string && d.barcode.size() > 0 && d.barcode.size() <= 64
+          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
+          && d.expectedQty is number && d.expectedQty >= 0
+          && d.actualQty is number && d.actualQty >= 0
+          && d.difference is number
+          && d.operatorName is string && d.operatorName.size() > 0 && d.operatorName.size() <= 100
+          && d.status in ['pending', 'approved', 'rejected']
+          && d.timestamp is string;
+    }
+
+    function isValidReference(d) {
+      return d.code is string && d.code.size() > 0 && d.code.size() <= 64
+          && d.description is string && d.description.size() <= 200
+          && d.materialType in ['Mesh', 'Soft']
+          && d.currentStock is number && d.currentStock >= 0;
+    }
+
+    function isValidDelivery(d) {
+      return d.invoiceNumber is string && d.invoiceNumber.size() > 0 && d.invoiceNumber.size() <= 64
+          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
+          && d.quantity is number && d.quantity > 0
+          && d.operatorName is string && d.operatorName.size() > 0 && d.operatorName.size() <= 100
+          && d.customer is string && d.customer.size() > 0 && d.customer.size() <= 100
+          && d.timestamp is string;
+    }
+
+    function isValidProduction(d) {
+      return d.date is string && d.date.size() == 10
+          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
+          && d.quantity is number && d.quantity > 0
+          && d.operatorName is string && d.operatorName.size() > 0 && d.operatorName.size() <= 100
+          && d.timestamp is string;
+    }
+
+    function isValidScrap(d) {
+      return d.date is string && d.date.size() == 10
+          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
+          && d.quantity is number && d.quantity > 0
+          && d.condition in ['CON COLA', 'SIN COLA']
+          && d.supervisorName is string && d.supervisorName.size() > 0 && d.supervisorName.size() <= 100
+          && d.timestamp is string
+          && d.stockDeductedFrom in ['Stock 2', 'Stock 3']
+          && d.stockBefore is number && d.stockBefore >= 0
+          && d.stockAfter is number && d.stockAfter >= 0;
+    }
+
+    function isValidTransaction(d) {
+      return d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
+          && d.movementType is string && d.movementType.size() > 0 && d.movementType.size() <= 100
+          && d.stock is string && d.stock.size() > 0 && d.stock.size() <= 50
+          && d.quantity is number && d.quantity >= 0
+          && d.operatorName is string && d.operatorName.size() > 0 && d.operatorName.size() <= 100
+          && d.timestamp is string;
+    }
+
+    // Collection Rules
+
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if isValidId(userId) && isValidUser(incoming());
+      allow delete: if isValidId(userId);
+    }
+
+    match /boxes/{boxId} {
+      allow read: if true;
+      allow create, update: if isValidId(boxId) && isValidBox(incoming());
+      allow delete: if isValidId(boxId);
+    }
+
+    match /adjustments/{adjustmentId} {
+      allow read: if true;
+      allow create, update: if isValidId(adjustmentId) && isValidAdjustment(incoming());
+      allow delete: if isValidId(adjustmentId);
+    }
+
+    match /references/{referenceId} {
+      allow read: if true;
+      allow create, update: if isValidId(referenceId) && isValidReference(incoming());
+      allow delete: if isValidId(referenceId);
+    }
+
+    match /deliveries/{deliveryId} {
+      allow read: if true;
+      allow create, update: if isValidId(deliveryId) && isValidDelivery(incoming());
+      allow delete: if isValidId(deliveryId);
+    }
+
+    match /productions/{productionId} {
+      allow read: if true;
+      allow create, update: if isValidId(productionId) && isValidProduction(incoming());
+      allow delete: if isValidId(productionId);
+    }
+
+    match /scraps/{scrapId} {
+      allow read: if true;
+      allow create, update: if isValidId(scrapId) && isValidScrap(incoming());
+      allow delete: if isValidId(scrapId);
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if true;
+      allow create, update: if isValidId(transactionId) && isValidTransaction(incoming());
+      allow delete: if isValidId(transactionId);
     }
   }
 }

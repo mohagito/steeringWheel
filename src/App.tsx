@@ -927,7 +927,7 @@ export default function App() {
 
 
             {/* Deliveries Tab */}
-            {currentUser.role === "admin" && (
+            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
               <button
                 onClick={() => setActiveTab("deliveries")}
                 id="nav-tab-deliveries"
@@ -945,7 +945,7 @@ export default function App() {
             )}
 
             {/* Production Tab */}
-            {currentUser.role === "admin" && (
+            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
               <button
                 onClick={() => setActiveTab("production")}
                 id="nav-tab-production"
@@ -1136,7 +1136,7 @@ export default function App() {
 
 
 
-              {activeTab === "deliveries" && currentUser.role === "admin" && (
+              {activeTab === "deliveries" && (currentUser.role === "supervisor" || currentUser.role === "admin") && (
                 <DeliveriesWorkspace
                   deliveries={deliveries}
                   references={references}
@@ -1145,7 +1145,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === "production" && currentUser.role === "admin" && (
+              {activeTab === "production" && (currentUser.role === "supervisor" || currentUser.role === "admin") && (
                 <ProductionWorkspace
                   productions={productions}
                   references={references}

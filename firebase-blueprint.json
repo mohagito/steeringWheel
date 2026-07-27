@@ -87,6 +87,41 @@
         "notes": { "type": "string", "description": "Optional comments" }
       },
       "required": ["date", "reference", "quantity", "operatorName", "timestamp"]
+    },
+    "Scrap": {
+      "title": "Scrap",
+      "description": "A quality control scrap entry (NOK parts) with invoice number traceability",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "The scrap record date YYYY-MM-DD" },
+        "reference": { "type": "string", "description": "The part reference code" },
+        "quantity": { "type": "number", "description": "The quantity of NOK scrap parts" },
+        "condition": { "type": "string", "enum": ["CON COLA", "SIN COLA"], "description": "Scrap condition type" },
+        "invoiceNumber": { "type": "string", "description": "Scrap delivery invoice number for traceability" },
+        "supervisorName": { "type": "string", "description": "Name of the supervisor who recorded the scrap" },
+        "timestamp": { "type": "string", "description": "Creation timestamp" },
+        "stockDeductedFrom": { "type": "string", "enum": ["Stock 2", "Stock 3"], "description": "Which stock was deducted" },
+        "stockBefore": { "type": "number", "description": "Stock quantity before scrap deduction" },
+        "stockAfter": { "type": "number", "description": "Stock quantity after scrap deduction" },
+        "notes": { "type": "string", "description": "Optional notes" }
+      },
+      "required": ["date", "reference", "quantity", "condition", "supervisorName", "timestamp", "stockDeductedFrom", "stockBefore", "stockAfter"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Unified inventory movement audit log for traceability across Stock 1, 2, and 3",
+      "type": "object",
+      "properties": {
+        "reference": { "type": "string", "description": "Part reference code" },
+        "movementType": { "type": "string", "description": "Type of stock movement" },
+        "stock": { "type": "string", "description": "Stock location affected" },
+        "quantity": { "type": "number", "description": "Quantity moved" },
+        "operatorName": { "type": "string", "description": "Operator or supervisor name" },
+        "timestamp": { "type": "string", "description": "Transaction timestamp" },
+        "notes": { "type": "string", "description": "Movement details and audit notes" },
+        "barcode": { "type": "string", "description": "Box barcode if applicable" }
+      },
+      "required": ["reference", "movementType", "stock", "quantity", "operatorName", "timestamp"]
     }
   },
   "firestore": {
@@ -113,6 +148,14 @@
     "/productions/{productionId}": {
       "schema": "Production",
       "description": "Collection of daily production consumption logs"
+    },
+    "/scraps/{scrapId}": {
+      "schema": "Scrap",
+      "description": "Collection of quality NOK scrap entries"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Collection of unified audit transactions"
     }
   }
 }
