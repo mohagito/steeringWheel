@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Outer Orange Ring -->
+  <path d="M 256 16 A 240 240 0 1 0 496 256 A 240 240 0 0 0 256 16 Z M 256 100 A 156 156 0 1 1 100 256 A 156 156 0 0 1 256 100 Z" fill="#F57C00" />
+  
+  <!-- Subtle diagonal shadow on top-right quadrant of outer ring -->
+  <path d="M 425.8 86.2 A 240 240 0 0 1 496 256 L 411.6 256 A 156 156 0 0 0 366.2 145.8 Z" fill="#E65100" opacity="0.25" />
+  <path d="M 256 16 A 240 240 0 0 1 425.8 86.2 L 366.2 145.8 A 156 156 0 0 0 256 100 Z" fill="#FFA726" opacity="0.25" />
+
+  <!-- Slate Grey Steering Wheel Core Structure / Spokes -->
+  <path d="M 100 220 L 412 220 A 156 156 0 0 1 426 270 C 330 270 310 300 286 410 A 156 156 0 0 1 226 410 C 202 300 182 270 86 270 A 156 156 0 0 1 100 220 Z" fill="#37474F" />
+
+  <!-- Shadow split on right side of spokes -->
+  <path d="M 256 220 L 412 220 A 156 156 0 0 1 426 270 C 330 270 310 300 286 410 L 256 410 Z" fill="#263238" opacity="0.25" />
+
+  <!-- Center Orange Horn / Hub Cap -->
+  <circle cx="256" cy="256" r="64" fill="#F57C00" />
+  <path d="M 256 192 A 64 64 0 0 1 320 256 L 256 256 Z" fill="#FFA726" opacity="0.3" />
+</svg>
