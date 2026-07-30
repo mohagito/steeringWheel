@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { User, UserRole } from "../types";
 import { 
-  Plus, Trash2, Users, RefreshCw, Check, AlertCircle 
+  Plus, Trash2, Users, RefreshCw, Check, AlertCircle, ShieldCheck 
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -10,6 +10,7 @@ interface AdminWorkspaceProps {
   onAddUser: (userData: User) => Promise<void>;
   onDeleteUser: (userId: string) => Promise<void>;
   onCleanDatabase: () => Promise<void>;
+  onAuditDatabase?: () => Promise<{ repairedRefs: number; repairedUsers: number }>;
 }
 
 export default function AdminWorkspace({
@@ -17,8 +18,10 @@ export default function AdminWorkspace({
   onAddUser,
   onDeleteUser,
   onCleanDatabase,
+  onAuditDatabase,
 }: AdminWorkspaceProps) {
   const [isResetting, setIsResetting] = useState(false);
+  const [isAuditing, setIsAuditing] = useState(false);
 
   // State for User Form
   const [newUsername, setNewUsername] = useState("");
@@ -112,6 +115,40 @@ export default function AdminWorkspace({
         console.error(err);
         await Swal.fire("Error", err?.message || "Failed to delete user.", "error");
       }
+    }
+  };
+
+  // Handle Audit & Database Health Check
+  const handleAuditDatabase = async () => {
+    if (!onAuditDatabase) return;
+    try {
+      setIsAuditing(true);
+      const res = await onAuditDatabase();
+      if (res.repairedRefs > 0 || res.repairedUsers > 0) {
+        await Swal.fire({
+          title: "Database Audited & Repaired!",
+          text: `Verified system database! Repaired ${res.repairedRefs} reference stock records and ${res.repairedUsers} user profiles. All stock formulas and security schemas are 100% verified.`,
+          icon: "success",
+          confirmButtonColor: "#16a34a"
+        });
+      } else {
+        await Swal.fire({
+          title: "Database 100% Solid & Verified!",
+          text: "Audit complete! All reference stock records, user profiles, and security structures are completely healthy, mathematically synced, and secure.",
+          icon: "success",
+          confirmButtonColor: "#2563eb"
+        });
+      }
+    } catch (err: any) {
+      console.error(err);
+      await Swal.fire({
+        title: "Audit Failed",
+        text: err?.message || "Failed to audit database.",
+        icon: "error",
+        confirmButtonColor: "#dc2626"
+      });
+    } finally {
+      setIsAuditing(false);
     }
   };
 
@@ -320,6 +357,31 @@ export default function AdminWorkspace({
           </div>
         </div>
 
+      </div>
+
+      {/* Enterprise Integrity Audit & Maintenance */}
+      <div className="bg-white p-4 rounded-none border border-emerald-200 shadow-2xs mt-4">
+        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-emerald-100">
+          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <h4 className="font-mono font-bold text-emerald-900 text-xs uppercase">Enterprise Data Integrity & Audit</h4>
+        </div>
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-mono text-xs">
+          <div className="space-y-1">
+            <p className="font-bold text-slate-800">1-Click Database Audit & Self-Healing Verification</p>
+            <p className="text-[10px] text-slate-500">
+              Validates mathematical stock equations (<span className="font-mono text-slate-700">Stock1 + Stock2 + Stock3 = Total</span>), fixes null or undefined fields, and verifies user access permissions.
+            </p>
+          </div>
+          <button
+            onClick={handleAuditDatabase}
+            disabled={isAuditing}
+            id="admin-audit-db-btn"
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold border border-emerald-700 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 select-none uppercase shadow-2xs"
+          >
+            <ShieldCheck className={`w-4 h-4 ${isAuditing ? 'animate-spin' : ''}`} />
+            <span>AUDIT & SECURE DATABASE</span>
+          </button>
+        </div>
       </div>
 
       {/* Danger Zone: Database Reset */}

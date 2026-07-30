@@ -573,16 +573,18 @@ export default function App() {
     
     let currentStock1 = 0;
     let currentStock2 = 0;
+    let currentStock3 = 0;
     if (refSnap.exists()) {
       const refData = refSnap.data();
       currentStock1 = refData.stock1 || 0;
       currentStock2 = refData.stock2 || 0;
+      currentStock3 = refData.stock3 || 0;
     }
     
     const stockBefore = currentStock1;
     const stockAdded = adjustmentData.actualQty; // Real Counted Quantity added
     const stockAfter = stockAdded; // In physical adjustment, we override Stock 1 with the counted qty!
-    const newTotal = stockAfter + currentStock2;
+    const newTotal = stockAfter + currentStock2 + currentStock3;
 
     // Save adjustment record to Firestore with stock tracking info
     const newId = `adj-${Date.now()}`;
@@ -601,6 +603,8 @@ export default function App() {
     // Update reference stock
     await setDoc(refDocRef, {
       stock1: stockAfter,
+      stock2: currentStock2,
+      stock3: currentStock3,
       currentStock: newTotal,
       lastUpdate: new Date().toISOString()
     }, { merge: true });
@@ -854,6 +858,66 @@ export default function App() {
   // Action: Clean/Reset Database
   const handleCleanDatabase = async () => {
     await resetDatabaseToPristineState();
+  };
+
+  // Action: Audit & Repair Database Integrity for Enterprise Readiness
+  const handleAuditDatabase = async (): Promise<{ repairedRefs: number; repairedUsers: number }> => {
+    let repairedRefs = 0;
+    let repairedUsers = 0;
+
+    const refsSnap = await getDocs(collection(db, "references"));
+    const usersSnap = await getDocs(collection(db, "users"));
+    const batch = writeBatch(db);
+
+    // 1. Audit & Fix References
+    refsSnap.forEach((d) => {
+      const data = d.data();
+      const s1 = typeof data.stock1 === "number" ? data.stock1 : 0;
+      const s2 = typeof data.stock2 === "number" ? data.stock2 : 0;
+      const s3 = typeof data.stock3 === "number" ? data.stock3 : 0;
+      const expectedTotal = s1 + s2 + s3;
+
+      let needsFix = false;
+      const patch: any = {};
+
+      if (data.stock1 !== s1) { patch.stock1 = s1; needsFix = true; }
+      if (data.stock2 !== s2) { patch.stock2 = s2; needsFix = true; }
+      if (data.stock3 !== s3) { patch.stock3 = s3; needsFix = true; }
+      if (data.currentStock !== expectedTotal) { patch.currentStock = expectedTotal; needsFix = true; }
+      if (!data.code) { patch.code = d.id; needsFix = true; }
+      if (!data.description) { patch.description = `Malla Reference ${d.id}`; needsFix = true; }
+      if (!data.materialType) { patch.materialType = "Mesh"; needsFix = true; }
+      if (!data.lastUpdate) { patch.lastUpdate = new Date().toISOString(); needsFix = true; }
+
+      if (needsFix) {
+        batch.set(doc(db, "references", d.id), patch, { merge: true });
+        repairedRefs++;
+      }
+    });
+
+    // 2. Audit & Fix Users
+    usersSnap.forEach((u) => {
+      const data = u.data();
+      let needsFix = false;
+      const patch: any = {};
+
+      const cleanUsername = data.username ? String(data.username).trim().toLowerCase() : "";
+      if (cleanUsername && data.username !== cleanUsername) { patch.username = cleanUsername; needsFix = true; }
+      if (!data.role || !["operator", "supervisor", "admin"].includes(data.role)) { patch.role = "operator"; needsFix = true; }
+      if (!data.pin) { patch.pin = "1234"; needsFix = true; }
+      if (!data.fullName) { patch.fullName = data.username || "User Profile"; needsFix = true; }
+
+      if (needsFix) {
+        batch.set(doc(db, "users", u.id), patch, { merge: true });
+        repairedUsers++;
+      }
+    });
+
+    if (repairedRefs > 0 || repairedUsers > 0) {
+      await batch.commit();
+    }
+
+    return { repairedRefs, repairedUsers };
   };
 
   // Change active profile/Logout
@@ -1212,6 +1276,7 @@ export default function App() {
                   onAddUser={handleAddUser}
                   onDeleteUser={handleDeleteUser}
                   onCleanDatabase={handleCleanDatabase}
+                  onAuditDatabase={handleAuditDatabase}
                 />
               )}
             </motion.div>
