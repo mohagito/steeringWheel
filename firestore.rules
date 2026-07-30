@@ -49,7 +49,7 @@ service cloud.firestore {
       return d.code is string && d.code.size() > 0 && d.code.size() <= 64
           && d.description is string && d.description.size() <= 200
           && d.materialType in ['Mesh', 'Soft']
-          && d.currentStock is number && d.currentStock >= 0;
+          && d.currentStock is number;
     }
 
     function isValidDelivery(d) {
@@ -77,8 +77,8 @@ service cloud.firestore {
           && d.supervisorName is string && d.supervisorName.size() > 0 && d.supervisorName.size() <= 100
           && d.timestamp is string
           && d.stockDeductedFrom in ['Stock 2', 'Stock 3']
-          && d.stockBefore is number && d.stockBefore >= 0
-          && d.stockAfter is number && d.stockAfter >= 0;
+          && d.stockBefore is number
+          && d.stockAfter is number;
     }
 
     function isValidTransaction(d) {

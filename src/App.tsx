@@ -255,12 +255,12 @@ export default function App() {
 
       if (isPrecosido) {
         // PRECOSIDO deliveries deduct from STOCK 2 (Mallas Pegadas)
-        newStock2 = Math.max(0, refStock.stock2 - qty);
+        newStock2 = refStock.stock2 - qty;
         movementType = "STOCK 2 OUT";
         stockLabel = "Stock 2";
       } else {
         // VILLANOVA / Normal deliveries deduct from STOCK 3 (Mallas in Steering Wheels)
-        newStock3 = Math.max(0, refStock.stock3 - qty);
+        newStock3 = refStock.stock3 - qty;
         movementType = "STOCK 3 OUT";
         stockLabel = "Stock 3";
       }
@@ -335,7 +335,7 @@ export default function App() {
       const refStock = refSnapMap[refCode] || { stock1: 0, stock2: 0, stock3: 0 };
 
       // Transfer: Deducts Stock 1 (Untouched) and Adds to Stock 2 (Mallas Pegadas)
-      const newStock1 = Math.max(0, refStock.stock1 - entry.quantity);
+      const newStock1 = refStock.stock1 - entry.quantity;
       const newStock2 = refStock.stock2 + entry.quantity;
       const newTotal = newStock1 + newStock2 + refStock.stock3;
       refSnapMap[refCode] = { ...refStock, stock1: newStock1, stock2: newStock2 };
@@ -393,7 +393,7 @@ export default function App() {
       const refStock = refSnapMap[refCode] || { stock1: 0, stock2: 0, stock3: 0 };
       
       // Production Completion: Deducts from Stock 2 (WIP) and adds to Stock 3 (Finished Goods)
-      const newStock2 = Math.max(0, refStock.stock2 - entry.quantity);
+      const newStock2 = refStock.stock2 - entry.quantity;
       const newStock3 = refStock.stock3 + entry.quantity;
       const newTotal = refStock.stock1 + newStock2 + newStock3;
       refSnapMap[refCode] = { ...refStock, stock2: newStock2, stock3: newStock3 }; // update locally
@@ -435,75 +435,97 @@ export default function App() {
     await batch.commit();
   };
 
-  // Action: Supervisor logs NOK / Scrap Mesh entry
-  const handleSubmitScrap = async (scrapData: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter" | "stockDeductedFrom">) => {
+  // Action: Supervisor logs NOK / Scrap Mesh entry (Single or Batch)
+  const handleSubmitScrap = async (
+    scrapInput: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter" | "stockDeductedFrom"> | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter" | "stockDeductedFrom">[]
+  ) => {
     if (!currentUser) return;
+    const entries = Array.isArray(scrapInput) ? scrapInput : [scrapInput];
+    if (entries.length === 0) return;
+
     const batch = writeBatch(db);
     const timestamp = new Date().toISOString();
-    const refCode = scrapData.reference;
-    const qty = scrapData.quantity;
-    const isConCola = scrapData.condition === "CON COLA";
 
-    const refDocRef = doc(db, "references", refCode);
-    const refSnap = await getDoc(refDocRef);
+    // Cache local reference stocks across multi-item batch
+    const localStockMap: Record<string, { s1: number; s2: number; s3: number }> = {};
 
-    let currentStock1 = 0;
-    let currentStock2 = 0;
-    let currentStock3 = 0;
+    for (let index = 0; index < entries.length; index++) {
+      const entry = entries[index];
+      const refCode = entry.reference;
+      const qty = entry.quantity;
+      const isConCola = entry.condition === "CON COLA";
 
-    if (refSnap.exists()) {
-      const d = refSnap.data();
-      currentStock1 = d.stock1 || 0;
-      currentStock2 = d.stock2 || 0;
-      currentStock3 = d.stock3 || 0;
+      if (!localStockMap[refCode]) {
+        const refDocRef = doc(db, "references", refCode);
+        const refSnap = await getDoc(refDocRef);
+        if (refSnap.exists()) {
+          const d = refSnap.data();
+          localStockMap[refCode] = {
+            s1: d.stock1 || 0,
+            s2: d.stock2 || 0,
+            s3: d.stock3 || 0
+          };
+        } else {
+          localStockMap[refCode] = { s1: 0, s2: 0, s3: 0 };
+        }
+      }
+
+      const current = localStockMap[refCode];
+      const stockBefore = isConCola ? current.s3 : current.s2;
+      const stockAfter = stockBefore - qty;
+      const stockDeductedFrom: "Stock 2" | "Stock 3" = isConCola ? "Stock 3" : "Stock 2";
+
+      const newStock2 = isConCola ? current.s2 : stockAfter;
+      const newStock3 = isConCola ? stockAfter : current.s3;
+      const newTotal = current.s1 + newStock2 + newStock3;
+
+      // Update local cache for subsequent items in same batch
+      localStockMap[refCode] = {
+        s1: current.s1,
+        s2: newStock2,
+        s3: newStock3
+      };
+
+      const scrapId = `scrap-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
+      const newScrap: ScrapEntry = {
+        ...entry,
+        id: scrapId,
+        supervisorName: currentUser.fullName,
+        timestamp,
+        stockDeductedFrom,
+        stockBefore,
+        stockAfter
+      };
+
+      // 1. Save scrap record
+      batch.set(doc(db, "scraps", scrapId), cleanUndefined(newScrap));
+
+      // 2. Update reference stock
+      const refDocRef = doc(db, "references", refCode);
+      batch.set(refDocRef, {
+        stock2: newStock2,
+        stock3: newStock3,
+        currentStock: newTotal,
+        lastUpdate: timestamp
+      }, { merge: true });
+
+      // 3. Add to transactions audit log
+      const transId = `trans-scrap-${Date.now()}-${index}`;
+      batch.set(doc(db, "transactions", transId), {
+        id: transId,
+        reference: refCode,
+        movementType: isConCola ? "SCRAP (CON COLA)" : "SCRAP (SIN COLA)",
+        stock: stockDeductedFrom,
+        quantity: qty,
+        operatorName: currentUser.fullName,
+        timestamp,
+        notes: `NOK Scrap (${entry.condition}): Date ${entry.date}${entry.invoiceNumber ? ` | Scrap Invoice: ${entry.invoiceNumber}` : ""}`,
+        stock2Before: current.s2,
+        stock2After: newStock2,
+        stock3Before: current.s3,
+        stock3After: newStock3
+      });
     }
-
-    const stockBefore = isConCola ? currentStock3 : currentStock2;
-    const stockAfter = Math.max(0, stockBefore - qty);
-    const stockDeductedFrom: "Stock 2" | "Stock 3" = isConCola ? "Stock 3" : "Stock 2";
-
-    const newStock2 = isConCola ? currentStock2 : stockAfter;
-    const newStock3 = isConCola ? stockAfter : currentStock3;
-    const newTotal = currentStock1 + newStock2 + newStock3;
-
-    const scrapId = `scrap-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    const newScrap: ScrapEntry = {
-      ...scrapData,
-      id: scrapId,
-      supervisorName: currentUser.fullName,
-      timestamp,
-      stockDeductedFrom,
-      stockBefore,
-      stockAfter
-    };
-
-    // 1. Save scrap record
-    batch.set(doc(db, "scraps", scrapId), cleanUndefined(newScrap));
-
-    // 2. Update reference stock
-    batch.set(refDocRef, {
-      stock2: newStock2,
-      stock3: newStock3,
-      currentStock: newTotal,
-      lastUpdate: timestamp
-    }, { merge: true });
-
-    // 3. Add to transactions audit log
-    const transId = `trans-scrap-${Date.now()}`;
-    batch.set(doc(db, "transactions", transId), {
-      id: transId,
-      reference: refCode,
-      movementType: isConCola ? "SCRAP (CON COLA)" : "SCRAP (SIN COLA)",
-      stock: stockDeductedFrom,
-      quantity: qty,
-      operatorName: currentUser.fullName,
-      timestamp,
-      notes: `NOK Scrap (${scrapData.condition}): Date ${scrapData.date}${scrapData.invoiceNumber ? ` | Scrap Invoice: ${scrapData.invoiceNumber}` : ""}`,
-      stock2Before: currentStock2,
-      stock2After: newStock2,
-      stock3Before: currentStock3,
-      stock3After: newStock3
-    });
 
     await batch.commit();
   };

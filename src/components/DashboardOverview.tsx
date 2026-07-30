@@ -279,28 +279,13 @@ export default function DashboardOverview({
         let stageName = "Stock 1 (Warehouse)";
 
         if (removeStockStage === "stock1") {
-          if (qty > s1) {
-            setModalFeedback({ type: "error", message: `Cannot remove ${qty} pcs! Stock 1 only has ${s1} pcs.` });
-            setModalSubmitting(false);
-            return;
-          }
-          newS1 = Math.max(0, s1 - qty);
+          newS1 = s1 - qty;
           stageName = "Stock 1 (Warehouse)";
         } else if (removeStockStage === "stock2") {
-          if (qty > s2) {
-            setModalFeedback({ type: "error", message: `Cannot remove ${qty} pcs! Stock 2 only has ${s2} pcs.` });
-            setModalSubmitting(false);
-            return;
-          }
-          newS2 = Math.max(0, s2 - qty);
+          newS2 = s2 - qty;
           stageName = "Stock 2 (Gluing WIP)";
         } else if (removeStockStage === "stock3") {
-          if (qty > s3) {
-            setModalFeedback({ type: "error", message: `Cannot remove ${qty} pcs! Stock 3 only has ${s3} pcs.` });
-            setModalSubmitting(false);
-            return;
-          }
-          newS3 = Math.max(0, s3 - qty);
+          newS3 = s3 - qty;
           stageName = "Stock 3 (Finished Wheels)";
         }
 
@@ -366,16 +351,16 @@ export default function DashboardOverview({
           </div>
         </div>
 
-        {/* Card 2: Production Gluing WIP */}
+        {/* Card 2: Storage 2 Mallas Pegadas */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 shadow-inner">
             <Factory className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2 (Gluing WIP)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2 (Mallas Pegadas)</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{metrics.totalProductionStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
             <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-              In Assembly Line
+              Storage 2 (Plantilla + Malla)
             </span>
           </div>
         </div>
@@ -476,7 +461,7 @@ export default function DashboardOverview({
                 Mallas Pegadas
               </h4>
               <p className="text-xs text-slate-500 mt-0.5">
-                Plantillas + Malla (Glued Mesh WIP)
+                Storage 2 (Plantilla + Malla = Mallas Pegadas) — Pending Assembly Line
               </p>
             </div>
 

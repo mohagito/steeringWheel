@@ -238,7 +238,7 @@ export default function StockWorkspace({
     if (!onUpdateReference) return;
     try {
       await onUpdateReference(refId, {
-        [editingRefStage]: Math.max(0, Number(editingRefQty))
+        [editingRefStage]: Number(editingRefQty)
       });
       setStatusMsg({ type: "success", text: `Reference ${editingRefStage.toUpperCase()} stock level updated successfully.` });
       setEditingRefId(null);
@@ -277,16 +277,16 @@ export default function StockWorkspace({
           </div>
         </div>
 
-        {/* Card 2: Stock 2 Production WIP */}
+        {/* Card 2: Stock 2 Storage 2 (Mallas Pegadas) */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 shadow-inner">
             <Factory className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2 (Gluing WIP)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2 (Mallas Pegadas)</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{totalStock2.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
             <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-              In Assembly Line
+              Storage 2 (Plantilla + Malla)
             </span>
           </div>
         </div>
@@ -345,7 +345,7 @@ export default function StockWorkspace({
             }`}
           >
             <Factory className="w-4 h-4" />
-            <span>2. Production WIP (Stock 2)</span>
+            <span>2. MALLAS PEGADAS (Stock 2)</span>
           </button>
           
           <button

@@ -17,6 +17,8 @@ interface DeliveriesWorkspaceProps {
 interface DispatchRow {
   referenceCode: string;
   quantity: string;
+  customer: string;
+  deliveryType: "PRECOSIDO" | "Villanova" | "Normal Delivery";
 }
 
 export default function DeliveriesWorkspace({
@@ -26,10 +28,12 @@ export default function DeliveriesWorkspace({
   onSubmitDeliveries
 }: DeliveriesWorkspaceProps) {
   const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [customer, setCustomer] = useState("");
-  const [deliveryType, setDeliveryType] = useState<"PRECOSIDO" | "Villanova" | "Normal Delivery">("Villanova");
+  const [defaultCustomer, setDefaultCustomer] = useState("");
+  const [defaultDeliveryType, setDefaultDeliveryType] = useState<"PRECOSIDO" | "Villanova" | "Normal Delivery">("Villanova");
   const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState<DispatchRow[]>([{ referenceCode: "", quantity: "" }]);
+  const [rows, setRows] = useState<DispatchRow[]>([
+    { referenceCode: "", quantity: "", customer: "", deliveryType: "Villanova" }
+  ]);
 
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
@@ -40,7 +44,15 @@ export default function DeliveriesWorkspace({
   const [customerFilter, setCustomerFilter] = useState("All");
 
   const handleAddRow = () => {
-    setRows([...rows, { referenceCode: "", quantity: "" }]);
+    setRows([
+      ...rows, 
+      { 
+        referenceCode: "", 
+        quantity: "", 
+        customer: defaultCustomer.trim().toUpperCase() || "", 
+        deliveryType: defaultDeliveryType 
+      }
+    ]);
   };
 
   const handleRemoveRow = (index: number) => {
@@ -57,11 +69,11 @@ export default function DeliveriesWorkspace({
       [field]: value
     };
 
-    // Auto-fill customer if not specified and we select a reference that has a customer
-    if (field === "referenceCode" && !customer.trim()) {
+    // Auto-fill customer for this specific row if reference has an assigned customer
+    if (field === "referenceCode" && value) {
       const refObj = references.find((r) => r.code === value);
-      if (refObj && refObj.customer) {
-        setCustomer(refObj.customer);
+      if (refObj && refObj.customer && !updatedRows[index].customer) {
+        updatedRows[index].customer = refObj.customer;
       }
     }
 
@@ -79,11 +91,6 @@ export default function DeliveriesWorkspace({
       return;
     }
 
-    if (!customer.trim()) {
-      setErrorMsg("Please specify the destination Customer.");
-      return;
-    }
-
     // Validate rows
     if (rows.length === 0) {
       setErrorMsg("Please add at least one reference delivery.");
@@ -91,7 +98,6 @@ export default function DeliveriesWorkspace({
     }
 
     const cleanedInvoice = invoiceNumber.trim().toUpperCase();
-    const cleanedCustomer = customer.trim().toUpperCase();
 
     const submissions: Omit<Delivery, "id" | "timestamp" | "operatorName">[] = [];
     const warnings: string[] = [];
@@ -103,23 +109,31 @@ export default function DeliveriesWorkspace({
         return;
       }
 
+      const rowCustomer = (row.customer || defaultCustomer || "").trim().toUpperCase();
+      if (!rowCustomer) {
+        setErrorMsg(`Row ${i + 1} (${row.referenceCode}): Please specify the destination Customer.`);
+        return;
+      }
+
       const deliverQty = parseInt(row.quantity, 10);
       if (isNaN(deliverQty) || deliverQty <= 0) {
         setErrorMsg(`Row ${i + 1} (${row.referenceCode}): Please enter a valid quantity greater than 0.`);
         return;
       }
 
+      const rowType = row.deliveryType || defaultDeliveryType || "Villanova";
+
       // Check stock warning against correct stock level (Stock 2 for Precosido, Stock 3 for Villanova)
       const refObj = references.find((r) => r.code === row.referenceCode);
-      if (deliveryType === "PRECOSIDO") {
+      if (rowType === "PRECOSIDO") {
         const stock2Val = refObj ? (refObj.stock2 || 0) : 0;
         if (deliverQty > stock2Val) {
-          warnings.push(`Part ${row.referenceCode}: Quantity (${deliverQty} pcs) exceeds Stock 2 Glued Mesh (${stock2Val} pcs)`);
+          warnings.push(`Part ${row.referenceCode}: Qty (${deliverQty} pcs) exceeds Stock 2 Glued Mesh (${stock2Val} pcs)`);
         }
       } else {
         const stock3Val = refObj ? (refObj.stock3 || 0) : 0;
         if (deliverQty > stock3Val) {
-          warnings.push(`Part ${row.referenceCode}: Quantity (${deliverQty} pcs) exceeds Stock 3 Steering Wheels (${stock3Val} pcs)`);
+          warnings.push(`Part ${row.referenceCode}: Qty (${deliverQty} pcs) exceeds Stock 3 Steering Wheels (${stock3Val} pcs)`);
         }
       }
 
@@ -127,8 +141,8 @@ export default function DeliveriesWorkspace({
         reference: row.referenceCode,
         quantity: deliverQty,
         invoiceNumber: cleanedInvoice,
-        customer: cleanedCustomer,
-        deliveryType,
+        customer: rowCustomer,
+        deliveryType: rowType,
         notes: notes.trim() || undefined
       });
     }
@@ -156,13 +170,13 @@ export default function DeliveriesWorkspace({
     try {
       await onSubmitDeliveries(submissions);
 
-      setSuccessMsg(`Successfully registered invoice ${cleanedInvoice} with ${submissions.length} references delivered to ${cleanedCustomer}!`);
+      setSuccessMsg(`Successfully registered invoice ${cleanedInvoice} with ${submissions.length} dispatched reference(s)!`);
       
       // Clear inputs
       setInvoiceNumber("");
-      setCustomer("");
+      setDefaultCustomer("");
       setNotes("");
-      setRows([{ referenceCode: "", quantity: "" }]);
+      setRows([{ referenceCode: "", quantity: "", customer: "", deliveryType: defaultDeliveryType }]);
 
       // Fade success message
       setTimeout(() => {
@@ -284,7 +298,7 @@ export default function DeliveriesWorkspace({
                     <FileText className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="e.g. Pk84683"
+                      placeholder="e.g. MPT2286"
                       value={invoiceNumber}
                       onChange={(e) => setInvoiceNumber(e.target.value)}
                       className="w-full pl-8.5 pr-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold uppercase"
@@ -293,33 +307,32 @@ export default function DeliveriesWorkspace({
                   </div>
                 </div>
 
-                {/* Destination Customer */}
+                {/* Default Customer fallback */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Customer
+                    Default Customer
                   </label>
                   <input
                     type="text"
                     placeholder="e.g. RENAULT"
-                    value={customer}
-                    onChange={(e) => setCustomer(e.target.value)}
+                    value={defaultCustomer}
+                    onChange={(e) => setDefaultCustomer(e.target.value)}
                     className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-semibold uppercase font-mono"
-                    required
                   />
                 </div>
 
-                {/* Delivery Category Type */}
+                {/* Default Delivery Type */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Delivery Type
+                    Default Type
                   </label>
                   <select
-                    value={deliveryType}
-                    onChange={(e) => setDeliveryType(e.target.value as any)}
+                    value={defaultDeliveryType}
+                    onChange={(e) => setDefaultDeliveryType(e.target.value as any)}
                     className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white font-mono font-bold text-slate-800 cursor-pointer"
                   >
-                    <option value="Villanova">Villanova (Stock 3 Wheels)</option>
-                    <option value="PRECOSIDO">PRECOSIDO (Stock 2 Glued Mesh)</option>
+                    <option value="Villanova">Villanova (Stock 3)</option>
+                    <option value="PRECOSIDO">PRECOSIDO (Stock 2)</option>
                   </select>
                 </div>
               </div>
@@ -328,20 +341,24 @@ export default function DeliveriesWorkspace({
               <div className="space-y-3.5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    {deliveryType === "PRECOSIDO" 
-                      ? "References to Deliver (Deducts Stock 2 Glued Mesh)" 
-                      : "References to Deliver (Deducts Stock 3 Steering Wheels)"}
+                    Dispatched Items in Invoice
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
                     {rows.length} reference{rows.length > 1 ? "s" : ""}
                   </span>
                 </div>
 
-                <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
                   {rows.map((row, index) => {
                     const selectedRefObj = references.find((r) => r.code === row.referenceCode);
+                    const rowDeliveryType = row.deliveryType || defaultDeliveryType || "Villanova";
+                    const isPrecosido = rowDeliveryType === "PRECOSIDO";
+                    const relevantStock = selectedRefObj 
+                      ? (isPrecosido ? (selectedRefObj.stock2 || 0) : (selectedRefObj.stock3 || 0))
+                      : 0;
+
                     return (
-                      <div key={index} className="p-3 bg-slate-50/70 border border-slate-200/60 rounded-xl relative space-y-2">
+                      <div key={index} className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl relative space-y-2.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-mono font-bold bg-slate-200/80 text-slate-600 px-2 py-0.5 rounded-sm">
                             #{index + 1}
@@ -360,24 +377,52 @@ export default function DeliveriesWorkspace({
 
                         <div className="grid grid-cols-12 gap-2">
                           {/* Reference Selector */}
-                          <div className="col-span-8">
+                          <div className="col-span-6">
+                            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Reference</label>
                             <select
                               value={row.referenceCode}
                               onChange={(e) => handleRowChange(index, "referenceCode", e.target.value)}
-                              className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-800 font-mono"
+                              className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-800 font-mono font-semibold"
                               required
                             >
-                              <option value="">-- Select Reference --</option>
+                              <option value="">-- Select --</option>
                               {references.map((ref) => (
                                 <option key={ref.code} value={ref.code}>
-                                  {ref.code} (S3 Finished: {ref.stock3 || 0} pcs)
+                                  {ref.code} ({ref.customer ? `${ref.customer}` : "No Cust"})
                                 </option>
                               ))}
                             </select>
                           </div>
 
-                          {/* Quantity */}
-                          <div className="col-span-4">
+                          {/* Customer per Row */}
+                          <div className="col-span-6">
+                            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Customer (e.g. FORD)</label>
+                            <input
+                              type="text"
+                              placeholder={defaultCustomer || "e.g. FORD / RENAULT"}
+                              value={row.customer}
+                              onChange={(e) => handleRowChange(index, "customer", e.target.value.toUpperCase())}
+                              className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-800 font-mono font-bold uppercase"
+                              required
+                            />
+                          </div>
+
+                          {/* Delivery Type per Row */}
+                          <div className="col-span-7">
+                            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Delivery Type</label>
+                            <select
+                              value={row.deliveryType || defaultDeliveryType}
+                              onChange={(e) => handleRowChange(index, "deliveryType", e.target.value as any)}
+                              className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-800 font-mono text-[11px]"
+                            >
+                              <option value="Villanova">Villanova (Stock 3 Wheels)</option>
+                              <option value="PRECOSIDO">PRECOSIDO (Stock 2 Glued Mesh)</option>
+                            </select>
+                          </div>
+
+                          {/* Quantity per Row */}
+                          <div className="col-span-5">
+                            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Dispatched Qty</label>
                             <input
                               type="number"
                               min="1"
@@ -391,12 +436,14 @@ export default function DeliveriesWorkspace({
                         </div>
 
                         {selectedRefObj && (
-                          <div className="flex items-center justify-between text-[10px] font-mono px-0.5">
-                            <span className="text-slate-400 truncate max-w-[150px]">{selectedRefObj.description}</span>
-                            <div className="flex gap-2">
-                              <span className="text-slate-400">Stock:</span>
-                              <span className={`font-bold ${selectedRefObj.currentStock > 0 ? "text-emerald-600" : "text-rose-500"}`}>
-                                {selectedRefObj.currentStock} pcs
+                          <div className="flex items-center justify-between text-[10px] font-mono px-0.5 pt-1 border-t border-slate-200/50">
+                            <span className="text-slate-400 truncate max-w-[170px]">{selectedRefObj.description}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-400 text-[9px]">
+                                Available {isPrecosido ? "Stock 2 (Mallas)" : "Stock 3 (Wheels)"}:
+                              </span>
+                              <span className={`font-bold ${relevantStock > 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                                {relevantStock} pcs
                               </span>
                             </div>
                           </div>
@@ -412,7 +459,7 @@ export default function DeliveriesWorkspace({
                   className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-700 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add Another Reference</span>
+                  <span>Add Another Reference to Invoice</span>
                 </button>
               </div>
 
@@ -515,12 +562,13 @@ export default function DeliveriesWorkspace({
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[9px]">
-                    <th className="py-3 px-4 font-black">Invoice / Note</th>
-                    <th className="py-3 px-4 font-black">Reference Code</th>
-                    <th className="py-3 px-4 font-black">Quantity</th>
-                    <th className="py-3 px-4 font-black">Customer</th>
-                    <th className="py-3 px-4 font-black">Dispatched By</th>
-                    <th className="py-3 px-4 font-black text-right">Timestamp</th>
+                    <th className="py-3 px-3 font-black">Invoice / Note</th>
+                    <th className="py-3 px-3 font-black">Reference Code</th>
+                    <th className="py-3 px-3 font-black">Type</th>
+                    <th className="py-3 px-3 font-black">Quantity</th>
+                    <th className="py-3 px-3 font-black">Customer</th>
+                    <th className="py-3 px-3 font-black">Dispatched By</th>
+                    <th className="py-3 px-3 font-black text-right">Timestamp</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -532,30 +580,41 @@ export default function DeliveriesWorkspace({
                       minute: "2-digit"
                     });
 
+                    const isPrecosido = delivery.deliveryType === "PRECOSIDO";
+
                     return (
                       <tr key={delivery.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-3.5 px-4">
+                        <td className="py-3.5 px-3">
                           <span className="flex items-center gap-1.5 font-mono font-bold text-rose-700 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded text-[10px] w-fit">
                             <FileText className="w-3 h-3" />
                             {delivery.invoiceNumber}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
+                        <td className="py-3.5 px-3 font-mono font-bold text-slate-800">
                           {delivery.reference}
                         </td>
-                        <td className="py-3.5 px-4 font-mono font-black text-slate-900 text-[13px]">
+                        <td className="py-3.5 px-3">
+                          <span className={`px-2 py-0.5 rounded font-mono text-[9px] font-bold uppercase ${
+                            isPrecosido 
+                              ? "bg-amber-100 text-amber-800 border border-amber-200" 
+                              : "bg-blue-100 text-blue-800 border border-blue-200"
+                          }`}>
+                            {delivery.deliveryType || "Villanova"}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-3 font-mono font-black text-slate-900 text-[13px]">
                           -{delivery.quantity} pcs
                         </td>
-                        <td className="py-3.5 px-4">
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-200/50 rounded font-mono text-[9px] font-bold uppercase">
+                        <td className="py-3.5 px-3">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200 rounded font-mono text-[9px] font-bold uppercase">
                             {delivery.customer}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 text-slate-600 flex items-center gap-1.5 font-sans font-semibold">
+                        <td className="py-3.5 px-3 text-slate-600 flex items-center gap-1.5 font-sans font-semibold">
                           <UserIcon className="w-3.5 h-3.5 text-slate-400" />
                           {delivery.operatorName}
                         </td>
-                        <td className="py-3.5 px-4 text-right text-slate-400 font-mono text-[11px]">
+                        <td className="py-3.5 px-3 text-right text-slate-400 font-mono text-[11px]">
                           {formattedDate}
                         </td>
                       </tr>
@@ -564,7 +623,7 @@ export default function DeliveriesWorkspace({
 
                   {filteredDeliveries.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400 bg-slate-50/20">
+                      <td colSpan={7} className="py-12 text-center text-slate-400 bg-slate-50/20">
                         <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-500" />
                         <p className="text-sm font-semibold">No dispatches matching filters</p>
                         <p className="text-xs text-slate-400 mt-1">Register a new delivery in the left panel</p>
