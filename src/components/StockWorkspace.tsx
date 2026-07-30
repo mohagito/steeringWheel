@@ -37,6 +37,7 @@ export default function StockWorkspace({
 
   // Box Editing / Management States (Admins & Supervisors)
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+  const [editedBoxRef, setEditedBoxRef] = useState<string>("");
   const [editedBoxQty, setEditedBoxQty] = useState<number>(0);
   const [editedBoxLoc, setEditedBoxLoc] = useState<string>("");
 
@@ -184,10 +185,12 @@ export default function StockWorkspace({
     if (!onUpdateBox) return;
     try {
       await onUpdateBox(boxId, {
+        reference: editedBoxRef.trim().toUpperCase(),
         expectedQty: Number(editedBoxQty),
+        actualQty: Number(editedBoxQty),
         location: editedBoxLoc.trim()
       });
-      setStatusMsg({ type: "success", text: "Carton quantity updated successfully." });
+      setStatusMsg({ type: "success", text: "Carton updated & stock recalculated successfully." });
       setEditingBoxId(null);
       setTimeout(() => setStatusMsg(null), 3000);
     } catch (err: any) {
@@ -550,8 +553,32 @@ export default function StockWorkspace({
                   {boxes.map(box => (
                     <tr key={box.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4 text-slate-900 font-bold">{box.barcode}</td>
-                      <td className="py-3 px-4 font-bold text-blue-700">{box.reference}</td>
-                      <td className="py-3 px-4 text-slate-500 font-sans text-xs">{box.location}</td>
+                      <td className="py-3 px-4 font-bold text-blue-700">
+                        {editingBoxId === box.id ? (
+                          <input
+                            type="text"
+                            value={editedBoxRef}
+                            onChange={(e) => setEditedBoxRef(e.target.value)}
+                            className="w-28 uppercase border border-blue-400 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
+                            placeholder="REF CODE"
+                          />
+                        ) : (
+                          box.reference
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-slate-500 font-sans text-xs">
+                        {editingBoxId === box.id ? (
+                          <input
+                            type="text"
+                            value={editedBoxLoc}
+                            onChange={(e) => setEditedBoxLoc(e.target.value)}
+                            className="w-32 border border-blue-400 px-2 py-1 font-sans text-xs rounded-xl focus:outline-none"
+                            placeholder="Location"
+                          />
+                        ) : (
+                          box.location
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-right font-extrabold text-slate-900">
                         {editingBoxId === box.id ? (
                           <input
@@ -601,7 +628,8 @@ export default function StockWorkspace({
                                 <button
                                   onClick={() => {
                                     setEditingBoxId(box.id);
-                                    setEditedBoxQty(box.expectedQty || 0);
+                                    setEditedBoxRef(box.reference || "");
+                                    setEditedBoxQty(box.actualQty ?? box.expectedQty ?? 0);
                                     setEditedBoxLoc(box.location || "");
                                   }}
                                   className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-xl cursor-pointer"

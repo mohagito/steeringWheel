@@ -63,9 +63,23 @@ export default function ScrapWorkspace({
 
   const handleRowChange = (index: number, field: keyof ScrapRow, value: string) => {
     const updatedRows = [...rows];
+    let finalVal = value;
+    if (field === "referenceCode" && value) {
+      const upper = value.trim().toUpperCase();
+      const directRef = references.find((r) => r.code.toUpperCase() === upper);
+      if (directRef) {
+        finalVal = directRef.code;
+      } else if (upper.length > 1) {
+        const stripped = upper.slice(1);
+        const strippedRef = references.find((r) => r.code.toUpperCase() === stripped);
+        if (strippedRef) {
+          finalVal = strippedRef.code;
+        }
+      }
+    }
     updatedRows[index] = {
       ...updatedRows[index],
-      [field]: value
+      [field]: finalVal
     };
     setRows(updatedRows);
   };

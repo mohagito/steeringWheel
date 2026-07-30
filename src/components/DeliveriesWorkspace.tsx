@@ -69,11 +69,24 @@ export default function DeliveriesWorkspace({
       [field]: value
     };
 
-    // Auto-fill customer for this specific row if reference has an assigned customer
+    // Auto-fill customer & auto-resolve scanner prefix for referenceCode
     if (field === "referenceCode" && value) {
-      const refObj = references.find((r) => r.code === value);
-      if (refObj && refObj.customer && !updatedRows[index].customer) {
-        updatedRows[index].customer = refObj.customer;
+      const upper = value.trim().toUpperCase();
+      const directRef = references.find((r) => r.code.toUpperCase() === upper);
+      if (directRef) {
+        updatedRows[index].referenceCode = directRef.code;
+        if (directRef.customer && !updatedRows[index].customer) {
+          updatedRows[index].customer = directRef.customer;
+        }
+      } else if (upper.length > 1) {
+        const stripped = upper.slice(1);
+        const strippedRef = references.find((r) => r.code.toUpperCase() === stripped);
+        if (strippedRef) {
+          updatedRows[index].referenceCode = strippedRef.code;
+          if (strippedRef.customer && !updatedRows[index].customer) {
+            updatedRows[index].customer = strippedRef.customer;
+          }
+        }
       }
     }
 

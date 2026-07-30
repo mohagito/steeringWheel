@@ -702,7 +702,8 @@ export default function App() {
     if (boxSnap.exists()) {
       const boxData = boxSnap.data() as Box;
       const refCode = boxData.reference;
-      const boxQty = boxData.expectedQty || 0;
+      // Use actualQty if set, otherwise expectedQty
+      const boxQty = boxData.actualQty !== undefined ? boxData.actualQty : (boxData.expectedQty || 0);
 
       await deleteDoc(boxRef);
 
@@ -724,19 +725,19 @@ export default function App() {
 
         if (refSnap.exists()) {
           const refData = refSnap.data();
-          const curS1 = refData.stock1 || 0;
-          const curS2 = refData.stock2 || 0;
-          const curS3 = refData.stock3 || 0;
+          const curS1 = typeof refData.stock1 === "number" ? refData.stock1 : 0;
+          const curS2 = typeof refData.stock2 === "number" ? refData.stock2 : 0;
+          const curS3 = typeof refData.stock3 === "number" ? refData.stock3 : 0;
 
           const newS1 = Math.max(0, curS1 - boxQty);
           const newTotal = newS1 + curS2 + curS3;
           const timestamp = new Date().toISOString();
 
-          await updateDoc(refDocRef, {
+          await setDoc(refDocRef, {
             stock1: newS1,
             currentStock: newTotal,
             lastUpdate: timestamp
-          });
+          }, { merge: true });
 
           // Log transaction
           const transId = `trans-delbox-${Date.now()}`;
@@ -749,7 +750,7 @@ export default function App() {
             quantity: boxQty,
             operatorName: currentUser?.fullName || "System",
             timestamp,
-            notes: `Deleted carton box ${boxData.barcode || boxId} (${boxQty} PCS removed)`
+            notes: `Deleted carton box ${boxData.barcode || boxId} (${boxQty} PCS removed from Stock 1)`
           });
         }
       }
@@ -758,53 +759,115 @@ export default function App() {
     }
   };
 
-  // Action: Admin updates a box
+  // Action: Admin or Supervisor updates a box
   const handleUpdateBox = async (boxId: string, updatedFields: Partial<Box>) => {
-    const boxRef = doc(db, "boxes", boxId);
-    const boxSnap = await getDoc(boxRef);
+    let boxRef = doc(db, "boxes", boxId);
+    let boxSnap = await getDoc(boxRef);
+
+    if (!boxSnap.exists()) {
+      const q = query(collection(db, "boxes"));
+      const qSnap = await getDocs(q);
+      const found = qSnap.docs.find(d => d.id === boxId || d.data().barcode === boxId || d.data().id === boxId);
+      if (found) {
+        boxRef = doc(db, "boxes", found.id);
+        boxSnap = await getDoc(boxRef);
+      }
+    }
 
     if (boxSnap.exists()) {
       const boxData = boxSnap.data() as Box;
-      const oldQty = boxData.expectedQty || 0;
-      const newQty = updatedFields.expectedQty !== undefined ? updatedFields.expectedQty : oldQty;
-      const delta = newQty - oldQty;
+      const oldQty = boxData.actualQty !== undefined ? boxData.actualQty : (boxData.expectedQty || 0);
+      const newQty = updatedFields.actualQty !== undefined 
+        ? updatedFields.actualQty 
+        : (updatedFields.expectedQty !== undefined ? updatedFields.expectedQty : oldQty);
 
-      await updateDoc(boxRef, {
+      const oldRefCode = boxData.reference;
+      const newRefCode = updatedFields.reference ? updatedFields.reference.trim().toUpperCase() : oldRefCode;
+      const timestamp = new Date().toISOString();
+
+      await setDoc(boxRef, {
         ...updatedFields,
-        updatedAt: new Date().toISOString()
-      });
+        expectedQty: updatedFields.expectedQty !== undefined ? updatedFields.expectedQty : boxData.expectedQty,
+        actualQty: newQty,
+        updatedAt: timestamp
+      }, { merge: true });
 
-      if (delta !== 0 && boxData.reference) {
-        const refDocRef = doc(db, "references", boxData.reference);
-        const refSnap = await getDoc(refDocRef);
-        if (refSnap.exists()) {
-          const refData = refSnap.data();
-          const curS1 = refData.stock1 || 0;
-          const curS2 = refData.stock2 || 0;
-          const curS3 = refData.stock3 || 0;
-
-          const newS1 = Math.max(0, curS1 + delta);
-          const newTotal = newS1 + curS2 + curS3;
-          const timestamp = new Date().toISOString();
-
-          await updateDoc(refDocRef, {
-            stock1: newS1,
-            currentStock: newTotal,
+      // If reference code changed
+      if (oldRefCode && newRefCode && oldRefCode.toUpperCase() !== newRefCode.toUpperCase()) {
+        // Deduct oldQty from old reference
+        const oldRefSnap = await getDoc(doc(db, "references", oldRefCode));
+        if (oldRefSnap.exists()) {
+          const d = oldRefSnap.data();
+          const s1 = Math.max(0, (d.stock1 || 0) - oldQty);
+          const s2 = d.stock2 || 0;
+          const s3 = d.stock3 || 0;
+          await setDoc(doc(db, "references", oldRefCode), {
+            stock1: s1,
+            currentStock: s1 + s2 + s3,
             lastUpdate: timestamp
-          });
+          }, { merge: true });
+        }
 
-          const transId = `trans-updbox-${Date.now()}`;
-          await setDoc(doc(db, "transactions", transId), {
-            id: transId,
-            barcode: boxData.barcode || boxId,
-            reference: boxData.reference,
-            movementType: delta > 0 ? "STOCK 1 IN" : "STOCK 1 REMOVED",
-            stock: "Stock 1",
-            quantity: Math.abs(delta),
-            operatorName: currentUser?.fullName || "System",
-            timestamp,
-            notes: `Updated carton box ${boxData.barcode || boxId} qty from ${oldQty} to ${newQty} PCS`
-          });
+        // Add newQty to new reference
+        const newRefSnap = await getDoc(doc(db, "references", newRefCode));
+        if (newRefSnap.exists()) {
+          const d = newRefSnap.data();
+          const s1 = (d.stock1 || 0) + newQty;
+          const s2 = d.stock2 || 0;
+          const s3 = d.stock3 || 0;
+          await setDoc(doc(db, "references", newRefCode), {
+            stock1: s1,
+            currentStock: s1 + s2 + s3,
+            lastUpdate: timestamp
+          }, { merge: true });
+        }
+
+        const transId = `trans-reassigned-${Date.now()}`;
+        await setDoc(doc(db, "transactions", transId), {
+          id: transId,
+          barcode: boxData.barcode || boxId,
+          reference: newRefCode,
+          movementType: "BOX REASSIGNED",
+          stock: "Stock 1",
+          quantity: newQty,
+          operatorName: currentUser?.fullName || "System",
+          timestamp,
+          notes: `Reassigned box ${boxData.barcode || boxId} from ${oldRefCode} (${oldQty} PCS) to ${newRefCode} (${newQty} PCS)`
+        });
+      } else {
+        // Quantity changed on same reference
+        const delta = newQty - oldQty;
+        if (delta !== 0 && oldRefCode) {
+          const refDocRef = doc(db, "references", oldRefCode);
+          const refSnap = await getDoc(refDocRef);
+          if (refSnap.exists()) {
+            const refData = refSnap.data();
+            const curS1 = refData.stock1 || 0;
+            const curS2 = refData.stock2 || 0;
+            const curS3 = refData.stock3 || 0;
+
+            const newS1 = Math.max(0, curS1 + delta);
+            const newTotal = newS1 + curS2 + curS3;
+
+            await setDoc(refDocRef, {
+              stock1: newS1,
+              currentStock: newTotal,
+              lastUpdate: timestamp
+            }, { merge: true });
+
+            const transId = `trans-updbox-${Date.now()}`;
+            await setDoc(doc(db, "transactions", transId), {
+              id: transId,
+              barcode: boxData.barcode || boxId,
+              reference: oldRefCode,
+              movementType: delta > 0 ? "STOCK 1 IN" : "STOCK 1 REMOVED",
+              stock: "Stock 1",
+              quantity: Math.abs(delta),
+              operatorName: currentUser?.fullName || "System",
+              timestamp,
+              notes: `Updated carton box ${boxData.barcode || boxId} qty from ${oldQty} to ${newQty} PCS`
+            });
+          }
         }
       }
     }
@@ -867,14 +930,34 @@ export default function App() {
 
     const refsSnap = await getDocs(collection(db, "references"));
     const usersSnap = await getDocs(collection(db, "users"));
+    const boxesSnap = await getDocs(collection(db, "boxes"));
+
+    // Map active box totals per reference code
+    const boxTotalsByRef: { [code: string]: number } = {};
+    boxesSnap.forEach(b => {
+      const bData = b.data();
+      if (bData.reference) {
+        const code = String(bData.reference).toUpperCase();
+        const qty = typeof bData.actualQty === "number" ? bData.actualQty : (bData.expectedQty || 0);
+        boxTotalsByRef[code] = (boxTotalsByRef[code] || 0) + qty;
+      }
+    });
+
     const batch = writeBatch(db);
 
     // 1. Audit & Fix References
     refsSnap.forEach((d) => {
       const data = d.data();
-      const s1 = typeof data.stock1 === "number" ? data.stock1 : 0;
+      const codeUpper = (data.code || d.id).toUpperCase();
+      let s1 = typeof data.stock1 === "number" ? data.stock1 : 0;
       const s2 = typeof data.stock2 === "number" ? data.stock2 : 0;
       const s3 = typeof data.stock3 === "number" ? data.stock3 : 0;
+
+      // If active boxes exist in registry for this ref, ensure stock1 is synced
+      if (boxTotalsByRef[codeUpper] !== undefined && s1 !== boxTotalsByRef[codeUpper]) {
+        s1 = boxTotalsByRef[codeUpper];
+      }
+
       const expectedTotal = s1 + s2 + s3;
 
       let needsFix = false;

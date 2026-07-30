@@ -4,11 +4,11 @@ import firebaseConfig from "../firebase-applet-config.json";
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with forced long polling for container / proxy compatibility
+// Initialize Firestore with auto-detect long polling for optimal container & proxy connection
 const db = initializeFirestore(
   app,
   {
-    experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: true,
   },
   firebaseConfig.firestoreDatabaseId || "(default)"
 );
@@ -18,8 +18,7 @@ async function checkFirestoreConnection() {
   try {
     await getDocFromServer(doc(db, "references", "_healthcheck"));
   } catch (_err) {
-    // Silence network failure warnings during initial container boot
-    console.log("Firestore initialized; using cached persistence.");
+    // Graceful offline fallback
   }
 }
 

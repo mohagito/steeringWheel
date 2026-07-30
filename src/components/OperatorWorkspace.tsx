@@ -171,6 +171,22 @@ export default function OperatorWorkspace({
         playScanBeep();
         // Jump to quantity field automatically
         quantityRef.current?.focus();
+      } else if (raw.length > 1) {
+        // Fallback: If not found in master data, try removing 1st character if scanned with extra prefix
+        const stripped = raw.slice(1).toUpperCase();
+        const resStripped = resolveReference(stripped);
+        if (resStripped) {
+          setReferenceCode(resStripped.match.code);
+          setAutoCorrectNotice(`Scanner prefix '${raw[0]}' auto-removed ➔ "${resStripped.match.code}"`);
+          setErrorMsg("");
+          playScanBeep();
+          quantityRef.current?.focus();
+        } else {
+          // Keep stripped version for user ease
+          setReferenceCode(stripped);
+          setErrorMsg(`Reference "${stripped}" (or "${raw}") not found in master list.`);
+          playErrorBeep();
+        }
       } else {
         setErrorMsg(`Reference "${raw}" not found in master list.`);
         playErrorBeep();
@@ -181,10 +197,39 @@ export default function OperatorWorkspace({
   // Handle Reference Input Change with Smart Instant Auto-Resolve
   const handleReferenceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    setReferenceCode(val);
     setErrorMsg("");
 
-    // If scanner pasted/typed a complete match, give feedback
+    if (!val) {
+      setReferenceCode("");
+      setAutoCorrectNotice("");
+      return;
+    }
+
+    const upper = val.trim().toUpperCase();
+
+    // 1. Direct exact match
+    const directMatch = references.find(r => r.code.toUpperCase() === upper);
+    if (directMatch) {
+      setReferenceCode(directMatch.code);
+      setAutoCorrectNotice("");
+      return;
+    }
+
+    // 2. Extra 1st character removal auto-correction (e.g. "IR003A429A" -> "R003A429A")
+    if (upper.length > 1) {
+      const strippedFirst = upper.slice(1);
+      const matchFirst = references.find(r => r.code.toUpperCase() === strippedFirst);
+      if (matchFirst) {
+        setReferenceCode(matchFirst.code);
+        setAutoCorrectNotice(`Scanner prefix '${upper[0]}' auto-removed ➔ "${matchFirst.code}"`);
+        playScanBeep();
+        return;
+      }
+    }
+
+    setReferenceCode(val);
+
+    // 3. Smart resolve check feedback
     const res = resolveReference(val);
     if (res && res.corrected) {
       setAutoCorrectNotice(`Smart match detected: "${val}" ➔ "${res.match.code}"`);
@@ -679,9 +724,29 @@ export default function OperatorWorkspace({
                 </span>
               </div>
             ) : referenceCode ? (
-              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-mono text-amber-800 flex items-center justify-between">
-                <span>Press Enter or complete scan...</span>
-                <span className="text-[10px] text-amber-600 font-bold">Auto-correcting scanner...</span>
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-mono text-amber-900 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 truncate">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="truncate">Scanned: <strong className="font-bold">{referenceCode}</strong></span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {referenceCode.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const stripped = referenceCode.slice(1).toUpperCase();
+                        setReferenceCode(stripped);
+                        setErrorMsg("");
+                        playScanBeep();
+                      }}
+                      className="px-2.5 py-1 bg-amber-200/90 hover:bg-amber-300 border border-amber-300 text-amber-950 rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer select-none"
+                      title="Remove 1st scanner prefix character"
+                    >
+                      <Eraser className="w-3 h-3" />
+                      <span>Remove 1st Char ({referenceCode.slice(0, 1)})</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
