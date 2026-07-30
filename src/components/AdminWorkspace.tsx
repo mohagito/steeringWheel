@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { User, UserRole } from "../types";
+import { CustomSelect } from "./CustomSelect";
 import { 
   Plus, Trash2, Users, RefreshCw, Check, AlertCircle, ShieldCheck 
 } from "lucide-react";
@@ -248,16 +249,16 @@ export default function AdminWorkspace({
                 <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                   User Role
                 </label>
-                <select
+                <CustomSelect
                   value={newRole}
-                  id="admin-user-role-select"
-                  onChange={(e: any) => setNewRole(e.target.value)}
-                  className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-none text-xs focus:outline-none focus:border-blue-600 font-bold"
-                >
-                  <option value="operator">Operator</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="admin">Manager</option>
-                </select>
+                  onChange={(val) => setNewRole(val as any)}
+                  options={[
+                    { value: "operator", label: "Operator" },
+                    { value: "supervisor", label: "Supervisor" },
+                    { value: "admin", label: "Manager" }
+                  ]}
+                  size="sm"
+                />
               </div>
               <div>
                 <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">

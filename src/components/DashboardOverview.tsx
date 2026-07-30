@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { doc, writeBatch, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import { CustomReferenceSelect } from "./CustomReferenceSelect";
+import { CustomSelect } from "./CustomSelect";
 
 interface DashboardOverviewProps {
   boxes: Box[];
@@ -604,25 +606,29 @@ export default function DashboardOverview({
               />
             </div>
 
-            <select
+            <CustomSelect
               value={materialFilter}
-              onChange={(e) => setMaterialFilter(e.target.value as any)}
-              className="px-3 py-2 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="All">All Types</option>
-              <option value="Mesh">Mesh Only</option>
-              <option value="Soft">Soft Only</option>
-            </select>
+              onChange={(val) => setMaterialFilter(val as any)}
+              options={[
+                { value: "All", label: "All Types" },
+                { value: "Mesh", label: "Mesh Only" },
+                { value: "Soft", label: "Soft Only" }
+              ]}
+              className="w-36"
+              size="sm"
+            />
 
-            <select
+            <CustomSelect
               value={stockStatusFilter}
-              onChange={(e) => setStockStatusFilter(e.target.value as any)}
-              className="px-3 py-2 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="All">All Levels</option>
-              <option value="Low Stock">Low Warnings</option>
-              <option value="Normal">Normal Levels</option>
-            </select>
+              onChange={(val) => setStockStatusFilter(val as any)}
+              options={[
+                { value: "All", label: "All Levels" },
+                { value: "Low Stock", label: "Low Warnings", badge: "Warning" },
+                { value: "Normal", label: "Normal Levels" }
+              ]}
+              className="w-36"
+              size="sm"
+            />
           </div>
         </div>
 
@@ -818,18 +824,13 @@ export default function DashboardOverview({
                 <label className="block text-slate-700 font-bold mb-1">
                   Reference Code
                 </label>
-                <select
+                <CustomReferenceSelect
+                  references={references}
                   value={modalRef}
-                  onChange={(e) => setModalRef(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono"
+                  onChange={(code) => setModalRef(code)}
+                  placeholder="Search and select reference..."
                   required
-                >
-                  {references.map((r) => (
-                    <option key={r.id} value={r.code}>
-                      {r.code} — {r.description} (S1: {r.stock1 || 0}, S2: {r.stock2 || 0}, S3: {r.stock3 || 0})
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {activeModal === "remove" && (
@@ -837,16 +838,16 @@ export default function DashboardOverview({
                   <label className="block text-slate-700 font-bold mb-1">
                     Deduct From Stock Stage
                   </label>
-                  <select
+                  <CustomSelect
                     value={removeStockStage}
-                    onChange={(e: any) => setRemoveStockStage(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono font-bold"
+                    onChange={(val: any) => setRemoveStockStage(val)}
+                    options={[
+                      { value: "stock1", label: "Stock 1 — Warehouse Raw Material", description: "Direct raw mesh / material" },
+                      { value: "stock2", label: "Stock 2 — Production Gluing WIP", description: "Glued mesh / Mallas Pegadas" },
+                      { value: "stock3", label: "Stock 3 — Finished Goods Wheels", description: "Completed steering wheel assemblies" }
+                    ]}
                     required
-                  >
-                    <option value="stock1">Stock 1 — Warehouse Raw Material</option>
-                    <option value="stock2">Stock 2 — Production Gluing WIP</option>
-                    <option value="stock3">Stock 3 — Finished Goods Wheels</option>
-                  </select>
+                  />
                 </div>
               )}
 

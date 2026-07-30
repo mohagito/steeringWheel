@@ -5,6 +5,8 @@ import {
   Boxes, Factory, CheckCircle2, FileSpreadsheet, Layers, Sparkles
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { CustomReferenceSelect } from "./CustomReferenceSelect";
+import { CustomSelect } from "./CustomSelect";
 
 interface StockWorkspaceProps {
   boxes: Box[];
@@ -422,15 +424,17 @@ export default function StockWorkspace({
                     className="w-full sm:w-48 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 text-xs rounded-2xl font-mono focus:outline-none transition-all"
                   />
                 </div>
-                <select
+                <CustomSelect
                   value={materialFilter}
-                  onChange={(e) => setMaterialFilter(e.target.value as any)}
-                  className="px-3 py-2 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="All">All Types</option>
-                  <option value="Mesh">Mesh</option>
-                  <option value="Soft">Soft</option>
-                </select>
+                  onChange={(val) => setMaterialFilter(val as any)}
+                  options={[
+                    { value: "All", label: "All Types" },
+                    { value: "Mesh", label: "Mesh Only" },
+                    { value: "Soft", label: "Soft Only" }
+                  ]}
+                  className="w-32"
+                  size="sm"
+                />
               </div>
             </div>
 
@@ -694,15 +698,17 @@ export default function StockWorkspace({
                     className="w-full sm:w-48 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 text-xs rounded-2xl font-mono focus:outline-none transition-all"
                   />
                 </div>
-                <select
+                <CustomSelect
                   value={materialFilter}
-                  onChange={(e) => setMaterialFilter(e.target.value as any)}
-                  className="px-3 py-2 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-amber-500 cursor-pointer"
-                >
-                  <option value="All">All Types</option>
-                  <option value="Mesh">Mesh</option>
-                  <option value="Soft">Soft</option>
-                </select>
+                  onChange={(val) => setMaterialFilter(val as any)}
+                  options={[
+                    { value: "All", label: "All Types" },
+                    { value: "Mesh", label: "Mesh Only" },
+                    { value: "Soft", label: "Soft Only" }
+                  ]}
+                  className="w-32"
+                  size="sm"
+                />
               </div>
             </div>
 
@@ -820,15 +826,17 @@ export default function StockWorkspace({
                     className="w-full sm:w-48 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 text-xs rounded-2xl font-mono focus:outline-none transition-all"
                   />
                 </div>
-                <select
+                <CustomSelect
                   value={materialFilter}
-                  onChange={(e) => setMaterialFilter(e.target.value as any)}
-                  className="px-3 py-2 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-emerald-500 cursor-pointer"
-                >
-                  <option value="All">All Types</option>
-                  <option value="Mesh">Mesh</option>
-                  <option value="Soft">Soft</option>
-                </select>
+                  onChange={(val) => setMaterialFilter(val as any)}
+                  options={[
+                    { value: "All", label: "All Types" },
+                    { value: "Mesh", label: "Mesh Only" },
+                    { value: "Soft", label: "Soft Only" }
+                  ]}
+                  className="w-32"
+                  size="sm"
+                />
               </div>
             </div>
 
@@ -949,19 +957,19 @@ export default function StockWorkspace({
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
                   1. Report Type
                 </label>
-                <select
+                <CustomSelect
                   value={reportType}
-                  onChange={(e) => setReportType(e.target.value as any)}
-                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-purple-500 cursor-pointer"
-                >
-                  <option value="history">Full Transaction History</option>
-                  <option value="received">Material Received (S1 IN)</option>
-                  <option value="transfers">Warehouse-Production Transfers</option>
-                  <option value="deliveries">Customer Deliveries (S3 OUT)</option>
-                  <option value="s1_stock">Current Warehouse Raw Stock (S1)</option>
-                  <option value="s2_stock">Current Production WIP Stock (S2)</option>
-                  <option value="s3_stock">Current Finished Goods Stock (S3)</option>
-                </select>
+                  onChange={(val) => setReportType(val as any)}
+                  options={[
+                    { value: "history", label: "Full Transaction History" },
+                    { value: "received", label: "Material Received (S1 IN)" },
+                    { value: "transfers", label: "Warehouse-Production Transfers" },
+                    { value: "deliveries", label: "Customer Deliveries (S3 OUT)" },
+                    { value: "s1_stock", label: "Current Raw Stock (S1)" },
+                    { value: "s2_stock", label: "Current WIP Stock (S2)" },
+                    { value: "s3_stock", label: "Current Finished Stock (S3)" }
+                  ]}
+                />
               </div>
 
               {/* Reference Selection */}
@@ -969,16 +977,12 @@ export default function StockWorkspace({
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
                   2. Reference Filter
                 </label>
-                <select
-                  value={repRefFilter}
-                  onChange={(e) => setRepRefFilter(e.target.value)}
-                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-purple-500 cursor-pointer"
-                >
-                  <option value="All">All References</option>
-                  {references.map(r => (
-                    <option key={r.id} value={r.code}>{r.code}</option>
-                  ))}
-                </select>
+                <CustomReferenceSelect
+                  references={references}
+                  value={repRefFilter === "All" ? "" : repRefFilter}
+                  onChange={(val) => setRepRefFilter(val || "All")}
+                  placeholder="All References"
+                />
               </div>
 
               {/* Date Selection */}
@@ -1002,15 +1006,11 @@ export default function StockWorkspace({
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
                   4. Operator Name
                 </label>
-                <select
+                <CustomSelect
                   value={repOperatorFilter}
-                  onChange={(e) => setRepOperatorFilter(e.target.value)}
-                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-purple-500 cursor-pointer"
-                >
-                  {operatorsList.map(op => (
-                    <option key={op} value={op}>{op}</option>
-                  ))}
-                </select>
+                  onChange={(val) => setRepOperatorFilter(val)}
+                  options={operatorsList.map(op => ({ value: op, label: op }))}
+                />
               </div>
 
               {/* Movement Type Selection */}
@@ -1018,17 +1018,17 @@ export default function StockWorkspace({
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
                   5. Movement Type
                 </label>
-                <select
+                <CustomSelect
                   disabled={reportType !== "history"}
                   value={repMovementFilter}
-                  onChange={(e) => setRepMovementFilter(e.target.value)}
-                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 text-xs rounded-2xl font-mono focus:outline-none focus:border-purple-500 cursor-pointer disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <option value="All">All Movements</option>
-                  <option value="STOCK 1 IN">STOCK 1 IN</option>
-                  <option value="TRANSFER">TRANSFER</option>
-                  <option value="STOCK 2 OUT">STOCK 2 OUT</option>
-                </select>
+                  onChange={(val) => setRepMovementFilter(val)}
+                  options={[
+                    { value: "All", label: "All Movements" },
+                    { value: "STOCK 1 IN", label: "STOCK 1 IN" },
+                    { value: "TRANSFER", label: "TRANSFER" },
+                    { value: "STOCK 2 OUT", label: "STOCK 2 OUT" }
+                  ]}
+                />
               </div>
 
             </div>

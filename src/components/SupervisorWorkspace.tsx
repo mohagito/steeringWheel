@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Box, Adjustment, User } from "../types";
 import { motion } from "motion/react";
+import { CustomSelect } from "./CustomSelect";
 import { 
   Check, X, FileText, Search, TrendingDown, TrendingUp, Calendar, RefreshCw, AlertTriangle,
   CheckCircle, XCircle, AlertCircle, Activity, Clock
@@ -335,17 +336,18 @@ export default function SupervisorWorkspace({
 
             <div className="flex items-center gap-2 font-mono">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">STATUS FILTER:</span>
-              <select
+              <CustomSelect
                 value={statusFilter}
-                id="logs-status-filter"
-                onChange={(e: any) => setStatusFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-xs px-2.5 py-1.5 rounded-none text-slate-900 focus:outline-none focus:border-blue-600 font-bold"
-              >
-                <option value="all">ALL RECORDS</option>
-                <option value="approved">APPROVED</option>
-                <option value="pending">PENDING</option>
-                <option value="rejected">REJECTED</option>
-              </select>
+                onChange={(val) => setStatusFilter(val)}
+                options={[
+                  { value: "all", label: "ALL RECORDS" },
+                  { value: "approved", label: "APPROVED" },
+                  { value: "pending", label: "PENDING" },
+                  { value: "rejected", label: "REJECTED" }
+                ]}
+                className="w-36"
+                size="sm"
+              />
             </div>
           </div>
 

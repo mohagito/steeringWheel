@@ -5,6 +5,8 @@ import {
   Search, ShieldAlert, Layers, Flame, FileText, RefreshCw, Plus
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { CustomReferenceSelect } from "./CustomReferenceSelect";
+import { CustomSelect } from "./CustomSelect";
 
 interface ScrapRow {
   referenceCode: string;
@@ -341,7 +343,7 @@ export default function ScrapWorkspace({
                 </span>
               </div>
 
-              <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+              <div className="space-y-3.5 overflow-visible">
                 {rows.map((row, index) => {
                   const selectedRefObj = references.find((r) => r.code.toUpperCase() === row.referenceCode.trim().toUpperCase());
                   const isConCola = row.condition === "CON COLA";
@@ -350,68 +352,61 @@ export default function ScrapWorkspace({
                     : 0;
 
                   return (
-                    <div key={index} className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl relative space-y-2.5">
+                    <div key={index} className="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl relative space-y-3 overflow-visible shadow-2xs">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold bg-rose-100 text-rose-800 px-2 py-0.5 rounded-sm">
-                          #{index + 1}
+                        <span className="text-[10px] font-mono font-bold bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-md">
+                          Scrap Item #{index + 1}
                         </span>
                         {rows.length > 1 && (
                           <button
                             type="button"
                             onClick={() => handleRemoveRow(index)}
-                            className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                             title="Remove reference"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>
 
-                      <div className="grid grid-cols-12 gap-2">
+                      <div className="grid grid-cols-12 gap-3 items-start overflow-visible">
                         {/* Reference Selector */}
-                        <div className="col-span-6">
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Reference Code</label>
-                          <input
-                            type="text"
-                            list={`reference-scrap-list-${index}`}
-                            placeholder="Select/Scan code..."
+                        <div className="col-span-12 sm:col-span-6 overflow-visible">
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reference Code</label>
+                          <CustomReferenceSelect
+                            references={references}
                             value={row.referenceCode}
-                            onChange={(e) => handleRowChange(index, "referenceCode", e.target.value.toUpperCase())}
-                            className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-800 font-mono font-semibold uppercase"
+                            onChange={(val) => handleRowChange(index, "referenceCode", val)}
+                            placeholder="Select/Scan code..."
                             required
+                            size="sm"
                           />
-                          <datalist id={`reference-scrap-list-${index}`}>
-                            {references.map((r) => (
-                              <option key={r.id} value={r.code}>
-                                {r.code} - {r.description} (S2: {r.stock2} | S3: {r.stock3})
-                              </option>
-                            ))}
-                          </datalist>
                         </div>
 
                         {/* Condition per Row */}
-                        <div className="col-span-6">
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Glue State</label>
-                          <select
+                        <div className="col-span-12 sm:col-span-6 overflow-visible">
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Glue State</label>
+                          <CustomSelect
                             value={row.condition}
-                            onChange={(e) => handleRowChange(index, "condition", e.target.value as any)}
-                            className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 text-slate-800 font-mono text-[11px]"
-                          >
-                            <option value="CON COLA">CON COLA (Deducts Stock 3)</option>
-                            <option value="SIN COLA">SIN COLA (Deducts Stock 2)</option>
-                          </select>
+                            onChange={(val) => handleRowChange(index, "condition", val as any)}
+                            options={[
+                              { value: "CON COLA", label: "CON COLA (Deducts Stock 3)" },
+                              { value: "SIN COLA", label: "SIN COLA (Deducts Stock 2)" }
+                            ]}
+                            size="sm"
+                          />
                         </div>
 
                         {/* Quantity per Row */}
                         <div className="col-span-12">
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Defective Quantity (NOK PCS)</label>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Defective Quantity (NOK PCS)</label>
                           <input
                             type="number"
                             min="1"
                             placeholder="Enter NOK quantity..."
                             value={row.quantity}
                             onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
-                            className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono text-slate-900 font-bold"
+                            className="w-full min-h-[42px] px-3.5 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono text-slate-900 font-bold"
                             required
                           />
                         </div>
