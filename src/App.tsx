@@ -14,10 +14,11 @@ import StockWorkspace from "./components/StockWorkspace";
 import DeliveriesWorkspace from "./components/DeliveriesWorkspace";
 import ProductionWorkspace from "./components/ProductionWorkspace";
 import ScrapWorkspace from "./components/ScrapWorkspace";
+import ManageReferencesWorkspace from "./components/ManageReferencesWorkspace";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
-  RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2
+  RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2, FolderTree
 } from "lucide-react";
 
 export default function App() {
@@ -31,7 +32,7 @@ export default function App() {
   const [scraps, setScraps] = useState<ScrapEntry[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "scrap">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">("dashboard");
 
   // Sync state with Firestore on mount
   useEffect(() => {
@@ -873,39 +874,143 @@ export default function App() {
     }
   };
 
-  // Action: Admin updates a reference directly
+  // Action: Create a new Reference (Supervisor & Admin / Manager)
+  const handleCreateReference = async (refData: {
+    code: string;
+    description: string;
+    customer: string;
+    materialType: "Mesh" | "Soft" | string;
+    associatedLeather?: string;
+    active?: boolean;
+  }) => {
+    const rawCode = refData.code.trim();
+    if (!rawCode) {
+      throw new Error("Reference code cannot be empty.");
+    }
+
+    const uppercaseCode = rawCode.toUpperCase();
+    const docId = uppercaseCode.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    // Case-insensitive duplicate check across existing references
+    const existingRef = references.find(
+      (r) => r.code.toUpperCase() === uppercaseCode || r.id.toUpperCase() === docId.toUpperCase()
+    );
+    if (existingRef) {
+      throw new Error(`Reference code "${uppercaseCode}" already exists in the database.`);
+    }
+
+    const timestamp = new Date().toISOString();
+    const newRef: Reference = {
+      id: docId,
+      code: uppercaseCode,
+      description: refData.description.trim(),
+      customer: refData.customer.trim(),
+      materialType: refData.materialType.trim(),
+      associatedLeather: refData.associatedLeather ? refData.associatedLeather.trim() : "",
+      active: refData.active !== undefined ? refData.active : true,
+      createdAt: timestamp,
+      createdBy: currentUser?.fullName || "System",
+      updatedAt: timestamp,
+      updatedBy: currentUser?.fullName || "System",
+      stock1: 0,
+      stock2: 0,
+      stock3: 0,
+      currentStock: 0,
+      lastUpdate: timestamp
+    };
+
+    await setDoc(doc(db, "references", docId), newRef);
+
+    // Audit log transaction
+    const transId = `trans-addref-${Date.now()}`;
+    await setDoc(doc(db, "transactions", transId), {
+      id: transId,
+      reference: uppercaseCode,
+      movementType: "REFERENCE_CREATED",
+      stock: "Reference Master",
+      quantity: 0,
+      operatorName: currentUser?.fullName || "System",
+      timestamp,
+      notes: `Created reference ${uppercaseCode} (Customer: ${newRef.customer}, Type: ${newRef.materialType}, Desc: ${newRef.description})`
+    });
+  };
+
+  // Action: Admin / Supervisor updates a reference directly (metadata, stock, or status)
   const handleUpdateReference = async (refId: string, updatedFields: Partial<Reference>) => {
     const refRef = doc(db, "references", refId);
     const refSnap = await getDoc(refRef);
     if (refSnap.exists()) {
       const currentData = refSnap.data() as Reference;
+      const timestamp = new Date().toISOString();
+
       const s1 = updatedFields.stock1 !== undefined ? updatedFields.stock1 : (currentData.stock1 || 0);
       const s2 = updatedFields.stock2 !== undefined ? updatedFields.stock2 : (currentData.stock2 || 0);
       const s3 = updatedFields.stock3 !== undefined ? updatedFields.stock3 : (currentData.stock3 || 0);
       const newTotal = Math.max(0, s1 + s2 + s3);
 
-      const timestamp = new Date().toISOString();
-      await updateDoc(refRef, {
+      const isStockChange =
+        updatedFields.stock1 !== undefined ||
+        updatedFields.stock2 !== undefined ||
+        updatedFields.stock3 !== undefined;
+
+      const isStatusChange = updatedFields.active !== undefined && updatedFields.active !== currentData.active;
+
+      let movementType = "REFERENCE_UPDATED";
+      let notes = `Updated reference ${currentData.code} metadata`;
+
+      if (isStatusChange) {
+        movementType = updatedFields.active ? "REFERENCE_ACTIVATED" : "REFERENCE_DEACTIVATED";
+        notes = `Changed active status of ${currentData.code} to ${updatedFields.active ? "ACTIVE" : "INACTIVE"}`;
+      } else if (isStockChange) {
+        movementType = "STOCK ADJUSTMENT";
+        notes = `Direct reference stock update for ${currentData.code}: S1=${s1}, S2=${s2}, S3=${s3}`;
+      }
+
+      const updatePayload: Record<string, any> = {
         ...updatedFields,
         stock1: Math.max(0, s1),
         stock2: Math.max(0, s2),
         stock3: Math.max(0, s3),
         currentStock: newTotal,
-        lastUpdate: timestamp
-      });
+        lastUpdate: timestamp,
+        updatedAt: timestamp,
+        updatedBy: currentUser?.fullName || "System"
+      };
+
+      await updateDoc(refRef, updatePayload);
 
       const transId = `trans-updref-${Date.now()}`;
       await setDoc(doc(db, "transactions", transId), {
         id: transId,
         reference: currentData.code || refId,
-        movementType: "STOCK ADJUSTMENT",
-        stock: "Reference Direct Update",
-        quantity: Math.abs(newTotal - (currentData.currentStock || 0)),
+        movementType,
+        stock: "Reference Master",
+        quantity: isStockChange ? Math.abs(newTotal - (currentData.currentStock || 0)) : 0,
         operatorName: currentUser?.fullName || "System",
         timestamp,
-        notes: `Direct reference stock adjustment: S1=${s1}, S2=${s2}, S3=${s3}`
+        notes
       });
     }
+  };
+
+  // Action: Admin or Supervisor permanently deletes an UNUSED reference (with safety verification)
+  const handleDeleteReference = async (refId: string, refCode: string) => {
+    const codeUpper = refCode.toUpperCase();
+    await deleteDoc(doc(db, "references", refId));
+
+    // Audit log entry
+    const timestamp = new Date().toISOString();
+    const transId = `trans-delref-${Date.now()}`;
+    await setDoc(doc(db, "transactions", transId), {
+      id: transId,
+      reference: codeUpper,
+      movementType: "REFERENCE_DELETED",
+      stock: "Reference Master",
+      quantity: 0,
+      operatorName: currentUser?.fullName || "System",
+      timestamp,
+      notes: `Permanently deleted unused reference catalog item ${codeUpper}`
+    });
   };
 
   // Action: Admin adds a user profile
@@ -1149,6 +1254,24 @@ export default function App() {
               </button>
             )}
 
+            {/* Manage References Tab (Supervisor & Admin ONLY) */}
+            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
+              <button
+                onClick={() => setActiveTab("manage-references")}
+                id="nav-tab-manage-references"
+                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                  activeTab === "manage-references"
+                    ? "text-purple-400 font-bold bg-[#0f1e36] border-purple-500"
+                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <FolderTree className="w-4 h-4 shrink-0" />
+                  <span>MANAGE REFERENCES</span>
+                </div>
+              </button>
+            )}
+
             {/* Operator Tab */}
             {currentUser.role !== "admin" && (
               <button
@@ -1248,6 +1371,7 @@ export default function App() {
               {activeTab === "deliveries" && "Customer Deliveries & Dispatches"}
               {activeTab === "production" && "Daily Production Consumption"}
               {activeTab === "scrap" && "SCRAP & NOK Mesh Management"}
+              {activeTab === "manage-references" && "Manage References Catalog"}
               {activeTab === "operator" && "Inventory Count Workspace"}
               {activeTab === "supervisor" && "Supervisor Validation & Sign-offs"}
               {activeTab === "admin" && "Administrative Control Center"}
@@ -1299,6 +1423,7 @@ export default function App() {
                   currentUser={currentUser}
                   onDeleteBox={handleDeleteBox}
                   onUpdateBox={handleUpdateBox}
+                  onCreateReference={handleCreateReference}
                   onUpdateReference={handleUpdateReference}
                 />
               )}
@@ -1330,6 +1455,22 @@ export default function App() {
                   currentUser={currentUser}
                   onSubmitScrap={handleSubmitScrap}
                   onDeleteScrap={handleDeleteScrap}
+                />
+              )}
+
+              {activeTab === "manage-references" && (currentUser.role === "supervisor" || currentUser.role === "admin") && (
+                <ManageReferencesWorkspace
+                  references={references}
+                  boxes={boxes}
+                  transactions={transactions}
+                  deliveries={deliveries}
+                  productions={productions}
+                  scraps={scraps}
+                  adjustments={adjustments}
+                  currentUser={currentUser}
+                  onCreateReference={handleCreateReference}
+                  onUpdateReference={handleUpdateReference}
+                  onDeleteReference={handleDeleteReference}
                 />
               )}
 

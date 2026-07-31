@@ -12,6 +12,7 @@ interface CustomReferenceSelectProps {
   disabled?: boolean;
   required?: boolean;
   size?: "sm" | "md" | "lg";
+  includeInactive?: boolean;
 }
 
 export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
@@ -23,7 +24,8 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
   className = "",
   disabled = false,
   required = false,
-  size = "md"
+  size = "md",
+  includeInactive = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -57,6 +59,12 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
   }, [isOpen]);
 
   const filteredReferences = references.filter((r) => {
+    // By default, exclude inactive references unless includeInactive is true or it's currently selected
+    const isSelected = r.code.toUpperCase() === value.trim().toUpperCase();
+    if (!includeInactive && r.active === false && !isSelected) {
+      return false;
+    }
+
     if (!searchTerm.trim()) return true;
     const q = searchTerm.toLowerCase();
     return (
@@ -112,6 +120,11 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
                 {selectedRef.customer && (
                   <span className="px-1.5 py-0.5 bg-purple-100 text-purple-900 text-[10px] font-bold rounded-md uppercase shrink-0">
                     {selectedRef.customer}
+                  </span>
+                )}
+                {selectedRef.active === false && (
+                  <span className="px-1.5 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-md uppercase shrink-0">
+                    INACTIVE
                   </span>
                 )}
               </div>
@@ -211,6 +224,11 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
                         {r.customer && (
                           <span className="px-1.5 py-0.5 bg-purple-100 text-purple-900 text-[10px] font-bold rounded-md uppercase">
                             {r.customer}
+                          </span>
+                        )}
+                        {r.active === false && (
+                          <span className="px-1.5 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-md uppercase">
+                            INACTIVE
                           </span>
                         )}
                       </div>

@@ -47,17 +47,26 @@
     },
     "Reference": {
       "title": "Reference",
-      "description": "Predefined product reference for stock control",
+      "description": "Product reference for stock control and catalog management",
       "type": "object",
       "properties": {
         "code": { "type": "string", "description": "The reference code" },
         "description": { "type": "string", "description": "The description of the product" },
-        "materialType": { "type": "string", "enum": ["Mesh", "Soft"], "description": "Type of material" },
+        "customer": { "type": "string", "description": "Associated customer" },
+        "materialType": { "type": "string", "description": "Type of material (e.g. Mesh, Soft)" },
         "associatedLeather": { "type": "string", "description": "Associated leather references" },
+        "active": { "type": "boolean", "description": "Whether the reference is active" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "createdBy": { "type": "string", "description": "User who created the reference" },
+        "updatedAt": { "type": "string", "description": "Last update timestamp" },
+        "updatedBy": { "type": "string", "description": "User who updated the reference" },
         "currentStock": { "type": "number", "description": "The current stock quantity" },
+        "stock1": { "type": "number", "description": "Stock 1 Warehouse" },
+        "stock2": { "type": "number", "description": "Stock 2 Production" },
+        "stock3": { "type": "number", "description": "Stock 3 Finished Goods" },
         "lastUpdate": { "type": "string", "description": "Timestamp of the last update" }
       },
-      "required": ["code", "description", "materialType", "associatedLeather", "currentStock", "lastUpdate"]
+      "required": ["code", "description", "materialType"]
     },
     "Delivery": {
       "title": "Delivery",

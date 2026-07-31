@@ -69,15 +69,19 @@ export interface Reference {
   id: string; // Matches reference code
   code: string;
   description: string;
-  materialType: "Mesh" | "Soft";
-  associatedLeather: string;
+  materialType: "Mesh" | "Soft" | string;
+  associatedLeather?: string;
+  customer?: string;
+  active?: boolean; // Default true if undefined
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
   currentStock: number; // Total combined across stocks
   stock1: number; // STOCK 1 - Warehouse Stock (Raw Materials)
   stock2: number; // STOCK 2 - Production Stock (WIP)
   stock3: number; // STOCK 3 - Finished Goods Stock
   lastUpdate: string;
-  customer?: string;
-  minStockThreshold?: number;
 }
 
 export interface ScrapEntry {

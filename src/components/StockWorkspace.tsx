@@ -2,11 +2,12 @@ import React, { useState, useMemo } from "react";
 import { Box, Adjustment, Reference, User, InventoryTransaction } from "../types";
 import { 
   Search, Filter, ArrowLeftRight, Clock, Trash2, Edit2, Check, X, Download, FileText, Calendar, UserCheck, Tag, Info,
-  Boxes, Factory, CheckCircle2, FileSpreadsheet, Layers, Sparkles
+  Boxes, Factory, CheckCircle2, FileSpreadsheet, Layers, Sparkles, Plus, Power, CheckCircle, AlertOctagon
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
+import { AddEditReferenceModal } from "./AddEditReferenceModal";
 
 interface StockWorkspaceProps {
   boxes: Box[];
@@ -16,6 +17,14 @@ interface StockWorkspaceProps {
   currentUser: User;
   onDeleteBox?: (boxId: string) => Promise<void>;
   onUpdateBox?: (boxId: string, updatedFields: Partial<Box>) => Promise<void>;
+  onCreateReference?: (refData: {
+    code: string;
+    description: string;
+    customer: string;
+    materialType: string;
+    associatedLeather?: string;
+    active?: boolean;
+  }) => Promise<void>;
   onUpdateReference?: (refId: string, updatedFields: Partial<Reference>) => Promise<void>;
 }
 
@@ -27,6 +36,7 @@ export default function StockWorkspace({
   currentUser,
   onDeleteBox,
   onUpdateBox,
+  onCreateReference,
   onUpdateReference
 }: StockWorkspaceProps) {
   
@@ -36,6 +46,10 @@ export default function StockWorkspace({
   // Filter States (Dashboard & Inventory Views)
   const [searchQuery, setSearchQuery] = useState("");
   const [materialFilter, setMaterialFilter] = useState<"All" | "Mesh" | "Soft">("All");
+
+  // Reference Add/Edit Modal State
+  const [isRefModalOpen, setIsRefModalOpen] = useState(false);
+  const [selectedRefForEdit, setSelectedRefForEdit] = useState<Reference | null>(null);
 
   // Box Editing / Management States (Admins & Supervisors)
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
@@ -255,9 +269,12 @@ export default function StockWorkspace({
 
   const filteredReferences = useMemo(() => {
     return references.filter(ref => {
-      const matchesSearch = ref.code.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            ref.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = ref.code.toLowerCase().includes(q) || 
+                            ref.description.toLowerCase().includes(q) ||
+                            (ref.customer && ref.customer.toLowerCase().includes(q));
       const matchesMaterial = materialFilter === "All" || ref.materialType === materialFilter;
+      
       return matchesSearch && matchesMaterial;
     });
   }, [references, searchQuery, materialFilter]);
@@ -413,12 +430,12 @@ export default function StockWorkspace({
                 </p>
               </div>
 
-              <div className="flex gap-2.5 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
                 <div className="relative flex-1 sm:flex-none">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search references..."
+                    placeholder="Search code, customer..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full sm:w-48 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 text-xs rounded-2xl font-mono focus:outline-none transition-all"
@@ -435,6 +452,18 @@ export default function StockWorkspace({
                   className="w-32"
                   size="sm"
                 />
+                {(currentUser.role === "admin" || currentUser.role === "supervisor") && onCreateReference && (
+                  <button
+                    onClick={() => {
+                      setSelectedRefForEdit(null);
+                      setIsRefModalOpen(true);
+                    }}
+                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-2xl shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Reference</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -443,8 +472,10 @@ export default function StockWorkspace({
                 <thead>
                   <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
                     <th className="py-3 px-4">Reference Code</th>
+                    <th className="py-3 px-4">Customer</th>
                     <th className="py-3 px-4">Description</th>
                     <th className="py-3 px-4">Material Type</th>
+                    <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Warehouse Qty (Stock 1)</th>
                     <th className="py-3 px-4 text-right">Last Update</th>
                     {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
@@ -453,70 +484,122 @@ export default function StockWorkspace({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {filteredReferences.map(ref => (
-                    <tr key={ref.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
-                      <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
-                      <td className="py-3 px-4">
-                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-mono text-[10px] font-bold rounded-full">
-                          {ref.materialType}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-extrabold text-blue-600 text-sm">
-                        {editingRefId === ref.id && editingRefStage === "stock1" ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={editingRefQty}
-                            onChange={(e) => setEditingRefQty(Number(e.target.value))}
-                            className="w-24 text-right border border-blue-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
-                          />
-                        ) : (
-                          <>
-                            {(ref.stock1 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
-                          </>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
-                        {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
-                      </td>
-                      {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
-                        <td className="py-2 px-4 text-center">
-                          {editingRefId === ref.id && editingRefStage === "stock1" ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => handleSaveRefStockChange(ref.id)}
-                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
-                                title="Save Stock"
-                              >
-                                <Check className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setEditingRefId(null)}
-                                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl cursor-pointer"
-                                title="Cancel"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
+                  {filteredReferences.map(ref => {
+                    const isRefActive = ref.active !== false;
+                    return (
+                      <tr key={ref.id} className={`hover:bg-slate-50/70 transition-colors ${!isRefActive ? "bg-slate-50/50 opacity-75" : ""}`}>
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                          {ref.code}
+                        </td>
+                        <td className="py-3 px-4">
+                          {ref.customer ? (
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-900 text-[10px] font-bold rounded-md uppercase font-mono">
+                              {ref.customer}
+                            </span>
                           ) : (
-                            <button
-                              onClick={() => {
-                                setEditingRefId(ref.id);
-                                setEditingRefStage("stock1");
-                                setEditingRefQty(ref.stock1 || 0);
-                              }}
-                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                              title="Edit/Deduct Stock 1"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                              <span>Edit</span>
-                            </button>
+                            <span className="text-slate-400 text-[11px]">—</span>
                           )}
                         </td>
-                      )}
-                    </tr>
-                  ))}
+                        <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
+                        <td className="py-3 px-4">
+                          <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-mono text-[10px] font-bold rounded-full">
+                            {ref.materialType}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {isRefActive ? (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md uppercase font-mono">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-extrabold rounded-md uppercase font-mono">
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-extrabold text-blue-600 text-sm">
+                          {editingRefId === ref.id && editingRefStage === "stock1" ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingRefQty}
+                              onChange={(e) => setEditingRefQty(Number(e.target.value))}
+                              className="w-24 text-right border border-blue-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
+                            />
+                          ) : (
+                            <>
+                              {(ref.stock1 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
+                            </>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
+                          {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
+                        </td>
+                        {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                          <td className="py-2 px-4 text-center">
+                            {editingRefId === ref.id && editingRefStage === "stock1" ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => handleSaveRefStockChange(ref.id)}
+                                  className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
+                                  title="Save Stock"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setEditingRefId(null)}
+                                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl cursor-pointer"
+                                  title="Cancel"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setEditingRefId(ref.id);
+                                    setEditingRefStage("stock1");
+                                    setEditingRefQty(ref.stock1 || 0);
+                                  }}
+                                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
+                                  title="Edit Stock Level"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                  <span>Stock</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setSelectedRefForEdit(ref);
+                                    setIsRefModalOpen(true);
+                                  }}
+                                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl cursor-pointer"
+                                  title="Edit Reference Metadata"
+                                >
+                                  <Tag className="w-3.5 h-3.5" />
+                                </button>
+
+                                {onUpdateReference && (
+                                  <button
+                                    onClick={() => onUpdateReference(ref.id, { active: !isRefActive })}
+                                    className={`p-1.5 rounded-xl cursor-pointer transition-colors ${
+                                      isRefActive 
+                                        ? "bg-rose-50 hover:bg-rose-100 text-rose-700" 
+                                        : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                                    }`}
+                                    title={isRefActive ? "Deactivate Reference" : "Activate Reference"}
+                                  >
+                                    <Power className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -687,12 +770,12 @@ export default function StockWorkspace({
                 </p>
               </div>
 
-              <div className="flex gap-2.5 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
                 <div className="relative flex-1 sm:flex-none">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search references..."
+                    placeholder="Search code, customer..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full sm:w-48 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 text-xs rounded-2xl font-mono focus:outline-none transition-all"
@@ -709,6 +792,18 @@ export default function StockWorkspace({
                   className="w-32"
                   size="sm"
                 />
+                {(currentUser.role === "admin" || currentUser.role === "supervisor") && onCreateReference && (
+                  <button
+                    onClick={() => {
+                      setSelectedRefForEdit(null);
+                      setIsRefModalOpen(true);
+                    }}
+                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-2xl shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Reference</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -717,8 +812,10 @@ export default function StockWorkspace({
                 <thead>
                   <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
                     <th className="py-3 px-4">Reference Code</th>
+                    <th className="py-3 px-4">Customer</th>
                     <th className="py-3 px-4">Description</th>
                     <th className="py-3 px-4">Material Type</th>
+                    <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Production Qty (Stock 2)</th>
                     <th className="py-3 px-4 text-right">Last Update</th>
                     {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
@@ -727,70 +824,119 @@ export default function StockWorkspace({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {filteredReferences.map(ref => (
-                    <tr key={ref.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
-                      <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
-                      <td className="py-3 px-4">
-                        <span className="px-2.5 py-1 bg-amber-50 text-amber-700 font-mono text-[10px] font-bold rounded-full">
-                          {ref.materialType}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-extrabold text-amber-600 text-sm">
-                        {editingRefId === ref.id && editingRefStage === "stock2" ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={editingRefQty}
-                            onChange={(e) => setEditingRefQty(Number(e.target.value))}
-                            className="w-24 text-right border border-amber-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
-                          />
-                        ) : (
-                          <>
-                            {(ref.stock2 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
-                          </>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
-                        {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
-                      </td>
-                      {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
-                        <td className="py-2 px-4 text-center">
-                          {editingRefId === ref.id && editingRefStage === "stock2" ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => handleSaveRefStockChange(ref.id)}
-                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
-                                title="Save Stock"
-                              >
-                                <Check className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setEditingRefId(null)}
-                                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl cursor-pointer"
-                                title="Cancel"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
+                  {filteredReferences.map(ref => {
+                    const isRefActive = ref.active !== false;
+                    return (
+                      <tr key={ref.id} className={`hover:bg-slate-50/70 transition-colors ${!isRefActive ? "bg-slate-50/50 opacity-75" : ""}`}>
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
+                        <td className="py-3 px-4">
+                          {ref.customer ? (
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-900 text-[10px] font-bold rounded-md uppercase font-mono">
+                              {ref.customer}
+                            </span>
                           ) : (
-                            <button
-                              onClick={() => {
-                                setEditingRefId(ref.id);
-                                setEditingRefStage("stock2");
-                                setEditingRefQty(ref.stock2 || 0);
-                              }}
-                              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                              title="Edit/Deduct Stock 2"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                              <span>Edit</span>
-                            </button>
+                            <span className="text-slate-400 text-[11px]">—</span>
                           )}
                         </td>
-                      )}
-                    </tr>
-                  ))}
+                        <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
+                        <td className="py-3 px-4">
+                          <span className="px-2.5 py-1 bg-amber-50 text-amber-700 font-mono text-[10px] font-bold rounded-full">
+                            {ref.materialType}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {isRefActive ? (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md uppercase font-mono">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-extrabold rounded-md uppercase font-mono">
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-extrabold text-amber-600 text-sm">
+                          {editingRefId === ref.id && editingRefStage === "stock2" ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingRefQty}
+                              onChange={(e) => setEditingRefQty(Number(e.target.value))}
+                              className="w-24 text-right border border-amber-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
+                            />
+                          ) : (
+                            <>
+                              {(ref.stock2 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
+                            </>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
+                          {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
+                        </td>
+                        {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                          <td className="py-2 px-4 text-center">
+                            {editingRefId === ref.id && editingRefStage === "stock2" ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => handleSaveRefStockChange(ref.id)}
+                                  className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
+                                  title="Save Stock"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setEditingRefId(null)}
+                                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl cursor-pointer"
+                                  title="Cancel"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setEditingRefId(ref.id);
+                                    setEditingRefStage("stock2");
+                                    setEditingRefQty(ref.stock2 || 0);
+                                  }}
+                                  className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
+                                  title="Edit Stock 2"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                  <span>Stock</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setSelectedRefForEdit(ref);
+                                    setIsRefModalOpen(true);
+                                  }}
+                                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl cursor-pointer"
+                                  title="Edit Reference Metadata"
+                                >
+                                  <Tag className="w-3.5 h-3.5" />
+                                </button>
+                                {onUpdateReference && (
+                                  <button
+                                    onClick={() => onUpdateReference(ref.id, { active: !isRefActive })}
+                                    className={`p-1.5 rounded-xl cursor-pointer transition-colors ${
+                                      isRefActive 
+                                        ? "bg-rose-50 hover:bg-rose-100 text-rose-700" 
+                                        : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                                    }`}
+                                    title={isRefActive ? "Deactivate Reference" : "Activate Reference"}
+                                  >
+                                    <Power className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -815,12 +961,12 @@ export default function StockWorkspace({
                 </p>
               </div>
 
-              <div className="flex gap-2.5 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
                 <div className="relative flex-1 sm:flex-none">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search references..."
+                    placeholder="Search code, customer..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full sm:w-48 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 text-xs rounded-2xl font-mono focus:outline-none transition-all"
@@ -837,6 +983,18 @@ export default function StockWorkspace({
                   className="w-32"
                   size="sm"
                 />
+                {(currentUser.role === "admin" || currentUser.role === "supervisor") && onCreateReference && (
+                  <button
+                    onClick={() => {
+                      setSelectedRefForEdit(null);
+                      setIsRefModalOpen(true);
+                    }}
+                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-2xl shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Reference</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -845,8 +1003,10 @@ export default function StockWorkspace({
                 <thead>
                   <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
                     <th className="py-3 px-4">Reference Code</th>
+                    <th className="py-3 px-4">Customer</th>
                     <th className="py-3 px-4">Description</th>
                     <th className="py-3 px-4">Material Type</th>
+                    <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Finished Goods Qty (Stock 3)</th>
                     <th className="py-3 px-4 text-right">Last Update</th>
                     {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
@@ -855,70 +1015,120 @@ export default function StockWorkspace({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {filteredReferences.map(ref => (
-                    <tr key={ref.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
-                      <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
-                      <td className="py-3 px-4">
-                        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-mono text-[10px] font-bold rounded-full">
-                          {ref.materialType}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-extrabold text-emerald-600 text-sm">
-                        {editingRefId === ref.id && editingRefStage === "stock3" ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={editingRefQty}
-                            onChange={(e) => setEditingRefQty(Number(e.target.value))}
-                            className="w-24 text-right border border-emerald-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
-                          />
-                        ) : (
-                          <>
-                            {(ref.stock3 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
-                          </>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
-                        {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
-                      </td>
-                      {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
-                        <td className="py-2 px-4 text-center">
-                          {editingRefId === ref.id && editingRefStage === "stock3" ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => handleSaveRefStockChange(ref.id)}
-                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
-                                title="Save Stock"
-                              >
-                                <Check className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setEditingRefId(null)}
-                                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl cursor-pointer"
-                                title="Cancel"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
+                  {filteredReferences.map(ref => {
+                    const isRefActive = ref.active !== false;
+                    return (
+                      <tr key={ref.id} className={`hover:bg-slate-50/70 transition-colors ${!isRefActive ? "bg-slate-50/50 opacity-75" : ""}`}>
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
+                        <td className="py-3 px-4">
+                          {ref.customer ? (
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-900 text-[10px] font-bold rounded-md uppercase font-mono">
+                              {ref.customer}
+                            </span>
                           ) : (
-                            <button
-                              onClick={() => {
-                                setEditingRefId(ref.id);
-                                setEditingRefStage("stock3");
-                                setEditingRefQty(ref.stock3 || 0);
-                              }}
-                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                              title="Edit/Deduct Stock 3"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                              <span>Edit</span>
-                            </button>
+                            <span className="text-slate-400 text-[11px]">—</span>
                           )}
                         </td>
-                      )}
-                    </tr>
-                  ))}
+                        <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
+                        <td className="py-3 px-4">
+                          <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-mono text-[10px] font-bold rounded-full">
+                            {ref.materialType}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {isRefActive ? (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md uppercase font-mono">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-extrabold rounded-md uppercase font-mono">
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-extrabold text-emerald-600 text-sm">
+                          {editingRefId === ref.id && editingRefStage === "stock3" ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingRefQty}
+                              onChange={(e) => setEditingRefQty(Number(e.target.value))}
+                              className="w-24 text-right border border-emerald-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
+                            />
+                          ) : (
+                            <>
+                              {(ref.stock3 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
+                            </>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
+                          {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
+                        </td>
+                        {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                          <td className="py-2 px-4 text-center">
+                            {editingRefId === ref.id && editingRefStage === "stock3" ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => handleSaveRefStockChange(ref.id)}
+                                  className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl cursor-pointer"
+                                  title="Save Stock"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setEditingRefId(null)}
+                                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl cursor-pointer"
+                                  title="Cancel"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setEditingRefId(ref.id);
+                                    setEditingRefStage("stock3");
+                                    setEditingRefQty(ref.stock3 || 0);
+                                  }}
+                                  className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
+                                  title="Edit Stock 3"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                  <span>Stock</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setSelectedRefForEdit(ref);
+                                    setIsRefModalOpen(true);
+                                  }}
+                                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl cursor-pointer"
+                                  title="Edit Reference Metadata"
+                                >
+                                  <Tag className="w-3.5 h-3.5" />
+                                </button>
+
+                                {onUpdateReference && (
+                                  <button
+                                    onClick={() => onUpdateReference(ref.id, { active: !isRefActive })}
+                                    className={`p-1.5 rounded-xl cursor-pointer transition-colors ${
+                                      isRefActive 
+                                        ? "bg-rose-50 hover:bg-rose-100 text-rose-700" 
+                                        : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                                    }`}
+                                    title={isRefActive ? "Deactivate Reference" : "Activate Reference"}
+                                  >
+                                    <Power className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1146,6 +1356,21 @@ export default function StockWorkspace({
           </div>
 
         </div>
+      )}
+
+      {/* Reference Creation & Editing Modal */}
+      {onCreateReference && onUpdateReference && (
+        <AddEditReferenceModal
+          isOpen={isRefModalOpen}
+          onClose={() => {
+            setIsRefModalOpen(false);
+            setSelectedRefForEdit(null);
+          }}
+          existingRef={selectedRefForEdit}
+          currentUser={currentUser}
+          onCreateReference={onCreateReference}
+          onUpdateReference={onUpdateReference}
+        />
       )}
 
     </div>

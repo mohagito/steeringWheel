@@ -295,24 +295,44 @@ export async function seedDatabaseIfNeeded() {
     if (refsSnapshot.empty) {
       console.log("Seeding initial master references with 0 stock...");
       const refBatch = writeBatch(db);
+      const now = new Date().toISOString();
       DEFAULT_REFERENCES.forEach((ref) => {
-        refBatch.set(doc(db, "references", ref.id), ref);
+        refBatch.set(doc(db, "references", ref.id), {
+          ...ref,
+          active: true,
+          createdAt: now,
+          createdBy: "System",
+          updatedAt: now,
+          updatedBy: "System"
+        });
       });
       await refBatch.commit();
     } else {
-      // If references exist, migrate any missing customer fields or missing default refs
+      // If references exist, migrate any missing active, customer fields or missing default refs
       const existingRefs = new Map(refsSnapshot.docs.map(doc => [doc.id, doc.data() as Reference]));
       const refBatch = writeBatch(db);
       let needsUpdate = false;
+      const now = new Date().toISOString();
 
       DEFAULT_REFERENCES.forEach((ref) => {
         const existing = existingRefs.get(ref.id);
         if (!existing) {
           console.log(`Seeding missing predefined reference: ${ref.id}`);
-          refBatch.set(doc(db, "references", ref.id), ref);
+          refBatch.set(doc(db, "references", ref.id), {
+            ...ref,
+            active: true,
+            createdAt: now,
+            createdBy: "System",
+            updatedAt: now,
+            updatedBy: "System"
+          });
           needsUpdate = true;
-        } else if (!existing.customer) {
-          refBatch.set(doc(db, "references", ref.id), { ...existing, customer: ref.customer }, { merge: true });
+        } else if (existing.active === undefined || !existing.customer) {
+          refBatch.set(doc(db, "references", ref.id), { 
+            ...existing, 
+            customer: existing.customer || ref.customer,
+            active: existing.active !== undefined ? existing.active : true 
+          }, { merge: true });
           needsUpdate = true;
         }
       });
