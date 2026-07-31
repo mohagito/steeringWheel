@@ -384,6 +384,9 @@ export default function OperatorWorkspace({
           movementType: "TRANSFER S1->S2",
           stock: "Stock 1 -> Stock 2",
           quantity: transferQty,
+          expectedQty: transferQty,
+          actualQty: transferQty,
+          difference: 0,
           operatorName: currentUser.fullName,
           timestamp,
           notes: `Mallas Pegadas (Sent to Gluing/Processing). Note: ${cleanInvoice}`
@@ -434,6 +437,9 @@ export default function OperatorWorkspace({
           movementType: "STOCK 1 IN",
           stock: "Stock 1",
           quantity: actualQtyVal, // Physical stock added
+          expectedQty: expectedQtyVal,
+          actualQty: actualQtyVal,
+          difference: diff,
           operatorName: currentUser.fullName,
           timestamp,
           notes: diff !== 0 

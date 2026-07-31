@@ -28,6 +28,41 @@ interface StockWorkspaceProps {
   onUpdateReference?: (refId: string, updatedFields: Partial<Reference>) => Promise<void>;
 }
 
+// Helper function to extract Scanned Qty, Real Count Qty, and Difference for report tables
+const cleanNotes = (notesStr: string) => {
+  if (!notesStr) return "";
+  return notesStr
+    .replace(/\s*\(Label:\s*\d+\s*PCS\s*\|\s*Real Manual Count:\s*\d+\s*PCS\s*\|\s*Diff:\s*[+-]?\d+\s*PCS\)/gi, "")
+    .trim();
+};
+
+const parseTransactionQtyDetails = (row: any) => {
+  let scannedQty = row.expectedQty;
+  let realQty = row.actualQty ?? row.quantity ?? 0;
+  let diff = row.difference;
+
+  if (scannedQty === undefined || scannedQty === null) {
+    if (row.notes) {
+      const matchLabel = row.notes.match(/Label:\s*(\d+)/i);
+      const matchReal = row.notes.match(/Real Manual Count:\s*(\d+)/i);
+      const matchDiff = row.notes.match(/Diff:\s*([+-]?\d+)/i);
+      if (matchLabel) scannedQty = parseInt(matchLabel[1], 10);
+      if (matchReal) realQty = parseInt(matchReal[1], 10);
+      if (matchDiff) diff = parseInt(matchDiff[1], 10);
+    }
+  }
+
+  if (scannedQty === undefined || scannedQty === null) {
+    scannedQty = realQty;
+  }
+
+  if (diff === undefined || diff === null) {
+    diff = realQty - scannedQty;
+  }
+
+  return { scannedQty, realQty, diff };
+};
+
 export default function StockWorkspace({ 
   boxes = [], 
   adjustments = [], 
@@ -146,7 +181,152 @@ export default function StockWorkspace({
 
   }, [reportType, repRefFilter, repDateFilter, repOperatorFilter, repMovementFilter, transactions, references]);
 
-  // Export filtered report to Excel/CSV
+  // Export formatted Excel (.xls) with custom Medium table styling
+  const handleExportExcel = (styleTheme: "green" | "blue" | "dark" = "green") => {
+    if (reportData.length === 0) {
+      Swal.fire({
+        title: "No Data",
+        text: "No data available to export.",
+        icon: "info",
+        confirmButtonColor: "#2563eb"
+      });
+      return;
+    }
+
+    const reportTitle = 
+      reportType === "s1_stock" ? "Warehouse Inventory Report (Stock 1)" :
+      reportType === "s2_stock" ? "Mallas Pegadas Inventory Report (Stock 2)" :
+      reportType === "s3_stock" ? "Finished Goods Inventory Report (Stock 3)" :
+      reportType === "daily_movements" ? "Daily Stock Movement Audit Log" :
+      "Inventory Movement & Variance Report";
+
+    // Color schemes matching Excel "Medium" Table Styles (e.g., Medium Emerald Green)
+    const headerBg = styleTheme === "green" ? "#15803d" : styleTheme === "blue" ? "#1e40af" : "#1e293b";
+    const zebraBg = styleTheme === "green" ? "#f0fdf4" : styleTheme === "blue" ? "#eff6ff" : "#f8fafc";
+    const headerTextColor = "#ffffff";
+
+    let tableHeaderHtml = "";
+    let tableRowsHtml = "";
+
+    if (reportType === "s1_stock" || reportType === "s2_stock" || reportType === "s3_stock") {
+      tableHeaderHtml = `
+        <tr style="background-color: ${headerBg}; color: ${headerTextColor};">
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: left;">Reference Code</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: left;">Description</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: center;">Material Type</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: right;">Current Stock (PCS)</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: right;">Last Sync</th>
+        </tr>
+      `;
+
+      tableRowsHtml = reportData.map((row, idx) => {
+        const bg = idx % 2 === 1 ? `background-color: ${zebraBg};` : "background-color: #ffffff;";
+        return `
+          <tr style="${bg}">
+            <td style="border: 1px solid #e2e8f0; padding: 8px; font-weight: bold; font-family: monospace;">${row.reference || ''}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px;">${row.description || ''}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${row.materialType || 'Mesh'}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right; font-weight: bold; mso-number-format: '\\#,\\#\\#0';">${row.quantity || 0}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right; color: #64748b; font-size: 10pt;">${row.timestamp ? new Date(row.timestamp).toLocaleString() : 'N/A'}</td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      tableHeaderHtml = `
+        <tr style="background-color: ${headerBg}; color: ${headerTextColor};">
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: left;">Timestamp</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: center;">Movement Type</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: left;">Reference Code</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: left;">Stock Level</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: right;">Scanned Qty (Label)</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: right;">Real Count (Manual)</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: center;">Difference (Diff)</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: left;">Operator</th>
+          <th style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-align: left;">Notes & Remarks</th>
+        </tr>
+      `;
+
+      tableRowsHtml = reportData.map((row, idx) => {
+        const { scannedQty, realQty, diff } = parseTransactionQtyDetails(row);
+        const bg = idx % 2 === 1 ? `background-color: ${zebraBg};` : "background-color: #ffffff;";
+        
+        let diffStyle = "background-color: #f1f5f9; color: #475569; font-weight: bold; text-align: center;";
+        let diffText = "0";
+        if (diff > 0) {
+          diffStyle = "background-color: #dcfce7; color: #15803d; font-weight: bold; text-align: center;";
+          diffText = `+${diff}`;
+        } else if (diff < 0) {
+          diffStyle = "background-color: #ffe4e6; color: #be123c; font-weight: bold; text-align: center;";
+          diffText = `${diff}`;
+        }
+
+        return `
+          <tr style="${bg}">
+            <td style="border: 1px solid #e2e8f0; padding: 8px; font-size: 10pt; color: #475569;">${row.timestamp ? new Date(row.timestamp).toLocaleString() : 'N/A'}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center; font-weight: bold; font-size: 10pt;">${row.movementType || ''}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; font-weight: bold; font-family: monospace;">${row.reference || ''}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; color: #334155;">${row.stock || 'N/A'}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right; color: #64748b; mso-number-format: '\\#,\\#\\#0';">${scannedQty}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right; font-weight: bold; mso-number-format: '\\#,\\#\\#0';">${realQty}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; ${diffStyle}">${diffText}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px;">${row.operatorName || ''}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; color: #475569;">${cleanNotes(row.notes)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    const excelDocument = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="utf-8">
+  <!--[if gte mso 9]>
+  <xml>
+    <x:ExcelWorkbook>
+      <x:ExcelWorksheets>
+        <x:ExcelWorksheet>
+          <x:Name>Inventory Report</x:Name>
+          <x:WorksheetOptions>
+            <x:DisplayGridlines/>
+          </x:WorksheetOptions>
+        </x:ExcelWorksheet>
+      </x:ExcelWorksheets>
+    </x:ExcelWorkbook>
+  </xml>
+  <![endif]-->
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+    .title { font-size: 16pt; font-weight: bold; color: ${headerBg}; padding-bottom: 4px; }
+    .meta { font-size: 10pt; color: #64748b; margin-bottom: 15px; }
+  </style>
+</head>
+<body>
+  <div class="title">${reportTitle}</div>
+  <div class="meta">Generated: ${new Date().toLocaleString()} | Total Records: ${reportData.length}</div>
+  <table>
+    <thead>
+      ${tableHeaderHtml}
+    </thead>
+    <tbody>
+      ${tableRowsHtml}
+    </tbody>
+  </table>
+</body>
+</html>`;
+
+    const blob = new Blob([excelDocument], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const dateStr = new Date().toISOString().split("T")[0];
+    link.download = `MES_Report_${reportType}_${dateStr}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Export filtered report to CSV
   const handleExportCSV = () => {
     if (reportData.length === 0) {
       Swal.fire({
@@ -165,23 +345,27 @@ export default function StockWorkspace({
       headers = ["Reference Code", "Description", "Material Type", "Current Stock (PCS)", "Last Update"];
       rows = reportData.map(row => [
         row.reference,
-        `"${row.description.replace(/"/g, '""')}"`,
-        row.materialType,
+        `"${(row.description || '').replace(/"/g, '""')}"`,
+        row.materialType || 'Mesh',
         row.quantity.toString(),
         row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A"
       ]);
     } else {
-      headers = ["ID", "Timestamp", "Movement Type", "Reference", "Stock Level", "Quantity", "Operator", "Notes"];
-      rows = reportData.map(row => [
-        row.id,
-        row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A",
-        row.movementType,
-        row.reference,
-        row.stock || "N/A",
-        row.quantity.toString(),
-        row.operatorName,
-        `"${(row.notes || "").replace(/"/g, '""')}"`
-      ]);
+      headers = ["Timestamp", "Movement Type", "Reference Code", "Stock Level", "Scanned Qty (Label)", "Real Count (Manual)", "Difference", "Operator", "Notes"];
+      rows = reportData.map(row => {
+        const { scannedQty, realQty, diff } = parseTransactionQtyDetails(row);
+        return [
+          row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A",
+          row.movementType,
+          row.reference,
+          row.stock || "N/A",
+          scannedQty.toString(),
+          realQty.toString(),
+          diff > 0 ? `+${diff}` : diff.toString(),
+          row.operatorName,
+          `"${cleanNotes(row.notes).replace(/"/g, '""')}"`
+        ];
+      });
     }
 
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
@@ -1244,17 +1428,28 @@ export default function StockWorkspace({
             </div>
 
             {/* Execution Buttons */}
-            <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
+            <div className="pt-3 border-t border-slate-100 flex flex-wrap justify-between items-center gap-3">
               <span className="text-xs font-mono text-slate-500">
                 Matches found: <strong className="text-slate-900">{reportData.length} entries</strong>
               </span>
-              <button
-                onClick={handleExportCSV}
-                className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase rounded-2xl shadow-lg shadow-purple-500/20 flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                Export CSV / Excel
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportExcel("green")}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all cursor-pointer"
+                  title="Export Formatted Excel Spreadsheet (.xls) with Medium Green Table Styling"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Export Excel (.XLS)</span>
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold uppercase rounded-xl border border-slate-200 flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Export Standard CSV File"
+                >
+                  <FileText className="w-4 h-4 text-slate-500" />
+                  <span>CSV</span>
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1309,42 +1504,65 @@ export default function StockWorkspace({
                       <th className="py-3 px-4">Movement Type</th>
                       <th className="py-3 px-4">Reference</th>
                       <th className="py-3 px-4">Source Stock</th>
-                      <th className="py-3 px-4 text-right">Quantity</th>
+                      <th className="py-3 px-4 text-right">Scanned Qty</th>
+                      <th className="py-3 px-4 text-right">Real Count</th>
+                      <th className="py-3 px-4 text-center">Diff</th>
                       <th className="py-3 px-4">Operator</th>
                       <th className="py-3 px-4">Notes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-mono">
-                    {reportData.map((row, index) => (
-                      <tr key={index} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-4 text-[11px] text-slate-400">
-                          {row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A"}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${
-                            row.movementType === "STOCK 1 IN" 
-                              ? "bg-blue-50 text-blue-700" 
-                              : row.movementType === "TRANSFER"
-                              ? "bg-amber-50 text-amber-700"
-                              : "bg-emerald-50 text-emerald-700"
-                          }`}>
-                            {row.movementType}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 font-bold text-slate-900">{row.reference}</td>
-                        <td className="py-3 px-4 text-slate-500 text-xs">{row.stock}</td>
-                        <td className="py-3 px-4 text-right font-extrabold text-slate-900 text-sm">
-                          {row.quantity.toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-xs text-slate-700 font-sans">{row.operatorName}</td>
-                        <td className="py-3 px-4 text-xs text-slate-500 font-sans max-w-xs truncate" title={row.notes}>
-                          {row.notes}
-                        </td>
-                      </tr>
-                    ))}
+                    {reportData.map((row, index) => {
+                      const { scannedQty, realQty, diff } = parseTransactionQtyDetails(row);
+                      return (
+                        <tr key={index} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-4 text-[11px] text-slate-400">
+                            {row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A"}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${
+                              row.movementType === "STOCK 1 IN" 
+                                ? "bg-blue-50 text-blue-700" 
+                                : row.movementType === "TRANSFER"
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-emerald-50 text-emerald-700"
+                            }`}>
+                              {row.movementType}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900">{row.reference}</td>
+                          <td className="py-3 px-4 text-slate-500 text-xs">{row.stock}</td>
+                          <td className="py-3 px-4 text-right text-slate-500 font-mono text-xs">
+                            {scannedQty.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-right font-extrabold text-slate-900 text-sm font-mono">
+                            {realQty.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-center font-mono">
+                            {diff === 0 ? (
+                              <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500">
+                                0
+                              </span>
+                            ) : diff > 0 ? (
+                              <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-100 text-emerald-800">
+                                +{diff}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-rose-100 text-rose-800">
+                                {diff}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-xs text-slate-700 font-sans">{row.operatorName}</td>
+                          <td className="py-3 px-4 text-xs text-slate-500 font-sans max-w-xs truncate" title={cleanNotes(row.notes)}>
+                            {cleanNotes(row.notes)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {reportData.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="py-12 text-center text-slate-400 font-mono text-xs">
+                        <td colSpan={9} className="py-12 text-center text-slate-400 font-mono text-xs">
                           No transactions found matching active report parameters.
                         </td>
                       </tr>
