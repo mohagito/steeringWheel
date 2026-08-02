@@ -4,11 +4,11 @@ import firebaseConfig from "../firebase-applet-config.json";
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with auto-detect long polling for optimal container & proxy connection
+// Initialize Firestore with forced long polling for robust connection through container proxies
 const db = initializeFirestore(
   app,
   {
-    experimentalAutoDetectLongPolling: true,
+    experimentalForceLongPolling: true,
   },
   firebaseConfig.firestoreDatabaseId || "(default)"
 );

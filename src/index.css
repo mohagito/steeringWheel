@@ -1,30 +1,29 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Inter", sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* Siemens & Bosch Industrial color palette (navy, gray, crisp blue accent) */
   --color-brand-50: #f8fafc;
   --color-brand-100: #e2e8f0;
   --color-brand-200: #cbd5e1;
   --color-brand-300: #94a3b8;
   --color-brand-400: #64748b;
-  --color-brand-500: #005A9C; /* Siemens-like crisp industrial blue */
-  --color-brand-600: #004B87;
-  --color-brand-700: #003B6F;
-  --color-brand-800: #0f1e36; /* Navy background */
-  --color-brand-900: #0a1322;
-  --color-brand-950: #050a12;
+  --color-brand-500: #0284c7;
+  --color-brand-600: #0369a1;
+  --color-brand-700: #075985;
+  --color-brand-800: #0f172a;
+  --color-brand-900: #0284c7;
+  --color-brand-950: #0369a1;
   
-  --color-accent-amber: #d97706; /* Industrial warning amber/orange */
+  --color-accent-amber: #d97706;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #f1f5f9; /* Solid light-gray floor color */
+  background-color: #f4f7fb; /* Soft, clean minimalist slate canvas like the reference design */
   color: #1e293b;
   overflow-x: hidden;
 }
@@ -33,45 +32,45 @@ body {
   font-family: var(--font-display);
 }
 
-/* Solid industrial panel (no glassmorphism, flat with solid border) */
+/* Modern soft rounded cards */
 .glass-panel {
   background: #ffffff;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
 }
 
-/* Industrial Grid, Tables, and Forms */
+/* Modern Minimalist Tables */
 .industrial-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   text-align: left;
-  font-size: 0.8125rem; /* 13px - compact and readable */
+  font-size: 0.8125rem;
 }
 
 .industrial-table th {
-  background-color: #e2e8f0;
-  color: #0f1e36;
-  font-weight: 600;
+  background-color: #f8fafc;
+  color: #475569;
+  font-weight: 700;
   text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  border: 1px solid #cbd5e1;
-  padding: 6px 10px;
+  font-size: 0.725rem;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 14px;
 }
 
 .industrial-table td {
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
 }
 
-.industrial-table tr:nth-child(even) {
+.industrial-table tr:hover td {
   background-color: #f8fafc;
 }
 
-.industrial-table tr:hover {
-  background-color: #f1f5f9;
-}
-
-/* Scrollbar: clean and tight */
+/* Scrollbar: clean and soft */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -81,7 +80,7 @@ body {
 }
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 2px;
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;

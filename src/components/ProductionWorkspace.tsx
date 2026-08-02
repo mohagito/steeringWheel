@@ -234,38 +234,38 @@ export default function ProductionWorkspace({
       
       {/* Overview Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
-          <div className="p-3.5 rounded-xl bg-blue-50 text-blue-600">
-            <TrendingDown className="w-6 h-6" />
+        <div className="glass-panel p-5 flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-blue-50 text-blue-600">
+            <TrendingDown className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Total Pieces Consumed</span>
-            <span className="text-2xl font-black text-slate-900 font-display mt-0.5 block">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Total Consumed</span>
+            <span className="text-xl font-bold text-slate-900 font-mono mt-0.5 block">
               {stats.totalQtyConsumed.toLocaleString()} pcs
             </span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
-          <div className="p-3.5 rounded-xl bg-indigo-50 text-indigo-600">
-            <Calendar className="w-6 h-6" />
+        <div className="glass-panel p-5 flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-indigo-50 text-indigo-600">
+            <Calendar className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Logged Production Days</span>
-            <span className="text-2xl font-black text-slate-900 font-display mt-0.5 block">
-              {stats.uniqueDays} active days
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Production Days</span>
+            <span className="text-xl font-bold text-slate-900 font-mono mt-0.5 block">
+              {stats.uniqueDays} days
             </span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-center">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Top Consumed References</span>
+        <div className="glass-panel p-5 flex flex-col justify-center">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2 font-mono">Top Consumed</span>
           <div className="flex flex-wrap gap-2">
             {stats.topConsumedReferences.length === 0 ? (
               <span className="text-xs text-slate-400 italic">No production logs entered yet</span>
             ) : (
               stats.topConsumedReferences.map((ref) => (
-                <span key={ref.code} className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 font-mono" title={`Total of ${ref.val} pcs consumed`}>
+                <span key={ref.code} className="px-2.5 py-1 bg-slate-100/80 border border-slate-200/80 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 font-mono" title={`Total of ${ref.val} pcs consumed`}>
                   <span className="font-bold text-blue-600">{ref.val}</span>
                   <span className="text-[10px] text-slate-400 uppercase font-sans font-bold">{ref.code}</span>
                 </span>
@@ -279,16 +279,16 @@ export default function ProductionWorkspace({
         
         {/* Left Column: Register Daily Production */}
         <div className="lg:col-span-5 space-y-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs">
+          <div className="glass-panel p-5 sm:p-6">
             <div className="flex items-center gap-2.5 mb-5 pb-3 border-b border-slate-100">
               <Factory className="w-5 h-5 text-blue-600" />
               <div>
-                <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Log Daily Consumption</h3>
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Log Daily Consumption</h3>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5" id="production-consumption-form">
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                   Production / Work Date
                 </label>
@@ -300,7 +300,7 @@ export default function ProductionWorkspace({
                       type="date"
                       value={productionDate}
                       onChange={(e) => setProductionDate(e.target.value)}
-                      className="w-full pl-8.5 pr-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-slate-800 font-semibold"
+                      className="w-full pl-8 pr-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:bg-white transition-all text-slate-900 font-semibold"
                       required
                     />
                   </div>
@@ -308,25 +308,24 @@ export default function ProductionWorkspace({
                   <button
                     type="button"
                     onClick={setDateToYesterday}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-bold transition-all cursor-pointer border border-slate-200"
+                    className="px-3 py-2 bg-slate-100/80 hover:bg-slate-200/80 text-slate-700 rounded-xl text-[11px] font-bold transition-all cursor-pointer border border-slate-200/80"
                   >
                     Yesterday
                   </button>
                   <button
                     type="button"
                     onClick={setDateToToday}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-bold transition-all cursor-pointer border border-slate-200"
+                    className="px-3 py-2 bg-slate-100/80 hover:bg-slate-200/80 text-slate-700 rounded-xl text-[11px] font-bold transition-all cursor-pointer border border-slate-200/80"
                   >
                     Today
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-400 italic">Select the date on which these parts were physically consumed in production.</p>
               </div>
 
               {/* Multiple Reference Rows */}
               <div className="space-y-3.5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
                     Parts Consumed
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
@@ -334,14 +333,14 @@ export default function ProductionWorkspace({
                   </span>
                 </div>
 
-                <div className="space-y-3.5 overflow-visible">
+                <div className="space-y-3 overflow-visible">
                   {rows.map((row, index) => {
                     const selectedRefObj = references.find((r) => r.code === row.referenceCode);
                     return (
-                      <div key={index} className="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl relative space-y-2.5 overflow-visible shadow-2xs">
+                      <div key={index} className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl relative space-y-2.5 overflow-visible">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-mono font-bold bg-slate-200/80 text-slate-700 px-2 py-0.5 rounded-md">
-                            Reference #{index + 1}
+                            Ref #{index + 1}
                           </span>
                           {rows.length > 1 && (
                             <button
@@ -350,12 +349,12 @@ export default function ProductionWorkspace({
                               className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title="Remove Reference"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
 
-                        <div className="grid grid-cols-12 gap-3 items-start overflow-visible">
+                        <div className="grid grid-cols-12 gap-2.5 items-start overflow-visible">
                           {/* Reference Selector */}
                           <div className="col-span-12 sm:col-span-8 overflow-visible">
                             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
@@ -374,7 +373,7 @@ export default function ProductionWorkspace({
                           {/* Quantity */}
                           <div className="col-span-12 sm:col-span-4">
                             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                              Consumed Quantity
+                              Consumed Qty
                             </label>
                             <input
                               type="number"
@@ -382,18 +381,18 @@ export default function ProductionWorkspace({
                               placeholder="Qty Out"
                               value={row.quantity}
                               onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
-                              className="w-full min-h-[42px] px-3 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-mono font-bold"
+                              className="w-full min-h-[38px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 text-slate-900 font-mono font-bold"
                               required
                             />
                           </div>
                         </div>
 
                         {selectedRefObj && (
-                          <div className="flex flex-wrap items-center justify-between text-[11px] font-mono pt-1 border-t border-slate-200/50 gap-2">
+                          <div className="flex flex-wrap items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-200/50 gap-2">
                             <span className="text-slate-500 font-sans truncate max-w-[200px]">{selectedRefObj.description}</span>
-                            <div className="flex gap-2 text-[10px]">
+                            <div className="flex gap-2">
                               <span className="text-slate-500">S2 WIP: <strong className="text-amber-600 font-bold">{selectedRefObj.stock2 || 0}</strong></span>
-                              <span className="text-slate-500">S3 Finished: <strong className="text-emerald-600 font-bold">{selectedRefObj.stock3 || 0}</strong></span>
+                              <span className="text-slate-500">S3 Fin: <strong className="text-emerald-600 font-bold">{selectedRefObj.stock3 || 0}</strong></span>
                             </div>
                           </div>
                         )}
@@ -405,7 +404,7 @@ export default function ProductionWorkspace({
                 <button
                   type="button"
                   onClick={handleAddRow}
-                  className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-700 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  className="w-full py-2 bg-slate-50 hover:bg-slate-100/80 border border-dashed border-slate-200/80 rounded-xl text-xs font-bold text-slate-600 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add Another Reference</span>
@@ -415,14 +414,14 @@ export default function ProductionWorkspace({
               {/* Comments */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Production Line Notes / Shift Comments
+                  Line Notes / Shift Comments
                 </label>
                 <textarea
-                  placeholder="e.g. Morning shift assembly, reference 34340689D consumed fully..."
+                  placeholder="Shift notes..."
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-slate-800"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:bg-white transition-all text-slate-800"
                 />
               </div>
 
@@ -433,7 +432,7 @@ export default function ProductionWorkspace({
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -5 }}
-                    className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-start gap-2"
+                    className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2"
                   >
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <p className="font-medium">{errorMsg}</p>
@@ -445,7 +444,7 @@ export default function ProductionWorkspace({
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -5 }}
-                    className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-start gap-2"
+                    className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs rounded-xl flex items-start gap-2"
                   >
                     <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
                     <p className="font-medium">{successMsg}</p>
@@ -457,14 +456,14 @@ export default function ProductionWorkspace({
               <button
                 type="submit"
                 disabled={submitting}
-                className={`w-full py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white shadow-md shadow-blue-100 flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                className={`w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer uppercase tracking-wider ${
                   submitting
-                    ? "bg-slate-400 shadow-none cursor-not-allowed"
-                    : "bg-blue-600 hover:bg-blue-500 active:scale-98"
+                    ? "bg-slate-400 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700 active:scale-98"
                 }`}
               >
                 <Factory className="w-4 h-4" />
-                <span>{submitting ? "Saving Production Log..." : "Save Daily Production"}</span>
+                <span>{submitting ? "Saving Log..." : "Save Production Log"}</span>
               </button>
             </form>
           </div>
@@ -472,10 +471,11 @@ export default function ProductionWorkspace({
 
         {/* Right Column: Daily Production Logs History */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs">
+          <div className="glass-panel p-5 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-100">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Production Consumption Ledger</h3>
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Consumption Ledger</h3>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Production output logs</p>
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -484,10 +484,10 @@ export default function ProductionWorkspace({
                   <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search references, operators..."
+                    placeholder="Search refs, operators..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-500 focus:bg-white transition-all w-full sm:w-48 text-slate-800"
+                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition-all w-full sm:w-48 text-slate-800"
                   />
                 </div>
 
@@ -499,23 +499,23 @@ export default function ProductionWorkspace({
                     { value: "", label: "All Dates" },
                     ...uniqueDates.map((d) => ({ value: d, label: d }))
                   ]}
-                  className="w-40"
+                  className="w-36"
                   size="sm"
                 />
               </div>
             </div>
 
             {/* List Table */}
-            <div className="overflow-x-auto rounded-xl border border-slate-100">
-              <table className="w-full text-left text-xs">
+            <div className="overflow-x-auto rounded-xl border border-slate-200/80">
+              <table className="industrial-table">
                 <thead>
-                  <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[9px]">
-                    <th className="py-3 px-4 font-black">Production Date</th>
-                    <th className="py-3 px-4 font-black">Reference Code</th>
-                    <th className="py-3 px-4 font-black">Quantity Consumed</th>
-                    <th className="py-3 px-4 font-black">Logged By</th>
-                    <th className="py-3 px-4 font-black">Notes</th>
-                    <th className="py-3 px-4 font-black text-right">Registered At</th>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reference Code</th>
+                    <th>Consumed Qty</th>
+                    <th>Logged By</th>
+                    <th>Notes</th>
+                    <th className="text-right">Timestamp</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -528,27 +528,26 @@ export default function ProductionWorkspace({
                     });
 
                     return (
-                      <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-3.5 px-4 font-semibold text-slate-700">
-                          <span className="flex items-center gap-1 text-slate-800">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="font-mono font-semibold text-slate-800">
+                          <span className="inline-flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-slate-400" />
                             {p.date}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-blue-700">
+                        <td className="font-mono font-bold text-blue-700">
                           {p.reference}
                         </td>
-                        <td className="py-3.5 px-4 font-mono font-black text-slate-900 text-[13px]">
+                        <td className="font-mono font-bold text-slate-900 text-xs">
                           {p.quantity.toLocaleString()} pcs
                         </td>
-                        <td className="py-3.5 px-4 text-slate-600 flex items-center gap-1.5 font-sans font-semibold">
-                          <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+                        <td className="text-slate-600 font-sans font-medium text-xs">
                           {p.operatorName}
                         </td>
-                        <td className="py-3.5 px-4 text-slate-500 max-w-[180px] truncate" title={p.notes || ""}>
+                        <td className="text-slate-500 max-w-[160px] truncate" title={p.notes || ""}>
                           {p.notes || <span className="text-slate-300 italic">-</span>}
                         </td>
-                        <td className="py-3.5 px-4 text-right text-slate-400 font-mono text-[11px]">
+                        <td className="text-right text-slate-400 font-mono text-[10px]">
                           {formattedDate}
                         </td>
                       </tr>
@@ -558,9 +557,8 @@ export default function ProductionWorkspace({
                   {filteredProductions.length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-12 text-center text-slate-400 bg-slate-50/20">
-                        <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-500" />
-                        <p className="text-sm font-semibold">No production records found</p>
-                        <p className="text-xs text-slate-400 mt-1">Register a new production log in the left panel</p>
+                        <AlertCircle className="w-7 h-7 mx-auto mb-2 opacity-40 text-slate-500" />
+                        <p className="text-xs font-semibold">No production records found</p>
                       </td>
                     </tr>
                   )}

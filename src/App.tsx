@@ -49,8 +49,10 @@ export default function App() {
       try {
         // 1. Seed database with rich sample data if completely empty
         await seedDatabaseIfNeeded();
+        // 2. Automatically run self-healing database integrity audit
+        await handleAuditDatabase();
       } catch (err) {
-        console.error("Seeding failed", err);
+        console.error("Initialization / Audit failed", err);
       }
 
       // 2. Real-time subscriptions to Firestore collections
@@ -1018,6 +1020,15 @@ export default function App() {
     await setDoc(doc(db, "users", userData.id), userData);
   };
 
+  // Action: Admin updates a user profile (Name, PIN / Password, Role, Username)
+  const handleUpdateUser = async (userId: string, updatedFields: Partial<User>) => {
+    const userRef = doc(db, "users", userId);
+    await updateDoc(userRef, updatedFields);
+    if (currentUser && currentUser.id === userId) {
+      setCurrentUser(prev => prev ? { ...prev, ...updatedFields } : null);
+    }
+  };
+
   // Action: Admin deletes a user profile
   const handleDeleteUser = async (userId: string) => {
     await deleteDoc(doc(db, "users", userId));
@@ -1116,11 +1127,22 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-brand-950 flex flex-col items-center justify-center p-4">
-        <RefreshCw className="w-12 h-12 text-brand-400 animate-spin mb-4" />
-        <p className="text-brand-200 text-sm font-medium tracking-wide">
-          Connecting to EPP NATUR shopfloor database...
-        </p>
+      <div className="min-h-screen bg-[#0a1322] flex items-center justify-center p-4">
+        <motion.img 
+          src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
+          alt="Loading" 
+          className="h-12 sm:h-16 object-contain filter brightness-110"
+          referrerPolicy="no-referrer"
+          animate={{
+            scale: [0.95, 1.05, 0.95],
+            opacity: [0.6, 1, 0.6],
+          }}
+          transition={{
+            duration: 1.8,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
       </div>
     );
   }
@@ -1498,6 +1520,7 @@ export default function App() {
                 <AdminWorkspace 
                   users={users} 
                   onAddUser={handleAddUser}
+                  onUpdateUser={handleUpdateUser}
                   onDeleteUser={handleDeleteUser}
                   onCleanDatabase={handleCleanDatabase}
                   onAuditDatabase={handleAuditDatabase}

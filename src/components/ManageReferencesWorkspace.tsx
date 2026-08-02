@@ -193,9 +193,6 @@ export default function ManageReferencesWorkspace({
               <h1 className="text-xl font-extrabold text-slate-900 tracking-tight font-display">
                 MANAGE REFERENCES
               </h1>
-              <p className="text-xs text-slate-500 font-medium">
-                Centralized Master Catalog for EPP Steering Wheel Mesh & Material References
-              </p>
             </div>
           </div>
         </div>
@@ -225,7 +222,6 @@ export default function ManageReferencesWorkspace({
           <p className="text-2xl font-extrabold text-slate-900 font-mono mt-1">
             {stats.total}
           </p>
-          <p className="text-[11px] text-slate-500 mt-0.5">Master References</p>
         </div>
 
         <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
@@ -235,7 +231,6 @@ export default function ManageReferencesWorkspace({
           <p className="text-2xl font-extrabold text-emerald-700 font-mono mt-1">
             {stats.active}
           </p>
-          <p className="text-[11px] text-emerald-600 mt-0.5">Available in System</p>
         </div>
 
         <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
@@ -245,7 +240,6 @@ export default function ManageReferencesWorkspace({
           <p className="text-2xl font-extrabold text-rose-600 font-mono mt-1">
             {stats.inactive}
           </p>
-          <p className="text-[11px] text-rose-500 mt-0.5">Archived / Legacy</p>
         </div>
 
         <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
@@ -255,7 +249,6 @@ export default function ManageReferencesWorkspace({
           <p className="text-2xl font-extrabold text-purple-700 font-mono mt-1">
             {stats.customersCount}
           </p>
-          <p className="text-[11px] text-purple-600 mt-0.5">Unique OEM Projects</p>
         </div>
       </div>
 

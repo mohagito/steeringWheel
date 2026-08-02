@@ -546,53 +546,53 @@ export default function OperatorWorkspace({
   }, [boxes, invoiceNumber]);
 
   return (
-    <div className="max-w-xl mx-auto space-y-6" id="operator-workspace-handsfree-station">
+    <div className="max-w-2xl mx-auto space-y-6" id="operator-workspace-handsfree-station">
       
-      {/* Modern High-End Operator Terminal Banner (Zeeve Style) */}
-      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white p-5 rounded-3xl shadow-xl shadow-blue-500/10 flex items-center justify-between border border-blue-400/20">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 bg-white/10 rounded-lg backdrop-blur-xs">
-              <Scan className="w-4 h-4 text-blue-100" />
-            </span>
-            <span className="text-[11px] font-mono font-bold uppercase tracking-widest text-blue-200">
-              SMART SCANNER TERMINAL
-            </span>
+      {/* Modern Operator Station Banner */}
+      <div className="glass-panel p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-mono font-bold text-sm shrink-0 shadow-xs">
+            OP
           </div>
-          <h2 className="text-base font-extrabold text-white tracking-tight mt-1">
-            Operator: {currentUser.fullName}
-          </h2>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            <span className="text-[10px] text-blue-100 font-medium">
-              Auto-Correct Scanner Prefix Active
-            </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-400 block">
+                HANDS-FREE SCAN TERMINAL
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                ACTIVE
+              </span>
+            </div>
+            <h2 className="text-sm font-bold text-slate-900 tracking-tight mt-0.5">
+              Operator: {currentUser.fullName}
+            </h2>
           </div>
         </div>
         
-        <div className="text-right">
-          <span className="px-3 py-1 bg-white/15 backdrop-blur-md rounded-full text-xs font-mono font-bold text-white border border-white/20 shadow-xs">
-            {currentUser.username.toUpperCase()}
+        <div className="flex items-center gap-2 self-start sm:self-auto font-mono text-xs">
+          <span className="px-3 py-1 bg-slate-100 rounded-lg font-bold text-slate-700 border border-slate-200/80">
+            @{currentUser.username}
           </span>
         </div>
       </div>
 
-      {/* Main Interactive Scan Card */}
-      <div className="bg-white border border-slate-100 rounded-3xl shadow-xl shadow-slate-200/50 p-6 md:p-8" id="operator-scanning-panel">
+      {/* Main Interactive Scan Panel */}
+      <div className="glass-panel p-6 sm:p-8 space-y-6" id="operator-scanning-panel">
         
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
               <Layers className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                 {opMode === "INTAKE" ? "1. Incoming Truck Intake (Stock 1)" : "2. Send Mesh to Pegadas (Stock 1 → Stock 2)"}
               </h3>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
                 {opMode === "INTAKE" 
-                  ? "Continuous hands-free barcode scanning station"
-                  : "Remove meshes from Stock 1 room warehouse to Pegadas"}
+                  ? "Continuous barcode scanner station"
+                  : "Transfer meshes from Stock 1 storeroom to Pegadas"}
               </p>
             </div>
           </div>
@@ -600,16 +600,16 @@ export default function OperatorWorkspace({
             type="button"
             onClick={handleClearInputs}
             title="Clear fields to start scanning from zero (Shortcut: ESC)"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-200"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-200/80"
           >
             <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-            <span>Reset Scan</span>
-            <span className="text-[10px] font-mono text-slate-400 bg-slate-200/70 px-1 py-0.2 rounded">ESC</span>
+            <span>Reset</span>
+            <span className="text-[10px] font-mono text-slate-400 bg-slate-200/80 px-1.5 py-0.2 rounded">ESC</span>
           </button>
         </div>
 
         {/* Operation Mode Selector Tabs */}
-        <div className="grid grid-cols-2 gap-2 mb-6 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/60">
+        <div className="grid grid-cols-2 gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 font-mono">
           <button
             type="button"
             onClick={() => {
@@ -619,9 +619,9 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => invoiceRef.current?.focus(), 50);
             }}
-            className={`py-2.5 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            className={`py-2.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
               opMode === "INTAKE"
-                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                ? "bg-slate-900 text-white shadow-xs"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
             }`}
           >
@@ -637,35 +637,35 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => referenceRef.current?.focus(), 50);
             }}
-            className={`py-2.5 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            className={`py-2.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
               opMode === "TRANSFER"
-                ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
+                ? "bg-slate-900 text-white shadow-xs"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
             }`}
           >
             <span>🔵</span>
-            <span>2. Mallas Pegadas (S1→S2)</span>
+            <span>2. Pegadas (S1→S2)</span>
           </button>
         </div>
 
         {/* Notifications */}
         {successMsg && (
-          <div className="mb-5 p-4 bg-emerald-50/80 border border-emerald-200 text-emerald-900 text-xs rounded-2xl flex items-start gap-3 animate-fadeIn shadow-xs">
+          <div className="p-4 bg-emerald-50/90 border border-emerald-200/80 text-emerald-900 text-xs rounded-xl flex items-start gap-3 shadow-2xs">
             <Check className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
             <div className="font-medium">{successMsg}</div>
           </div>
         )}
 
         {errorMsg && (
-          <div className="mb-5 p-4 bg-rose-50/80 border border-rose-200 text-rose-900 text-xs rounded-2xl flex items-start gap-3 animate-fadeIn shadow-xs">
+          <div className="p-4 bg-rose-50/90 border border-rose-200/80 text-rose-900 text-xs rounded-xl flex items-start gap-3 shadow-2xs">
             <AlertCircle className="w-4 h-4 mt-0.5 text-rose-600 shrink-0" />
             <div className="font-medium">{errorMsg}</div>
           </div>
         )}
 
         {autoCorrectNotice && (
-          <div className="mb-5 p-3.5 bg-blue-50 border border-blue-200 text-blue-900 text-xs rounded-2xl flex items-center gap-2.5 animate-fadeIn font-mono">
-            <Sparkles className="w-4 h-4 text-blue-600 shrink-0 animate-spin" />
+          <div className="p-3 bg-blue-50 border border-blue-200/80 text-blue-900 text-xs rounded-xl flex items-center gap-2.5 font-mono">
+            <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
             <span className="font-semibold">{autoCorrectNotice}</span>
           </div>
         )}
@@ -675,7 +675,7 @@ export default function OperatorWorkspace({
           {/* INVOICE NUMBER (Only for Intake from New Truck) */}
           {opMode === "INTAKE" && (
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                 1. Invoice / Delivery Note Number
               </label>
               <div className="relative">
@@ -688,7 +688,7 @@ export default function OperatorWorkspace({
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                   onKeyDown={handleInvoiceKeyDown}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-2xl text-xs font-mono uppercase focus:outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono uppercase focus:outline-none transition-all text-slate-900 font-bold"
                   id="op-invoice-field"
                   autoComplete="off"
                 />
@@ -697,10 +697,10 @@ export default function OperatorWorkspace({
           )}
 
           {/* REFERENCE CODE */}
-          <div className="space-y-1.5 pt-1">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between">
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
               <span>{opMode === "INTAKE" ? "2. Reference Code (Scan Barcode)" : "1. Reference Code (Scan Barcode)"}</span>
-              <span className="text-[10px] text-blue-600 font-normal font-mono">Smart Prefix Match Enabled</span>
+              <span className="text-[10px] text-blue-600 font-normal font-mono">Smart Matching Active</span>
             </label>
             <div>
               <input
@@ -711,7 +711,7 @@ export default function OperatorWorkspace({
                 value={referenceCode}
                 onChange={handleReferenceChange}
                 onKeyDown={handleReferenceKeyDown}
-                className="w-full px-4 py-3 bg-slate-50 focus:bg-white border-2 border-blue-200 focus:border-blue-600 focus:ring-4 focus:ring-blue-500/15 rounded-2xl text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-all shadow-inner"
+                className="w-full px-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-all text-slate-900"
                 id="op-reference-field"
                 autoComplete="off"
               />
@@ -719,18 +719,18 @@ export default function OperatorWorkspace({
             
             {/* Live Master Data visual confirmation feedback */}
             {matchedReference ? (
-              <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-2xl text-xs font-mono text-emerald-900 flex justify-between items-center animate-fadeIn shadow-xs">
+              <div className="p-3 bg-emerald-50/90 border border-emerald-200/80 rounded-xl text-xs font-mono text-emerald-900 flex justify-between items-center shadow-2xs">
                 <div className="flex items-center gap-2">
                   <Check className="w-3.5 h-3.5 text-emerald-600" />
                   <span className="font-bold">{matchedReference.code}</span>
                   <span className="text-slate-500 font-sans truncate max-w-[180px]">({matchedReference.description})</span>
                 </div>
-                <span className="px-2 py-0.5 bg-emerald-200/60 rounded-full text-[9px] font-bold uppercase tracking-wider text-emerald-900 shrink-0">
+                <span className="px-2 py-0.5 bg-emerald-200/60 rounded-md text-[9px] font-bold uppercase tracking-wider text-emerald-900 shrink-0">
                   {matchedReference.materialType}
                 </span>
               </div>
             ) : referenceCode ? (
-              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-mono text-amber-900 flex items-center justify-between gap-2">
+              <div className="p-2.5 bg-amber-50 border border-amber-200/80 rounded-xl text-xs font-mono text-amber-900 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 truncate">
                   <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                   <span className="truncate">Scanned: <strong className="font-bold">{referenceCode}</strong></span>
@@ -749,7 +749,7 @@ export default function OperatorWorkspace({
                       title="Remove 1st scanner prefix character"
                     >
                       <Eraser className="w-3 h-3" />
-                      <span>Remove 1st Char ({referenceCode.slice(0, 1)})</span>
+                      <span>Remove Prefix ({referenceCode.slice(0, 1)})</span>
                     </button>
                   )}
                 </div>
@@ -760,9 +760,9 @@ export default function OperatorWorkspace({
           {/* QUANTITY FIELDS (Single Qty for Pegadas TRANSFER, Dual Qty for Truck INTAKE) */}
           {opMode === "TRANSFER" ? (
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
                 <span>2. Quantity (Transfer to Pegadas PCS)</span>
-                <span className="text-[10px] text-amber-600 font-semibold font-mono">Stock 1 ➔ Stock 2 (Pegadas)</span>
+                <span className="text-[10px] text-amber-600 font-semibold font-mono">Stock 1 ➔ Stock 2</span>
               </label>
               <input
                 ref={quantityRef}
@@ -773,7 +773,7 @@ export default function OperatorWorkspace({
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 onKeyDown={handleQuantityKeyDown}
-                className="w-full px-4 py-3 bg-amber-50/40 focus:bg-white border-2 border-amber-200 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 rounded-2xl text-xs font-mono font-extrabold text-slate-900 focus:outline-none transition-all"
+                className="w-full px-4 py-2.5 bg-amber-50/40 focus:bg-white border border-amber-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all"
                 id="op-quantity-field"
                 autoComplete="off"
               />
@@ -783,7 +783,7 @@ export default function OperatorWorkspace({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* 3. Barcode Label Quantity */}
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
                     <span>3. Label Qty (Scan Barcode)</span>
                     <span className="text-[10px] text-slate-400 font-normal">Expected PCS</span>
                   </label>
@@ -792,11 +792,11 @@ export default function OperatorWorkspace({
                     type="number"
                     required
                     min="1"
-                    placeholder="Label PCS (e.g. 100)..."
+                    placeholder="Label PCS..."
                     value={quantity}
                     onChange={handleQuantityChange}
                     onKeyDown={handleQuantityKeyDown}
-                    className="w-full px-4 py-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-2xl text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all"
+                    className="w-full px-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all"
                     id="op-quantity-field"
                     autoComplete="off"
                   />
@@ -804,8 +804,8 @@ export default function OperatorWorkspace({
 
                 {/* 4. Real Manual Counted Quantity */}
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center justify-between">
-                    <span className="text-blue-700">4. Real Counted Qty (Manual Check)</span>
+                  <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center justify-between">
+                    <span className="text-blue-700">4. Real Counted Qty</span>
                     <span className="text-[10px] text-blue-600 font-semibold">Physical PCS</span>
                   </label>
                   <input
@@ -813,11 +813,11 @@ export default function OperatorWorkspace({
                     type="number"
                     required
                     min="1"
-                    placeholder="Physical PCS counted..."
+                    placeholder="Physical PCS..."
                     value={actualQuantity}
                     onChange={(e) => setActualQuantity(e.target.value)}
                     onKeyDown={handleActualQuantityKeyDown}
-                    className="w-full px-4 py-3 bg-blue-50/50 focus:bg-white border-2 border-blue-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-500/15 rounded-2xl text-xs font-mono font-extrabold text-blue-900 focus:outline-none transition-all shadow-inner"
+                    className="w-full px-4 py-2.5 bg-blue-50/50 focus:bg-white border border-blue-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold text-blue-900 focus:outline-none transition-all"
                     id="op-actual-quantity-field"
                     autoComplete="off"
                   />
@@ -833,26 +833,26 @@ export default function OperatorWorkspace({
                   if (exp > 0 && act > 0) {
                     if (diff === 0) {
                       return (
-                        <div className="p-3 bg-emerald-50 border border-emerald-200/80 rounded-2xl text-xs font-mono text-emerald-900 flex items-center gap-2 animate-fadeIn">
+                        <div className="p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-xl text-xs font-mono text-emerald-900 flex items-center gap-2">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                           <div>
-                            <span className="font-bold">Count Matches Barcode Label:</span> {act} PCS physical counted.
+                            <span className="font-bold">Count Matches Label:</span> {act} PCS physical counted.
                           </div>
                         </div>
                       );
                     } else {
                       return (
-                        <div className="p-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-2xl text-xs font-mono flex items-start gap-2.5 animate-fadeIn shadow-xs">
-                          <AlertCircle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="p-3 bg-amber-50/80 border border-amber-300/80 text-amber-900 rounded-xl text-xs font-mono flex items-start gap-2.5 shadow-2xs">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                           <div>
-                            <div className="font-extrabold text-amber-900 flex items-center gap-2">
-                              <span>⚠️ DISCREPANCY DETECTED:</span>
-                              <span className="px-2 py-0.5 bg-amber-200 text-amber-900 rounded-full text-[10px] font-bold">
+                            <div className="font-bold text-amber-900 flex items-center gap-2">
+                              <span>DISCREPANCY DETECTED:</span>
+                              <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 rounded-md text-[10px] font-bold">
                                 Diff: {diff > 0 ? `+${diff}` : diff} PCS
                               </span>
                             </div>
-                            <p className="text-[11px] text-amber-800 mt-0.5 font-sans">
-                              Label shows <strong className="font-mono">{exp} PCS</strong>, but operator manually counted <strong className="font-mono">{act} PCS</strong>. Stock 1 will record <strong className="font-mono">{act} PCS</strong> physical stock.
+                            <p className="text-[11px] text-amber-800 mt-0.5 font-sans font-medium">
+                              Label shows <strong className="font-mono">{exp} PCS</strong>, but physical count is <strong className="font-mono">{act} PCS</strong>.
                             </p>
                           </div>
                         </div>
@@ -866,21 +866,21 @@ export default function OperatorWorkspace({
           )}
 
           {/* Form Actions */}
-          <div className="pt-4 flex flex-wrap sm:flex-nowrap gap-3">
+          <div className="pt-2 flex flex-wrap sm:flex-nowrap gap-3">
             <button
               type="button"
               onClick={handleClearInputs}
               title="Reset scan fields to zero (Shortcut: ESC)"
-              className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200/80"
             >
               <RotateCcw className="w-4 h-4 text-slate-500" />
-              <span>Reset Scan</span>
+              <span>Reset</span>
             </button>
             <button
               type="button"
               onClick={handleResetAll}
               title="Clear all inputs including Invoice Number"
-              className="px-3.5 py-3 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 font-bold text-xs uppercase tracking-wider rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200/80"
+              className="px-3.5 py-2.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200/80"
             >
               <Eraser className="w-4 h-4 text-slate-400 group-hover:text-rose-600" />
               <span>Clear All</span>
@@ -888,7 +888,7 @@ export default function OperatorWorkspace({
             <button
               type="submit"
               disabled={submitting}
-              className="flex-1 py-3 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-blue-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+              className="flex-1 py-2.5 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
               id="op-submit-trigger"
             >
               {submitting ? (
@@ -909,9 +909,9 @@ export default function OperatorWorkspace({
 
       {/* Invoice Specific Scanned Registry */}
       {recentScansList.length > 0 && (
-        <div className="bg-white border border-slate-100 rounded-3xl shadow-xl shadow-slate-200/40 p-5 space-y-3" id="operator-invoice-batch">
+        <div className="glass-panel p-5 space-y-3" id="operator-invoice-batch">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <span className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
               <BoxIcon className="w-4 h-4 text-blue-600" />
               Scanned on Invoice ({recentScansList.length})
             </span>
@@ -921,9 +921,9 @@ export default function OperatorWorkspace({
           </div>
           <div className="divide-y divide-slate-100 text-xs font-mono">
             {recentScansList.map((box, idx) => (
-              <div key={box.id} className="py-2 flex items-center justify-between text-slate-800">
+              <div key={box.id} className="py-2.5 flex items-center justify-between text-slate-800">
                 <div className="flex items-center gap-2.5">
-                  <span className="w-5 h-5 rounded-full bg-blue-50 text-[10px] flex items-center justify-center text-blue-600 font-bold">
+                  <span className="w-5 h-5 rounded-md bg-slate-100 text-[10px] flex items-center justify-center text-slate-600 font-bold">
                     {recentScansList.length - idx}
                   </span>
                   <span className="font-bold text-slate-900">{box.reference}</span>
@@ -931,7 +931,7 @@ export default function OperatorWorkspace({
                 <div className="flex items-center gap-2">
                   {box.actualQty !== undefined && box.actualQty !== box.expectedQty ? (
                     <div className="text-right">
-                      <span className="font-bold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 text-xs inline-block">
+                      <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-xs inline-block">
                         Real: {box.actualQty} PCS
                       </span>
                       <span className="text-[10px] text-slate-500 block font-mono mt-0.5">
@@ -939,7 +939,7 @@ export default function OperatorWorkspace({
                       </span>
                     </div>
                   ) : (
-                    <span className="font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100/80">
+                    <span className="font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-100">
                       {box.actualQty ?? box.expectedQty} PCS
                     </span>
                   )}
