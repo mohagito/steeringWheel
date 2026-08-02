@@ -589,11 +589,6 @@ export default function OperatorWorkspace({
               <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                 {opMode === "INTAKE" ? "1. Incoming Truck Intake (Stock 1)" : "2. Send Mesh to Pegadas (Stock 1 → Stock 2)"}
               </h3>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
-                {opMode === "INTAKE" 
-                  ? "Continuous barcode scanner station"
-                  : "Transfer meshes from Stock 1 storeroom to Pegadas"}
-              </p>
             </div>
           </div>
           <button

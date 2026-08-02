@@ -589,20 +589,16 @@ export default function AdminWorkspace({
 
       {/* Danger Zone: Database Reset */}
       <div className="glass-panel p-5 mt-4 border-rose-200/80 bg-rose-50/20">
-        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-rose-100">
-          <AlertCircle className="w-4 h-4 text-rose-600" />
-          <h4 className="font-mono font-bold text-rose-800 text-xs uppercase">Danger Zone</h4>
-        </div>
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-sans text-xs">
-          <div className="space-y-1">
-            <p className="font-bold text-slate-800">Reset System Database to Pristine State</p>
-            <p className="text-[11px] text-slate-500">Resets all inventory counts, cartons, and transaction logs to 0.</p>
+        <div className="flex items-center justify-between gap-4 font-sans text-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <h4 className="font-mono font-bold text-rose-800 text-xs uppercase">Danger Zone</h4>
           </div>
           <button
             onClick={handleResetDatabase}
             disabled={isResetting}
             id="admin-reset-db-btn"
-            className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 uppercase text-xs tracking-wider font-mono shadow-xs"
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 uppercase text-xs tracking-wider font-mono shadow-xs"
           >
             <RefreshCw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
             <span>RESET DATABASE TO 0</span>

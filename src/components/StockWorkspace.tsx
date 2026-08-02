@@ -475,11 +475,8 @@ export default function StockWorkspace({
             <Boxes className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 1 (Warehouse)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 1</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{totalStock1.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
-            <span className="inline-block mt-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-              Raw Storeroom
-            </span>
           </div>
         </div>
 
@@ -489,11 +486,8 @@ export default function StockWorkspace({
             <Factory className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2 (Mallas Pegadas)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{totalStock2.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
-            <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-              Storage 2 (Plantilla + Malla)
-            </span>
           </div>
         </div>
 
@@ -503,11 +497,8 @@ export default function StockWorkspace({
             <CheckCircle2 className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 3 (Finished)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 3</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{totalStock3.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
-            <span className="inline-block mt-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-              Ready for Shipment
-            </span>
           </div>
         </div>
 
@@ -519,9 +510,6 @@ export default function StockWorkspace({
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Master References</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{references.length} <span className="text-xs font-medium text-slate-400">Active</span></h3>
-            <span className="inline-block mt-1 text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
-              Catalog Items
-            </span>
           </div>
         </div>
 

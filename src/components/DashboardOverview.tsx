@@ -339,59 +339,47 @@ export default function DashboardOverview({
       {/* Top KPI Summary Dashboard Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* Card 1: Warehouse Raw Stock */}
+        {/* Card 1: Stock 1 */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 shadow-inner">
             <Warehouse className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 1 (Warehouse)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 1</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{metrics.totalWarehouseStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
-            <span className="inline-block mt-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-              Raw Storeroom
-            </span>
           </div>
         </div>
 
-        {/* Card 2: Storage 2 Mallas Pegadas */}
+        {/* Card 2: Stock 2 */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 shadow-inner">
             <Factory className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2 (Mallas Pegadas)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{metrics.totalProductionStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
-            <span className="inline-block mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-              Storage 2 (Plantilla + Malla)
-            </span>
           </div>
         </div>
 
-        {/* Card 3: Stock 3 Finished Goods */}
+        {/* Card 3: Stock 3 */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 shadow-inner">
             <Disc className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 3 (Finished)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 3</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{metrics.totalFinishedStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
-            <span className="inline-block mt-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-              Ready for Shipment
-            </span>
           </div>
         </div>
 
-        {/* Card 4: Today's Deliveries / Activity */}
+        {/* Card 4: Deliveries */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 shadow-inner">
             <Truck className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Today's Deliveries</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Deliveries</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{metrics.todaysDeliveries.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
-            <span className="inline-block mt-1 text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
-              Dispatched Out
-            </span>
           </div>
         </div>
 
@@ -423,9 +411,6 @@ export default function DashboardOverview({
               <h4 className="text-sm font-bold text-slate-900 mt-3">
                 Mallas Not Touched
               </h4>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Untouched mesh stored in boxes
-              </p>
             </div>
 
             <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-baseline justify-between">
@@ -462,9 +447,6 @@ export default function DashboardOverview({
               <h4 className="text-sm font-bold text-slate-900 mt-3">
                 Mallas Pegadas
               </h4>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Storage 2 (Plantilla + Malla = Mallas Pegadas) — Pending Assembly Line
-              </p>
             </div>
 
             <div className="mt-4 pt-3 border-t border-amber-200/60 flex items-baseline justify-between">
@@ -501,9 +483,6 @@ export default function DashboardOverview({
               <h4 className="text-sm font-bold text-slate-900 mt-3">
                 Steering Wheels
               </h4>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Finished assembled units
-              </p>
             </div>
 
             <div className="mt-4 pt-3 border-t border-emerald-200/60 flex items-baseline justify-between">
@@ -523,9 +502,6 @@ export default function DashboardOverview({
           <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
             Quick Stock Operations
           </h3>
-          <p className="text-xs text-slate-400">
-            Instantly log inventory transfers or shipments
-          </p>
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -589,9 +565,6 @@ export default function DashboardOverview({
               <Layers className="w-5 h-5 text-slate-800" />
               Material Master Inventory
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Showing {filteredReferences.length} of {references.length} catalog items
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
@@ -717,9 +690,6 @@ export default function DashboardOverview({
             <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
               Stock Stage Distribution
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Comparative stock breakdown per reference
-            </p>
           </div>
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -745,9 +715,6 @@ export default function DashboardOverview({
             <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
               7-Day Activity Flow
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Transfers vs delivery trends
-            </p>
           </div>
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">

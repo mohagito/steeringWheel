@@ -244,9 +244,6 @@ export default function ScrapWorkspace({
               <Trash2 className="w-5 h-5 text-rose-600" />
               <span>Record NOK Mesh (Scrap)</span>
             </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Enter defect details to deduct NOK pieces from appropriate warehouse stock.
-            </p>
           </div>
 
           {errorMsg && (
@@ -473,9 +470,6 @@ export default function ScrapWorkspace({
                 <FileText className="w-5 h-5 text-slate-700" />
                 <span>Scrap History & Logs</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Recent non-conforming mesh scrap records and warehouse deductions.
-              </p>
             </div>
 
             <div className="flex items-center gap-2">
