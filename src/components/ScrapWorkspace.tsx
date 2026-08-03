@@ -134,11 +134,20 @@ export default function ScrapWorkspace({
       setSubmitting(true);
       await onSubmitScrap(submissions);
 
-      setSuccessMsg(`Logged ${submissions.length} scrap reference item(s)${cleanedInvoice ? ` for Invoice ${cleanedInvoice}` : ""} on ${date}.`);
+      const msg = `Logged ${submissions.length} scrap reference item(s)${cleanedInvoice ? ` for Invoice ${cleanedInvoice}` : ""} on ${date}.`;
+      setSuccessMsg(msg);
       
       // Reset entry inputs (keep date)
       setInvoiceNumber("");
       setRows([{ referenceCode: "", quantity: "", condition: defaultCondition }]);
+
+      Swal.fire({
+        title: "Good job!",
+        text: msg,
+        icon: "success",
+        confirmButtonText: "OK",
+        confirmButtonColor: "#2563eb"
+      });
       
       setTimeout(() => setSuccessMsg(""), 4500);
     } catch (err: any) {

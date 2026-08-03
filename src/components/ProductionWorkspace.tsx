@@ -167,11 +167,20 @@ export default function ProductionWorkspace({
     try {
       await onSubmitProduction(submissions);
 
-      setSuccessMsg(`Successfully registered production consumption for ${productionDate} with ${submissions.length} reference records! Stock levels updated.`);
+      const msg = `Successfully registered production output for ${productionDate} with ${submissions.length} reference record(s)! Stock levels updated.`;
+      setSuccessMsg(msg);
       
       // Clear inputs
       setNotes("");
       setRows([{ referenceCode: "", quantity: "" }]);
+
+      Swal.fire({
+        title: "Good job!",
+        text: msg,
+        icon: "success",
+        confirmButtonText: "OK",
+        confirmButtonColor: "#2563eb"
+      });
 
       // Fade success message
       setTimeout(() => {

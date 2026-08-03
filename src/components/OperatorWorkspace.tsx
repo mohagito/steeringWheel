@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { 
   Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon, Sparkles, ArrowRight, Layers, Box as BoxIcon, RotateCcw, Eraser
 } from "lucide-react";
+import Swal from "sweetalert2";
 
 interface OperatorWorkspaceProps {
   boxes: Box[];
@@ -473,11 +474,19 @@ export default function OperatorWorkspace({
         await batch.commit();
 
         playSuccessBeep();
-        if (diff !== 0) {
-          setSuccessMsg(`SUCCESS: Saved ${actualQtyVal} real counted pcs of ${refData.code} to Stock 1 (Label showed ${expectedQtyVal} pcs, Discrepancy: ${diff > 0 ? '+' : ''}${diff} pcs).`);
-        } else {
-          setSuccessMsg(`SUCCESS: Saved ${actualQtyVal} pcs of ${refData.code} to Stock 1.`);
-        }
+        const successText = diff !== 0 
+          ? `Saved ${actualQtyVal} real counted pcs of ${refData.code} to Stock 1 (Label showed ${expectedQtyVal} pcs, Discrepancy: ${diff > 0 ? '+' : ''}${diff} pcs).`
+          : `Saved ${actualQtyVal} pcs of ${refData.code} to Stock 1.`;
+        
+        setSuccessMsg(`SUCCESS: ${successText}`);
+
+        Swal.fire({
+          title: "Good job!",
+          text: successText,
+          icon: "success",
+          confirmButtonText: "OK",
+          confirmButtonColor: "#2563eb"
+        });
       }
       
       // Clear scanned items

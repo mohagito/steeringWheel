@@ -185,13 +185,22 @@ export default function DeliveriesWorkspace({
     try {
       await onSubmitDeliveries(submissions);
 
-      setSuccessMsg(`Successfully registered invoice ${cleanedInvoice} with ${submissions.length} dispatched reference(s)!`);
+      const msg = `Successfully registered invoice ${cleanedInvoice} with ${submissions.length} dispatched reference(s)!`;
+      setSuccessMsg(msg);
       
       // Clear inputs
       setInvoiceNumber("");
       setDefaultCustomer("");
       setNotes("");
       setRows([{ referenceCode: "", quantity: "", customer: "", deliveryType: defaultDeliveryType }]);
+
+      Swal.fire({
+        title: "Good job!",
+        text: msg,
+        icon: "success",
+        confirmButtonText: "OK",
+        confirmButtonColor: "#2563eb"
+      });
 
       // Fade success message
       setTimeout(() => {

@@ -12,6 +12,7 @@ import { doc, writeBatch, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
+import Swal from "sweetalert2";
 
 interface DashboardOverviewProps {
   boxes: Box[];
@@ -156,6 +157,8 @@ export default function DashboardOverview({
       const s3 = refData.stock3 || 0;
       const operatorName = currentUser?.fullName || "Operator";
 
+      let successMsg = "";
+
       if (activeModal === "incoming") {
         // INCOMING TRUCK -> Stock 1 IN
         const newS1 = s1 + qty;
@@ -174,7 +177,7 @@ export default function DashboardOverview({
           notes: `Incoming Truck: ${modalNote || "Standard Receipt"}`
         });
         await batch.commit();
-        setModalFeedback({ type: "success", message: `Successfully added ${qty} pcs to Stock 1 (Untouched Mesh).` });
+        successMsg = `Successfully added ${qty} pcs to Stock 1 (Warehouse Raw Material).`;
       } else if (activeModal === "mallas") {
         // MALLAS PEGADAS -> Stock 1 OUT -> Stock 2 IN
         if (qty > s1) {
@@ -199,7 +202,7 @@ export default function DashboardOverview({
           notes: `Sent to Gluing/Processing: ${modalNote || "Mallas Pegadas"}`
         });
         await batch.commit();
-        setModalFeedback({ type: "success", message: `Successfully transferred ${qty} pcs to Stock 2 (Glued Mesh).` });
+        successMsg = `Successfully transferred ${qty} pcs to Stock 2 (Mallas Pegadas).`;
       } else if (activeModal === "production") {
         // DAILY PRODUCTION -> Stock 2 OUT -> Stock 3 IN
         if (qty > s2) {
@@ -224,7 +227,7 @@ export default function DashboardOverview({
           notes: `Montaje Steering Wheel Assembly: ${modalNote || "Daily Production"}`
         });
         await batch.commit();
-        setModalFeedback({ type: "success", message: `Successfully assembled ${qty} Steering Wheels into Stock 3.` });
+        successMsg = `Successfully assembled ${qty} Steering Wheels into Stock 3.`;
       } else if (activeModal === "precosido") {
         // PRECOSIDO INVOICE SENT -> Stock 2 OUT
         if (qty > s2) {
@@ -248,7 +251,7 @@ export default function DashboardOverview({
           notes: `Precosido Invoice Dispatch: ${modalNote || "Precosido Invoice"}`
         });
         await batch.commit();
-        setModalFeedback({ type: "success", message: `Successfully dispatched ${qty} pcs Precosido from Stock 2.` });
+        successMsg = `Successfully dispatched ${qty} pcs Precosido from Stock 2.`;
       } else if (activeModal === "villanova") {
         // VILLANOVA DELIVERY -> Stock 3 OUT
         if (qty > s3) {
@@ -272,7 +275,7 @@ export default function DashboardOverview({
           notes: `Villanova SW Delivery: ${modalNote || "Villanova Dispatch"}`
         });
         await batch.commit();
-        setModalFeedback({ type: "success", message: `Successfully shipped ${qty} Steering Wheels to Villanova from Stock 3.` });
+        successMsg = `Successfully shipped ${qty} Steering Wheels to Villanova from Stock 3.`;
       } else if (activeModal === "remove") {
         // REMOVE / DEDUCT STOCK
         let newS1 = s1;
@@ -305,15 +308,21 @@ export default function DashboardOverview({
           notes: `Stock Deduction (${stageName}): ${modalNote || "Removed by user"}`
         });
         await batch.commit();
-        setModalFeedback({ type: "success", message: `Successfully removed ${qty} pcs from ${stageName}.` });
+        successMsg = `Successfully removed ${qty} pcs from ${stageName}.`;
       }
 
       setModalQty("");
       setModalNote("");
-      setTimeout(() => {
-        setActiveModal(null);
-        setModalFeedback(null);
-      }, 1500);
+      setActiveModal(null);
+      setModalFeedback(null);
+
+      Swal.fire({
+        title: "Good job!",
+        text: successMsg || "Operation completed successfully!",
+        icon: "success",
+        confirmButtonText: "OK",
+        confirmButtonColor: "#2563eb",
+      });
 
     } catch (err: any) {
       console.error("Quick action error:", err);
