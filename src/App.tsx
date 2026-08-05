@@ -1128,21 +1128,27 @@ export default function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a1322] flex items-center justify-center p-4">
-        <motion.img 
-          src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
-          alt="Loading" 
-          className="h-12 sm:h-16 object-contain filter brightness-110"
-          referrerPolicy="no-referrer"
+        <motion.div 
+          className="relative inline-flex items-center justify-center p-5 rounded-2xl bg-[#080e19] border border-blue-500/30 shadow-2xl overflow-hidden"
           animate={{
-            scale: [0.95, 1.05, 0.95],
-            opacity: [0.6, 1, 0.6],
+            scale: [0.98, 1.02, 0.98],
           }}
           transition={{
-            duration: 1.8,
+            duration: 2,
             repeat: Infinity,
             ease: "easeInOut"
           }}
-        />
+        >
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-amber-500 via-blue-500 to-emerald-500 opacity-50 animate-spin" style={{ animationDuration: '6s' }}></div>
+          <div className="absolute inset-[2px] rounded-[14px] bg-[#0a1322]"></div>
+          <div className="absolute inset-0 bg-blue-500/15 blur-lg animate-pulse"></div>
+          <img 
+            src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
+            alt="Loading" 
+            className="h-12 sm:h-16 object-contain filter brightness-110 relative z-10"
+            referrerPolicy="no-referrer"
+          />
+        </motion.div>
       </div>
     );
   }
@@ -1170,14 +1176,19 @@ export default function App() {
       <aside className="w-full md:w-64 bg-[#0a1322] text-slate-300 flex flex-col justify-between p-5 md:p-6 shrink-0 border-b md:border-b-0 md:border-r border-[#1e293b]">
         <div className="space-y-6 md:space-y-8">
           
-          {/* EPP Natur Branding */}
+          {/* EPP Natur Branding with Animated Loader */}
           <div className="select-none flex flex-col items-start gap-1" id="sidebar-epp-natur-logo">
-            <img 
-              src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
-              alt="EPP NATUR Logo" 
-              className="h-10 object-contain filter brightness-110"
-              referrerPolicy="no-referrer"
-            />
+            <div className="relative inline-flex items-center justify-center p-2.5 rounded-xl bg-[#080e19] border border-blue-500/20 shadow-lg overflow-hidden mb-1">
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-500 via-blue-500 to-emerald-500 opacity-30 animate-spin" style={{ animationDuration: '8s' }}></div>
+              <div className="absolute inset-[1.5px] rounded-[10px] bg-[#0a1322]"></div>
+              <div className="absolute inset-0 bg-blue-500/10 blur-sm animate-pulse"></div>
+              <img 
+                src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
+                alt="EPP NATUR Logo" 
+                className="h-8 object-contain filter brightness-110 relative z-10"
+                referrerPolicy="no-referrer"
+              />
+            </div>
             <div className="text-[8px] text-slate-500 uppercase tracking-[0.2em] font-mono font-bold ml-1">
               STEERING WHEEL STOCK
             </div>

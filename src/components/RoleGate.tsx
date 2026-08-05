@@ -132,14 +132,19 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
         {/* Left column: Branding (Logo & Welcome) */}
         <div className="md:col-span-5 bg-[#0a1322] p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-[#1e293b] relative">
           <div className="flex flex-col items-center md:items-start text-center md:text-left">
-            {/* EPP Natur High Fidelity Logo */}
-            <img 
-              src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
-              alt="EPP NATUR" 
-              className="h-10 object-contain mb-8 filter brightness-110"
-              referrerPolicy="no-referrer"
-              id="brand-logo-gate"
-            />
+            {/* EPP Natur High Fidelity Logo with Animated Loader */}
+            <div className="relative inline-flex items-center justify-center p-3.5 rounded-2xl bg-[#080e19] border border-blue-500/30 shadow-2xl overflow-hidden mb-8 group">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-amber-500 via-blue-500 to-emerald-500 opacity-40 animate-spin" style={{ animationDuration: '8s' }}></div>
+              <div className="absolute inset-[2px] rounded-[14px] bg-[#0a1322]"></div>
+              <div className="absolute inset-0 bg-blue-500/10 blur-md animate-pulse"></div>
+              <img 
+                src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
+                alt="EPP NATUR" 
+                className="h-10 object-contain filter brightness-110 relative z-10"
+                referrerPolicy="no-referrer"
+                id="brand-logo-gate"
+              />
+            </div>
             <h1 className="font-display text-xl font-bold tracking-tight text-white mb-2 uppercase border-b-2 border-brand-500 pb-1.5">
               Stock Control System
             </h1>
