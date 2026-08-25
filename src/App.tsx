@@ -1046,42 +1046,21 @@ export default function App() {
 
     const refsSnap = await getDocs(collection(db, "references"));
     const usersSnap = await getDocs(collection(db, "users"));
-    const boxesSnap = await getDocs(collection(db, "boxes"));
-
-    // Map active box totals per reference code
-    const boxTotalsByRef: { [code: string]: number } = {};
-    boxesSnap.forEach(b => {
-      const bData = b.data();
-      if (bData.reference) {
-        const code = String(bData.reference).toUpperCase();
-        const qty = typeof bData.actualQty === "number" ? bData.actualQty : (bData.expectedQty || 0);
-        boxTotalsByRef[code] = (boxTotalsByRef[code] || 0) + qty;
-      }
-    });
 
     const batch = writeBatch(db);
 
-    // 1. Audit & Fix References
+    // 1. Audit & Fix References (Authoritative stock1, stock2, stock3 preserved)
     refsSnap.forEach((d) => {
       const data = d.data();
-      const codeUpper = (data.code || d.id).toUpperCase();
-      let s1 = typeof data.stock1 === "number" ? data.stock1 : 0;
+      const s1 = typeof data.stock1 === "number" ? data.stock1 : 0;
       const s2 = typeof data.stock2 === "number" ? data.stock2 : 0;
       const s3 = typeof data.stock3 === "number" ? data.stock3 : 0;
 
-      // If active boxes exist in registry for this ref, ensure stock1 is synced
-      if (boxTotalsByRef[codeUpper] !== undefined && s1 !== boxTotalsByRef[codeUpper]) {
-        s1 = boxTotalsByRef[codeUpper];
-      }
-
-      const expectedTotal = s1 + s2 + s3;
+      const expectedTotal = Math.max(0, s1 + s2 + s3);
 
       let needsFix = false;
       const patch: any = {};
 
-      if (data.stock1 !== s1) { patch.stock1 = s1; needsFix = true; }
-      if (data.stock2 !== s2) { patch.stock2 = s2; needsFix = true; }
-      if (data.stock3 !== s3) { patch.stock3 = s3; needsFix = true; }
       if (data.currentStock !== expectedTotal) { patch.currentStock = expectedTotal; needsFix = true; }
       if (!data.code) { patch.code = d.id; needsFix = true; }
       if (!data.description) { patch.description = `Malla Reference ${d.id}`; needsFix = true; }
@@ -1128,27 +1107,12 @@ export default function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a1322] flex items-center justify-center p-4">
-        <motion.div 
-          className="relative inline-flex items-center justify-center p-5 rounded-2xl bg-[#080e19] border border-blue-500/30 shadow-2xl overflow-hidden"
-          animate={{
-            scale: [0.98, 1.02, 0.98],
-          }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            ease: "easeInOut"
-          }}
-        >
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-amber-500 via-blue-500 to-emerald-500 opacity-50 animate-spin" style={{ animationDuration: '6s' }}></div>
-          <div className="absolute inset-[2px] rounded-[14px] bg-[#0a1322]"></div>
-          <div className="absolute inset-0 bg-blue-500/15 blur-lg animate-pulse"></div>
-          <img 
-            src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
-            alt="Loading" 
-            className="h-12 sm:h-16 object-contain filter brightness-110 relative z-10"
-            referrerPolicy="no-referrer"
-          />
-        </motion.div>
+        <img 
+          src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
+          alt="Loading" 
+          className="h-12 sm:h-16 object-contain filter brightness-110"
+          referrerPolicy="no-referrer"
+        />
       </div>
     );
   }
@@ -1176,19 +1140,14 @@ export default function App() {
       <aside className="w-full md:w-64 bg-[#0a1322] text-slate-300 flex flex-col justify-between p-5 md:p-6 shrink-0 border-b md:border-b-0 md:border-r border-[#1e293b]">
         <div className="space-y-6 md:space-y-8">
           
-          {/* EPP Natur Branding with Animated Loader */}
-          <div className="select-none flex flex-col items-start gap-1" id="sidebar-epp-natur-logo">
-            <div className="relative inline-flex items-center justify-center p-2.5 rounded-xl bg-[#080e19] border border-blue-500/20 shadow-lg overflow-hidden mb-1">
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-500 via-blue-500 to-emerald-500 opacity-30 animate-spin" style={{ animationDuration: '8s' }}></div>
-              <div className="absolute inset-[1.5px] rounded-[10px] bg-[#0a1322]"></div>
-              <div className="absolute inset-0 bg-blue-500/10 blur-sm animate-pulse"></div>
-              <img 
-                src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
-                alt="EPP NATUR Logo" 
-                className="h-8 object-contain filter brightness-110 relative z-10"
-                referrerPolicy="no-referrer"
-              />
-            </div>
+          {/* EPP Natur Branding */}
+          <div className="select-none flex flex-col items-start gap-1 mb-2" id="sidebar-epp-natur-logo">
+            <img 
+              src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
+              alt="EPP NATUR Logo" 
+              className="h-8 object-contain filter brightness-110 mb-1"
+              referrerPolicy="no-referrer"
+            />
             <div className="text-[8px] text-slate-500 uppercase tracking-[0.2em] font-mono font-bold ml-1">
               STEERING WHEEL STOCK
             </div>

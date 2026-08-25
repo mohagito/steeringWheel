@@ -239,44 +239,18 @@ export default function OperatorWorkspace({
     }
   };
 
-  // Handle Quantity (Label Scan) input change with auto-fill
+  // Handle Quantity Input
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    if (!actualQuantity || actualQuantity === quantity) {
-      setActualQuantity(val);
-    }
-    setQuantity(val);
+    setQuantity(e.target.value);
   };
 
-  // Handle Enter key on Quantity (Label / Transfer) Input
+  // Handle Enter key on Quantity Input -> Submit automatically
   const handleQuantityKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       const qtyVal = parseInt(quantity);
       if (isNaN(qtyVal) || qtyVal <= 0) {
         setErrorMsg("Please scan or enter a valid Quantity.");
-        playErrorBeep();
-        return;
-      }
-      if (opMode === "TRANSFER") {
-        submitTransaction();
-      } else {
-        if (!actualQuantity.trim()) {
-          setActualQuantity(quantity);
-        }
-        playScanBeep();
-        actualQtyRef.current?.focus();
-      }
-    }
-  };
-
-  // Handle Enter key on Real Counted Quantity Input -> Submit automatically
-  const handleActualQuantityKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const actualQtyVal = parseInt(actualQuantity);
-      if (isNaN(actualQtyVal) || actualQtyVal <= 0) {
-        setErrorMsg("Please enter a valid Real Counted Quantity.");
         playErrorBeep();
         return;
       }
@@ -783,89 +757,24 @@ export default function OperatorWorkspace({
               />
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 3. Barcode Label Quantity */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                    <span>3. Label Qty (Scan Barcode)</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Expected PCS</span>
-                  </label>
-                  <input
-                    ref={quantityRef}
-                    type="number"
-                    required
-                    min="1"
-                    placeholder="Label PCS..."
-                    value={quantity}
-                    onChange={handleQuantityChange}
-                    onKeyDown={handleQuantityKeyDown}
-                    className="w-full px-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all"
-                    id="op-quantity-field"
-                    autoComplete="off"
-                  />
-                </div>
-
-                {/* 4. Real Manual Counted Quantity */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center justify-between">
-                    <span className="text-blue-700">4. Real Counted Qty</span>
-                    <span className="text-[10px] text-blue-600 font-semibold">Physical PCS</span>
-                  </label>
-                  <input
-                    ref={actualQtyRef}
-                    type="number"
-                    required
-                    min="1"
-                    placeholder="Physical PCS..."
-                    value={actualQuantity}
-                    onChange={(e) => setActualQuantity(e.target.value)}
-                    onKeyDown={handleActualQuantityKeyDown}
-                    className="w-full px-4 py-2.5 bg-blue-50/50 focus:bg-white border border-blue-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold text-blue-900 focus:outline-none transition-all"
-                    id="op-actual-quantity-field"
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-
-              {/* Live Discrepancy Comparison Indicator */}
-              {quantity && actualQuantity ? (
-                (() => {
-                  const exp = parseInt(quantity) || 0;
-                  const act = parseInt(actualQuantity) || 0;
-                  const diff = act - exp;
-                  if (exp > 0 && act > 0) {
-                    if (diff === 0) {
-                      return (
-                        <div className="p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-xl text-xs font-mono text-emerald-900 flex items-center gap-2">
-                          <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <div>
-                            <span className="font-bold">Count Matches Label:</span> {act} PCS physical counted.
-                          </div>
-                        </div>
-                      );
-                    } else {
-                      return (
-                        <div className="p-3 bg-amber-50/80 border border-amber-300/80 text-amber-900 rounded-xl text-xs font-mono flex items-start gap-2.5 shadow-2xs">
-                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                          <div>
-                            <div className="font-bold text-amber-900 flex items-center gap-2">
-                              <span>DISCREPANCY DETECTED:</span>
-                              <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 rounded-md text-[10px] font-bold">
-                                Diff: {diff > 0 ? `+${diff}` : diff} PCS
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-amber-800 mt-0.5 font-sans font-medium">
-                              Label shows <strong className="font-mono">{exp} PCS</strong>, but physical count is <strong className="font-mono">{act} PCS</strong>.
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    }
-                  }
-                  return null;
-                })()
-              ) : null}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>3. Quantity (PCS)</span>
+                <span className="text-[10px] text-slate-400 font-normal">Incoming Stock 1</span>
+              </label>
+              <input
+                ref={quantityRef}
+                type="number"
+                required
+                min="1"
+                placeholder="Enter PCS quantity..."
+                value={quantity}
+                onChange={handleQuantityChange}
+                onKeyDown={handleQuantityKeyDown}
+                className="w-full px-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all"
+                id="op-quantity-field"
+                autoComplete="off"
+              />
             </div>
           )}
 
