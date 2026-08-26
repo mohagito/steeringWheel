@@ -26,8 +26,8 @@ export default function OperatorWorkspace({
   // Persisted Invoice Input
   const [invoiceNumber, setInvoiceNumber] = useState(() => localStorage.getItem("op_invoice") || "");
   
-  // Operation Mode: INTAKE (Stock 1 In) vs TRANSFER (Stock 1 -> Stock 2 Mallas Pegadas)
-  const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER">("INTAKE");
+  // Operation Mode: INTAKE vs TRANSFER vs RETURN
+  const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER" | "RETURN">("INTAKE");
 
   // Scan Inputs (Cleared after every successful box)
   const [referenceCode, setReferenceCode] = useState("");
@@ -264,10 +264,10 @@ export default function OperatorWorkspace({
     setSuccessMsg("");
     setAutoCorrectNotice("");
 
-    const cleanInvoice = invoiceNumber.trim().toUpperCase() || (opMode === "TRANSFER" ? "PEGADAS" : "");
+    const cleanInvoice = invoiceNumber.trim().toUpperCase() || (opMode === "TRANSFER" ? "PEGADAS" : opMode === "RETURN" ? "RETURN" : "");
     const rawRef = referenceCode.trim();
     const expectedQtyVal = parseInt(quantity);
-    const actualQtyVal = opMode === "TRANSFER"
+    const actualQtyVal = (opMode === "TRANSFER" || opMode === "RETURN")
       ? expectedQtyVal
       : (actualQuantity.trim() !== "" ? parseInt(actualQuantity) : expectedQtyVal);
 
@@ -298,7 +298,7 @@ export default function OperatorWorkspace({
     const finalCode = refData.code;
 
     if (isNaN(expectedQtyVal) || expectedQtyVal <= 0) {
-      setErrorMsg(opMode === "TRANSFER" ? "Please enter a valid Quantity." : "Please enter a valid Barcode Label Quantity.");
+      setErrorMsg((opMode === "TRANSFER" || opMode === "RETURN") ? "Please enter a valid Quantity." : "Please enter a valid Barcode Label Quantity.");
       quantityRef.current?.focus();
       playErrorBeep();
       return;
@@ -371,6 +371,46 @@ export default function OperatorWorkspace({
 
         playSuccessBeep();
         setSuccessMsg(`SUCCESS: Transferred ${transferQty} pcs of ${refData.code} from Stock 1 to Stock 2.`);
+      } else if (opMode === "RETURN") {
+        const returnQty = actualQtyVal;
+        if (returnQty > currentStock2) {
+          setErrorMsg(`Insufficient stock in Stock 2. Available: ${currentStock2} pcs, requested return: ${returnQty} pcs.`);
+          playErrorBeep();
+          setSubmitting(false);
+          return;
+        }
+
+        const newStock1 = currentStock1 + returnQty;
+        const newStock2 = Math.max(0, currentStock2 - returnQty);
+        const newTotal = newStock1 + newStock2 + currentStock3;
+
+        batch.update(refDocRef, {
+          stock1: newStock1,
+          stock2: newStock2,
+          currentStock: newTotal,
+          lastUpdate: timestamp
+        });
+
+        const transId = `trans-ret-${Date.now()}`;
+        const transDocRef = doc(db, "transactions", transId);
+        batch.set(transDocRef, {
+          id: transId,
+          reference: refData.code,
+          movementType: "RETURN S2->S1",
+          stock: "Stock 2 -> Stock 1",
+          quantity: returnQty,
+          expectedQty: returnQty,
+          actualQty: returnQty,
+          difference: 0,
+          operatorName: currentUser.fullName,
+          timestamp,
+          notes: `Return from Stock 2 to Stock 1 (Not Touched). Qty: ${returnQty}`
+        });
+
+        await batch.commit();
+
+        playSuccessBeep();
+        setSuccessMsg(`SUCCESS: Returned ${returnQty} pcs of ${refData.code} from Stock 2 back to Stock 1 (Not Touched).`);
       } else {
         // INTAKE MODE - Real physical counted quantity added to Stock 1
         const newStock1 = currentStock1 + actualQtyVal;
@@ -453,14 +493,6 @@ export default function OperatorWorkspace({
           : `Saved ${actualQtyVal} pcs of ${refData.code} to Stock 1.`;
         
         setSuccessMsg(`SUCCESS: ${successText}`);
-
-        Swal.fire({
-          title: "Good job!",
-          text: successText,
-          icon: "success",
-          confirmButtonText: "OK",
-          confirmButtonColor: "#2563eb"
-        });
       }
       
       // Clear scanned items
@@ -570,7 +602,7 @@ export default function OperatorWorkspace({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                {opMode === "INTAKE" ? "1. Incoming Truck Intake (Stock 1)" : "2. Send Mesh to Pegadas (Stock 1 → Stock 2)"}
+                {opMode === "INTAKE" ? "1. Incoming Truck Intake (Stock 1)" : opMode === "TRANSFER" ? "2. Send Mesh to Pegadas (Stock 1 → Stock 2)" : "3. Return from Stock 2 to Stock 1 (Not Touched)"}
               </h3>
             </div>
           </div>
@@ -587,7 +619,7 @@ export default function OperatorWorkspace({
         </div>
 
         {/* Operation Mode Selector Tabs */}
-        <div className="grid grid-cols-2 gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 font-mono">
+        <div className="grid grid-cols-3 gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 font-mono">
           <button
             type="button"
             onClick={() => {
@@ -597,14 +629,14 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => invoiceRef.current?.focus(), 50);
             }}
-            className={`py-2.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            className={`py-2.5 px-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               opMode === "INTAKE"
                 ? "bg-slate-900 text-white shadow-xs"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
             }`}
           >
             <span>🚛</span>
-            <span>1. New Truck (S1 IN)</span>
+            <span>1. New Truck</span>
           </button>
           <button
             type="button"
@@ -615,14 +647,32 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => referenceRef.current?.focus(), 50);
             }}
-            className={`py-2.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            className={`py-2.5 px-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               opMode === "TRANSFER"
                 ? "bg-slate-900 text-white shadow-xs"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
             }`}
           >
             <span>🔵</span>
-            <span>2. Pegadas (S1→S2)</span>
+            <span>2. Pegadas</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpMode("RETURN");
+              setErrorMsg("");
+              setSuccessMsg("");
+              setAutoCorrectNotice("");
+              setTimeout(() => referenceRef.current?.focus(), 50);
+            }}
+            className={`py-2.5 px-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              opMode === "RETURN"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+            }`}
+          >
+            <span>↩️</span>
+            <span>3. Return</span>
           </button>
         </div>
 
@@ -735,19 +785,19 @@ export default function OperatorWorkspace({
             ) : null}
           </div>
 
-          {/* QUANTITY FIELDS (Single Qty for Pegadas TRANSFER, Dual Qty for Truck INTAKE) */}
-          {opMode === "TRANSFER" ? (
+          {/* QUANTITY FIELDS */}
+          {opMode === "TRANSFER" || opMode === "RETURN" ? (
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>2. Quantity (Transfer to Pegadas PCS)</span>
-                <span className="text-[10px] text-amber-600 font-semibold font-mono">Stock 1 ➔ Stock 2</span>
+                <span>{opMode === "TRANSFER" ? "2. Quantity (Transfer to Pegadas PCS)" : "2. Quantity (Return to Stock 1 PCS)"}</span>
+                <span className="text-[10px] text-amber-600 font-semibold font-mono">{opMode === "TRANSFER" ? "Stock 1 ➔ Stock 2" : "Stock 2 ➔ Stock 1 (Not Touched)"}</span>
               </label>
               <input
                 ref={quantityRef}
                 type="number"
                 required
                 min="1"
-                placeholder="Enter PCS quantity to send to Pegadas..."
+                placeholder={opMode === "TRANSFER" ? "Enter quantity to send to Pegadas..." : "Enter quantity to return to Stock 1..."}
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 onKeyDown={handleQuantityKeyDown}

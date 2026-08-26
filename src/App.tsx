@@ -22,7 +22,14 @@ import {
 } from "lucide-react";
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const saved = sessionStorage.getItem("epp_current_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [references, setReferences] = useState<Reference[]>([]);
@@ -32,7 +39,32 @@ export default function App() {
   const [scraps, setScraps] = useState<ScrapEntry[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">(() => {
+    try {
+      const savedTab = sessionStorage.getItem("epp_active_tab") as any;
+      if (savedTab) return savedTab;
+      const savedUser = sessionStorage.getItem("epp_current_user");
+      if (savedUser) {
+        const u: User = JSON.parse(savedUser);
+        return u.role === "operator" ? "operator" : "dashboard";
+      }
+    } catch (e) {}
+    return "dashboard";
+  });
+
+  useEffect(() => {
+    if (currentUser) {
+      sessionStorage.setItem("epp_current_user", JSON.stringify(currentUser));
+    } else {
+      sessionStorage.removeItem("epp_current_user");
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (activeTab) {
+      sessionStorage.setItem("epp_active_tab", activeTab);
+    }
+  }, [activeTab]);
 
   // Sync state with Firestore on mount
   useEffect(() => {
@@ -1102,6 +1134,8 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     setActiveTab("dashboard");
+    sessionStorage.removeItem("epp_current_user");
+    sessionStorage.removeItem("epp_active_tab");
   };
 
   if (loading) {
