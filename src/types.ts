@@ -32,7 +32,7 @@ export interface Adjustment {
   operatorName: string;
   timestamp: string;
   comment?: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "edited" | "deleted";
   validatedBy?: string;
   validatedAt?: string;
   materialType?: "Mesh" | "Soft" | "Leather";
@@ -41,6 +41,7 @@ export interface Adjustment {
   stockAfter?: number;
   invoiceNumber?: string;
   palletQuality?: string;
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number; reason: string }>;
 }
 
 export interface Delivery {
@@ -53,6 +54,8 @@ export interface Delivery {
   customer: string;
   deliveryType?: "PRECOSIDO" | "Villanova" | "Mini Project" | "Normal Delivery";
   notes?: string;
+  status?: "completed" | "edited" | "deleted";
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number; reason: string }>;
 }
 
 export interface Production {
@@ -63,6 +66,8 @@ export interface Production {
   operatorName: string;
   timestamp: string;
   notes?: string;
+  status?: "completed" | "edited" | "deleted";
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number; reason: string }>;
 }
 
 export interface Reference {
@@ -97,6 +102,8 @@ export interface ScrapEntry {
   stockDeductedFrom: "Stock 2" | "Stock 3";
   stockBefore: number;
   stockAfter: number;
+  status?: "completed" | "edited" | "deleted";
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number; reason: string }>;
 }
 
 export interface InventoryTransaction {
@@ -116,6 +123,44 @@ export interface InventoryTransaction {
   stock2After?: number;
   stock3Before?: number;
   stock3After?: number;
+}
+
+export interface ScannedInvoiceBox {
+  id: string;
+  boxBarcode: string;
+  reference: string;
+  expectedQty: number;
+  quantity: number; // Real/Physical quantity
+  scannedAt: string;
+  materialType?: string;
+  difference?: number;
+  palletQuality?: string;
+}
+
+export interface ScannedTransferItem {
+  id: string;
+  reference: string;
+  quantity: number;
+  scannedAt: string;
+  materialType?: string;
+  description?: string;
+}
+
+export interface ReceivingInvoice {
+  id: string; // Unique session/invoice ID
+  invoiceNumber: string;
+  operator: string;
+  operatorId?: string;
+  createdAt: string;
+  status: "pending" | "approved" | "cancelled";
+  items: ScannedInvoiceBox[];
+  totalBoxes: number;
+  totalQuantity: number;
+  approvedAt?: string;
+  approvedBy?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  notes?: string;
 }
 
 export interface ReferenceSummary {

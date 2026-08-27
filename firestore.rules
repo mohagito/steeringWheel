@@ -40,7 +40,7 @@ service cloud.firestore {
           && d.expectedQty is number
           && d.actualQty is number
           && d.operatorName is string && d.operatorName.size() > 0 && d.operatorName.size() <= 100
-          && d.status in ['pending', 'approved', 'rejected']
+          && d.status in ['pending', 'approved', 'rejected', 'edited', 'deleted']
           && d.timestamp is string;
     }
 
@@ -88,12 +88,25 @@ service cloud.firestore {
           && d.timestamp is string;
     }
 
+    function isValidInvoice(d) {
+      return d.invoiceNumber is string && d.invoiceNumber.size() > 0 && d.invoiceNumber.size() <= 64
+          && d.operator is string && d.operator.size() > 0 && d.operator.size() <= 100
+          && d.status in ['pending', 'approved', 'cancelled']
+          && d.createdAt is string;
+    }
+
     // Collection Rules
 
     match /users/{userId} {
       allow read: if true;
       allow create, update: if isValidId(userId) && isValidUser(incoming());
       allow delete: if isValidId(userId);
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if true;
+      allow create, update: if isValidId(invoiceId) && isValidInvoice(incoming());
+      allow delete: if isValidId(invoiceId);
     }
 
     match /boxes/{boxId} {

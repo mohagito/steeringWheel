@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Box, Adjustment, User, Reference } from "../types";
-import { doc, getDoc, setDoc, writeBatch } from "firebase/firestore";
+import { Box, Adjustment, User, Reference, ReceivingInvoice, ScannedInvoiceBox, ScannedTransferItem } from "../types";
+import { doc, getDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { 
-  Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon, Sparkles, ArrowRight, Layers, Box as BoxIcon, RotateCcw, Eraser
+  Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon, Sparkles, ArrowRight, Layers, Box as BoxIcon, RotateCcw, Eraser, Trash2, CheckCircle2, XCircle, Edit3, Save, X, PlusCircle
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -11,23 +11,63 @@ interface OperatorWorkspaceProps {
   boxes: Box[];
   adjustments: Adjustment[];
   references: Reference[];
+  invoices?: ReceivingInvoice[];
   currentUser: User;
   onSubmitAdjustment: (adjustmentData: Omit<Adjustment, "id" | "timestamp" | "status">) => Promise<void>;
+  onSavePendingInvoice?: (invoice: ReceivingInvoice) => Promise<void>;
+  onApproveInvoice?: (invoiceId: string) => Promise<void>;
+  onCancelInvoice?: (invoiceId: string) => Promise<void>;
 }
 
 export default function OperatorWorkspace({ 
   boxes = [], 
   adjustments = [], 
   references = [], 
+  invoices = [],
   currentUser, 
-  onSubmitAdjustment 
+  onSubmitAdjustment,
+  onSavePendingInvoice,
+  onApproveInvoice,
+  onCancelInvoice
 }: OperatorWorkspaceProps) {
   
-  // Persisted Invoice Input
-  const [invoiceNumber, setInvoiceNumber] = useState(() => localStorage.getItem("op_invoice") || "");
+  // Persisted Invoice Input (Used only for INTAKE mode) - initialized strictly empty
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+
+  // Clean any old auto-generated invoice strings from previous sessions on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("op_invoice");
+      if (saved && (saved.startsWith("INV-20") || saved.startsWith("INV-"))) {
+        localStorage.removeItem("op_invoice");
+      }
+    } catch (e) {}
+  }, []);
   
-  // Operation Mode: INTAKE vs TRANSFER vs RETURN
+  // Operation Mode: INTAKE vs TRANSFER (Pegadas) vs RETURN
   const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER" | "RETURN">("INTAKE");
+
+  // Local optimistic pending invoice for instant (0ms) UI updates during rapid scanning (INTAKE mode)
+  const [localPendingInvoice, setLocalPendingInvoice] = useState<ReceivingInvoice | null>(null);
+
+  // Pegadas Batch State (Staged items for Pegadas Transfer S1 -> S2 without invoice)
+  const [pegadasBatch, setPegadasBatch] = useState<ScannedTransferItem[]>(() => {
+    try {
+      const saved = localStorage.getItem("op_pegadas_batch");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Sync Pegadas Batch to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("op_pegadas_batch", JSON.stringify(pegadasBatch));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [pegadasBatch]);
 
   // Scan Inputs (Cleared after every successful box)
   const [referenceCode, setReferenceCode] = useState("");
@@ -36,19 +76,38 @@ export default function OperatorWorkspace({
 
   // UX Feedback States
   const [submitting, setSubmitting] = useState(false);
+  const [approvingInvoice, setApprovingInvoice] = useState(false);
+  const [cancellingInvoice, setCancellingInvoice] = useState(false);
+  const [approvingPegadas, setApprovingPegadas] = useState(false);
+  const [cancellingPegadas, setCancellingPegadas] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [autoCorrectNotice, setAutoCorrectNotice] = useState("");
+
+  // Edit Scanned Record States (INTAKE mode)
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editQty, setEditQty] = useState("");
+  const [editRef, setEditRef] = useState("");
+
+  // Edit Scanned Record States (PEGADAS mode)
+  const [isPegadasEditMode, setIsPegadasEditMode] = useState(false);
+  const [editingPegadasItemId, setEditingPegadasItemId] = useState<string | null>(null);
+  const [editPegadasQty, setEditPegadasQty] = useState("");
+  const [editPegadasRef, setEditPegadasRef] = useState("");
 
   // Input Refs for hands-free barcode wedge flow
   const invoiceRef = useRef<HTMLInputElement>(null);
   const referenceRef = useRef<HTMLInputElement>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
-  const actualQtyRef = useRef<HTMLInputElement>(null);
 
-  // Sync Invoice to localStorage
+  // Sync Invoice to localStorage (or clear if empty)
   useEffect(() => {
-    localStorage.setItem("op_invoice", invoiceNumber);
+    if (invoiceNumber.trim()) {
+      localStorage.setItem("op_invoice", invoiceNumber.trim().toUpperCase());
+    } else {
+      localStorage.removeItem("op_invoice");
+    }
   }, [invoiceNumber]);
 
   // Audio Feedbacks for blind shopfloor scanning
@@ -79,17 +138,17 @@ export default function OperatorWorkspace({
   // Default focus on mount
   useEffect(() => {
     const focusTimer = setTimeout(() => {
-      if (!invoiceNumber.trim()) {
+      if (opMode === "INTAKE" && !invoiceNumber.trim()) {
         invoiceRef.current?.focus();
       } else {
         referenceRef.current?.focus();
       }
     }, 150);
     return () => clearTimeout(focusTimer);
-  }, []);
+  }, [opMode]);
 
   // SMART REFERENCE MATCHING LOGIC
-  // Solves the scanner hardware issue where scanners prepend an extra character (e.g. "+123456", "%REF", etc.)
+  // Solves scanner hardware issues where scanners prepend extra characters (e.g. "+123456", "%REF", etc.)
   const resolveReference = (rawInput: string) => {
     const trimmed = rawInput.trim();
     if (!trimmed) return null;
@@ -138,6 +197,36 @@ export default function OperatorWorkspace({
 
   const matchedReference = matchedResult?.match || null;
 
+  // Active Pending Invoice Session from props (for INTAKE mode)
+  const remotePendingInvoice = useMemo(() => {
+    const cleanInv = invoiceNumber.trim().toUpperCase();
+    if (!cleanInv || !invoices) return null;
+    return invoices.find(inv => inv.invoiceNumber.toUpperCase() === cleanInv && inv.status === "pending") || null;
+  }, [invoices, invoiceNumber]);
+
+  // Merge remote and optimistic local state
+  const activePendingInvoice = useMemo(() => {
+    if (localPendingInvoice && localPendingInvoice.invoiceNumber.toUpperCase() === invoiceNumber.trim().toUpperCase() && localPendingInvoice.status === "pending") {
+      if (remotePendingInvoice && remotePendingInvoice.items.length >= localPendingInvoice.items.length) {
+        return remotePendingInvoice;
+      }
+      return localPendingInvoice;
+    }
+    return remotePendingInvoice;
+  }, [localPendingInvoice, remotePendingInvoice, invoiceNumber]);
+
+  // Sync localPendingInvoice when remote invoice arrives or changes
+  useEffect(() => {
+    if (remotePendingInvoice) {
+      setLocalPendingInvoice(remotePendingInvoice);
+    }
+  }, [remotePendingInvoice]);
+
+  // Total Pegadas PCS
+  const totalPegadasQty = useMemo(() => {
+    return pegadasBatch.reduce((sum, item) => sum + item.quantity, 0);
+  }, [pegadasBatch]);
+
   // Handle Enter key on Invoice Input -> jump to Reference
   const handleInvoiceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -170,10 +259,8 @@ export default function OperatorWorkspace({
         }
         setErrorMsg("");
         playScanBeep();
-        // Jump to quantity field automatically
         quantityRef.current?.focus();
       } else if (raw.length > 1) {
-        // Fallback: If not found in master data, try removing 1st character if scanned with extra prefix
         const stripped = raw.slice(1).toUpperCase();
         const resStripped = resolveReference(stripped);
         if (resStripped) {
@@ -183,13 +270,12 @@ export default function OperatorWorkspace({
           playScanBeep();
           quantityRef.current?.focus();
         } else {
-          // Keep stripped version for user ease
           setReferenceCode(stripped);
-          setErrorMsg(`Reference "${stripped}" (or "${raw}") not found in master list.`);
+          setErrorMsg(`Reference "${stripped}" (or "${raw}") not found in master catalog.`);
           playErrorBeep();
         }
       } else {
-        setErrorMsg(`Reference "${raw}" not found in master list.`);
+        setErrorMsg(`Reference "${raw}" not found in master catalog.`);
         playErrorBeep();
       }
     }
@@ -216,7 +302,7 @@ export default function OperatorWorkspace({
       return;
     }
 
-    // 2. Extra 1st character removal auto-correction (e.g. "IR003A429A" -> "R003A429A")
+    // 2. Extra 1st character removal auto-correction
     if (upper.length > 1) {
       const strippedFirst = upper.slice(1);
       const matchFirst = references.find(r => r.code.toUpperCase() === strippedFirst);
@@ -230,7 +316,6 @@ export default function OperatorWorkspace({
 
     setReferenceCode(val);
 
-    // 3. Smart resolve check feedback
     const res = resolveReference(val);
     if (res && res.corrected) {
       setAutoCorrectNotice(`Smart match detected: "${val}" ➔ "${res.match.code}"`);
@@ -264,19 +349,20 @@ export default function OperatorWorkspace({
     setSuccessMsg("");
     setAutoCorrectNotice("");
 
-    const cleanInvoice = invoiceNumber.trim().toUpperCase() || (opMode === "TRANSFER" ? "PEGADAS" : opMode === "RETURN" ? "RETURN" : "");
+    let cleanInvoice = invoiceNumber.trim().toUpperCase();
+    if (opMode === "INTAKE" && !cleanInvoice) {
+      setErrorMsg("Please type or scan the Invoice / Delivery Note Number first.");
+      invoiceRef.current?.focus();
+      playErrorBeep();
+      return;
+    }
+
     const rawRef = referenceCode.trim();
     const expectedQtyVal = parseInt(quantity);
     const actualQtyVal = (opMode === "TRANSFER" || opMode === "RETURN")
       ? expectedQtyVal
       : (actualQuantity.trim() !== "" ? parseInt(actualQuantity) : expectedQtyVal);
 
-    if (opMode === "INTAKE" && !cleanInvoice) {
-      setErrorMsg("Please fill in the Invoice Number first.");
-      invoiceRef.current?.focus();
-      playErrorBeep();
-      return;
-    }
     if (!rawRef) {
       setErrorMsg("Please scan or enter the Reference Number.");
       referenceRef.current?.focus();
@@ -287,26 +373,18 @@ export default function OperatorWorkspace({
     // Smart resolve reference
     const res = resolveReference(rawRef);
     if (!res) {
-      setErrorMsg(`Reference "${rawRef}" does not exist in master data.`);
+      setErrorMsg(`Reference "${rawRef}" does not exist in master catalog.`);
       referenceRef.current?.focus();
       playErrorBeep();
       return;
     }
 
     const refData = res.match;
-    // Set official code if it had a scanner prefix
     const finalCode = refData.code;
 
     if (isNaN(expectedQtyVal) || expectedQtyVal <= 0) {
-      setErrorMsg((opMode === "TRANSFER" || opMode === "RETURN") ? "Please enter a valid Quantity." : "Please enter a valid Barcode Label Quantity.");
+      setErrorMsg("Please enter a valid PCS Quantity.");
       quantityRef.current?.focus();
-      playErrorBeep();
-      return;
-    }
-
-    if (opMode === "INTAKE" && (isNaN(actualQtyVal) || actualQtyVal <= 0)) {
-      setErrorMsg("Please enter a valid Real Counted Quantity.");
-      actualQtyRef.current?.focus();
       playErrorBeep();
       return;
     }
@@ -314,64 +392,38 @@ export default function OperatorWorkspace({
     setSubmitting(true);
     try {
       const timestamp = new Date().toISOString();
-      const batch = writeBatch(db);
-
-      // 1. Retrieve latest stock values
-      const refDocRef = doc(db, "references", refData.code);
-      const refSnap = await getDoc(refDocRef);
-      let currentStock1 = 0;
-      let currentStock2 = 0;
-      let currentStock3 = 0;
-      if (refSnap.exists()) {
-        const data = refSnap.data();
-        currentStock1 = data.stock1 || 0;
-        currentStock2 = data.stock2 || 0;
-        currentStock3 = data.stock3 || 0;
-      }
-
-      const diff = actualQtyVal - expectedQtyVal;
 
       if (opMode === "TRANSFER") {
-        const transferQty = actualQtyVal;
-        if (transferQty > currentStock1) {
-          setErrorMsg(`Insufficient stock in Stock 1. Available: ${currentStock1} pcs, requested: ${transferQty} pcs.`);
-          playErrorBeep();
-          setSubmitting(false);
-          return;
+        // PEGADAS MODE: Add scanned item to local Pegadas transfer batch queue (No invoice required!)
+        const newPegadasItem: ScannedTransferItem = {
+          id: `peg-${finalCode}-${Date.now().toString().slice(-6)}`,
+          reference: finalCode,
+          quantity: expectedQtyVal,
+          scannedAt: timestamp,
+          materialType: refData.materialType || "Mesh",
+          description: refData.description || ""
+        };
+
+        const updatedBatch = [newPegadasItem, ...pegadasBatch];
+        setPegadasBatch(updatedBatch);
+        playScanBeep();
+        setSuccessMsg(`SCANNED: Added ${finalCode} (${expectedQtyVal} PCS) to Pegadas transfer batch. Total: ${updatedBatch.length} item(s) (${updatedBatch.reduce((sum, item) => sum + item.quantity, 0)} PCS).`);
+      
+      } else if (opMode === "RETURN") {
+        // RETURN MODE: Return from Stock 2 to Stock 1
+        const batch = writeBatch(db);
+        const refDocRef = doc(db, "references", refData.code);
+        const refSnap = await getDoc(refDocRef);
+        let currentStock1 = 0;
+        let currentStock2 = 0;
+        let currentStock3 = 0;
+        if (refSnap.exists()) {
+          const data = refSnap.data();
+          currentStock1 = data.stock1 || 0;
+          currentStock2 = data.stock2 || 0;
+          currentStock3 = data.stock3 || 0;
         }
 
-        const newStock1 = Math.max(0, currentStock1 - transferQty);
-        const newStock2 = currentStock2 + transferQty;
-        const newTotal = newStock1 + newStock2 + currentStock3;
-
-        batch.update(refDocRef, {
-          stock1: newStock1,
-          stock2: newStock2,
-          currentStock: newTotal,
-          lastUpdate: timestamp
-        });
-
-        const transId = `trans-trf-${Date.now()}`;
-        const transDocRef = doc(db, "transactions", transId);
-        batch.set(transDocRef, {
-          id: transId,
-          reference: refData.code,
-          movementType: "TRANSFER S1->S2",
-          stock: "Stock 1 -> Stock 2",
-          quantity: transferQty,
-          expectedQty: transferQty,
-          actualQty: transferQty,
-          difference: 0,
-          operatorName: currentUser.fullName,
-          timestamp,
-          notes: `Mallas Pegadas (Sent to Gluing/Processing). Note: ${cleanInvoice}`
-        });
-
-        await batch.commit();
-
-        playSuccessBeep();
-        setSuccessMsg(`SUCCESS: Transferred ${transferQty} pcs of ${refData.code} from Stock 1 to Stock 2.`);
-      } else if (opMode === "RETURN") {
         const returnQty = actualQtyVal;
         if (returnQty > currentStock2) {
           setErrorMsg(`Insufficient stock in Stock 2. Available: ${currentStock2} pcs, requested return: ${returnQty} pcs.`);
@@ -412,106 +464,469 @@ export default function OperatorWorkspace({
         playSuccessBeep();
         setSuccessMsg(`SUCCESS: Returned ${returnQty} pcs of ${refData.code} from Stock 2 back to Stock 1 (Not Touched).`);
       } else {
-        // INTAKE MODE - Real physical counted quantity added to Stock 1
-        const newStock1 = currentStock1 + actualQtyVal;
-        const newTotal = newStock1 + currentStock2 + currentStock3;
-
-        // 2. Update Reference Stock
-        batch.update(refDocRef, {
-          stock1: newStock1,
-          currentStock: newTotal,
-          lastUpdate: timestamp
-        });
-
-        // 3. Create unique Box Barcode and save Box Document
+        // INTAKE MODE: INVOICE-BASED RECEIVING
+        const diff = actualQtyVal - expectedQtyVal;
         const boxBarcode = `BOX-${finalCode}-${cleanInvoice}-${Date.now().toString().slice(-4)}`;
-        const boxDocRef = doc(db, "boxes", boxBarcode);
-        const discNote = diff !== 0 ? `Discrepancy: Label=${expectedQtyVal}, Real=${actualQtyVal} (${diff > 0 ? '+' : ''}${diff} PCS)` : "";
 
-        batch.set(boxDocRef, {
-          id: boxBarcode,
-          barcode: boxBarcode,
-          reference: refData.code,
+        const newBoxItem: ScannedInvoiceBox = {
+          id: `box-${finalCode}-${cleanInvoice}-${Date.now().toString().slice(-6)}`,
+          boxBarcode,
+          reference: finalCode,
           expectedQty: expectedQtyVal,
-          actualQty: actualQtyVal,
-          location: "Warehouse Storeroom",
-          createdAt: timestamp,
-          updatedAt: timestamp,
+          quantity: actualQtyVal,
+          scannedAt: timestamp,
           materialType: refData.materialType || "Mesh",
+          difference: diff
+        };
+
+        const existingItems = activePendingInvoice ? activePendingInvoice.items : [];
+        const updatedItems = [newBoxItem, ...existingItems];
+        const totalBoxes = updatedItems.length;
+        const totalQuantity = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
+
+        const updatedInvoice: ReceivingInvoice = {
+          id: activePendingInvoice ? activePendingInvoice.id : `inv-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
           invoiceNumber: cleanInvoice,
-          palletQuality: discNote
-        });
+          operator: currentUser.fullName,
+          operatorId: currentUser.id,
+          createdAt: activePendingInvoice ? activePendingInvoice.createdAt : timestamp,
+          status: "pending",
+          items: updatedItems,
+          totalBoxes,
+          totalQuantity
+        };
 
-        // 4. Create Transaction Log for Stock 1 IN
-        const transId = `trans-s1in-${Date.now()}`;
-        const transDocRef = doc(db, "transactions", transId);
-        batch.set(transDocRef, {
-          id: transId,
-          barcode: boxBarcode,
-          reference: refData.code,
-          movementType: "STOCK 1 IN",
-          stock: "Stock 1",
-          quantity: actualQtyVal, // Physical stock added
-          expectedQty: expectedQtyVal,
-          actualQty: actualQtyVal,
-          difference: diff,
-          operatorName: currentUser.fullName,
-          timestamp,
-          notes: diff !== 0 
-            ? `Received via Operator Terminal. Invoice: ${cleanInvoice} (Label: ${expectedQtyVal} PCS | Real Manual Count: ${actualQtyVal} PCS | Diff: ${diff > 0 ? '+' : ''}${diff} PCS)`
-            : `Received via Operator Terminal. Invoice: ${cleanInvoice}`,
-          invoiceNumber: cleanInvoice,
-          palletQuality: discNote
-        });
+        setLocalPendingInvoice(updatedInvoice);
 
-        // 5. Create Adjustment Log for supervisor traceability
-        const adjId = `adj-${Date.now()}`;
-        const adjDocRef = doc(db, "adjustments", adjId);
-        batch.set(adjDocRef, {
-          id: adjId,
-          barcode: boxBarcode,
-          reference: refData.code,
-          expectedQty: expectedQtyVal,
-          actualQty: actualQtyVal,
-          difference: diff,
-          operatorName: currentUser.fullName,
-          timestamp,
-          status: "approved",
-          materialType: refData.materialType || "Mesh",
-          stockBefore: currentStock1,
-          stockAdded: actualQtyVal,
-          stockAfter: newStock1,
-          invoiceNumber: cleanInvoice,
-          palletQuality: discNote
-        });
+        if (onSavePendingInvoice) {
+          await onSavePendingInvoice(updatedInvoice);
+        }
 
-        await batch.commit();
-
-        playSuccessBeep();
-        const successText = diff !== 0 
-          ? `Saved ${actualQtyVal} real counted pcs of ${refData.code} to Stock 1 (Label showed ${expectedQtyVal} pcs, Discrepancy: ${diff > 0 ? '+' : ''}${diff} pcs).`
-          : `Saved ${actualQtyVal} pcs of ${refData.code} to Stock 1.`;
-        
-        setSuccessMsg(`SUCCESS: ${successText}`);
+        playScanBeep();
+        const diffText = diff !== 0 ? ` (Diff: ${diff > 0 ? '+' : ''}${diff} PCS)` : "";
+        setSuccessMsg(`SCANNED: Added ${finalCode} (${actualQtyVal} PCS${diffText}) to Invoice ${cleanInvoice}. Total: ${totalBoxes} boxes.`);
       }
       
-      // Clear scanned items
+      // Clear scanned item fields
       setReferenceCode("");
       setQuantity("");
       setActualQuantity("");
       setAutoCorrectNotice("");
       
-      // Automatic Focus back to the Reference input field for hands-free workflow!
+      // Automatic Focus back to Reference input for continuous hands-free scanning
       setTimeout(() => {
         referenceRef.current?.focus();
       }, 50);
 
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(`Database error: ${err.message || err}`);
+      setErrorMsg(`Error recording scan: ${err.message || err}`);
       playErrorBeep();
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // ----------------------------------------------------
+  // INVOICE ACTIONS (INTAKE MODE)
+  // ----------------------------------------------------
+  const handleRemoveScannedItem = async (itemId: string) => {
+    if (!activePendingInvoice) return;
+    try {
+      const updatedItems = activePendingInvoice.items.filter(item => item.id !== itemId);
+      const totalBoxes = updatedItems.length;
+      const totalQuantity = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
+
+      const updatedInvoice: ReceivingInvoice = {
+        ...activePendingInvoice,
+        items: updatedItems,
+        totalBoxes,
+        totalQuantity
+      };
+
+      setLocalPendingInvoice(updatedInvoice);
+
+      if (onSavePendingInvoice) {
+        await onSavePendingInvoice(updatedInvoice);
+      }
+      playScanBeep();
+      setSuccessMsg("Scanned box removed from current invoice.");
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Failed to remove item: ${err.message || err}`);
+      playErrorBeep();
+    }
+  };
+
+  const handleStartEditItem = (item: ScannedInvoiceBox) => {
+    setEditingItemId(item.id);
+    setEditQty(item.quantity.toString());
+    setEditRef(item.reference);
+  };
+
+  const handleSaveItemEdit = async (itemId: string) => {
+    if (!activePendingInvoice) return;
+    const newQty = parseInt(editQty);
+    if (isNaN(newQty) || newQty <= 0) {
+      setErrorMsg("Please enter a valid positive quantity.");
+      playErrorBeep();
+      return;
+    }
+
+    const cleanRef = editRef.trim().toUpperCase();
+    const res = resolveReference(cleanRef);
+    if (!res) {
+      setErrorMsg(`Reference "${cleanRef}" not found in master catalog.`);
+      playErrorBeep();
+      return;
+    }
+
+    try {
+      const updatedItems = activePendingInvoice.items.map(item => {
+        if (item.id === itemId) {
+          const diff = newQty - item.expectedQty;
+          return {
+            ...item,
+            reference: res.match.code,
+            quantity: newQty,
+            difference: diff,
+            materialType: res.match.materialType || item.materialType
+          };
+        }
+        return item;
+      });
+
+      const totalBoxes = updatedItems.length;
+      const totalQuantity = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
+
+      const updatedInvoice: ReceivingInvoice = {
+        ...activePendingInvoice,
+        items: updatedItems,
+        totalBoxes,
+        totalQuantity
+      };
+
+      setLocalPendingInvoice(updatedInvoice);
+
+      if (onSavePendingInvoice) {
+        await onSavePendingInvoice(updatedInvoice);
+      }
+      setEditingItemId(null);
+      playScanBeep();
+      setSuccessMsg(`Updated scanned box: ${res.match.code} (${newQty} PCS).`);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Failed to update item: ${err.message || err}`);
+      playErrorBeep();
+    }
+  };
+
+  const handleApproveCurrentInvoice = async () => {
+    if (!activePendingInvoice || activePendingInvoice.items.length === 0) {
+      setErrorMsg("Invoice contains no scanned records to validate.");
+      playErrorBeep();
+      return;
+    }
+
+    setApprovingInvoice(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      if (onApproveInvoice) {
+        await onApproveInvoice(activePendingInvoice.id);
+      }
+      playSuccessBeep();
+
+      await Swal.fire({
+        icon: "success",
+        title: "INVOICE VALIDATED & COMMITTED",
+        html: `
+          <div style="font-family: monospace; font-size: 13px; text-align: left; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; line-height: 1.6;">
+            <p><strong>Invoice Number:</strong> <span style="color: #2563eb;">${activePendingInvoice.invoiceNumber}</span></p>
+            <p><strong>Total Boxes:</strong> ${activePendingInvoice.totalBoxes} boxes</p>
+            <p><strong>Total Stock 1 Added:</strong> <strong style="color: #059669;">${activePendingInvoice.totalQuantity} PCS</strong></p>
+            <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2px 6px; border-radius: 4px;">APPROVED &bull; IN STOCK 1</span></p>
+          </div>
+          <p style="margin-top: 12px; font-size: 12px; color: #64748b;">All scanned records have been committed to Stock 1 inventory in real-time.</p>
+        `,
+        confirmButtonColor: "#059669",
+        confirmButtonText: "Done &bull; Next Invoice"
+      });
+
+      setInvoiceNumber("");
+      localStorage.removeItem("op_invoice");
+      setLocalPendingInvoice(null);
+      setReferenceCode("");
+      setQuantity("");
+      setActualQuantity("");
+      setIsEditMode(false);
+      setEditingItemId(null);
+      setSuccessMsg(`Invoice ${activePendingInvoice.invoiceNumber} validated (${activePendingInvoice.totalQuantity} PCS added to Stock 1). Ready for next invoice.`);
+      setTimeout(() => invoiceRef.current?.focus(), 50);
+
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Validation failed: ${err.message || err}`);
+      playErrorBeep();
+    } finally {
+      setApprovingInvoice(false);
+    }
+  };
+
+  const handleCancelCurrentInvoice = async () => {
+    if (!activePendingInvoice) return;
+
+    const result = await Swal.fire({
+      title: "CANCEL INVOICE?",
+      html: `
+        <p style="font-size: 13px; color: #475569;">Are you sure you want to cancel Invoice <strong>${activePendingInvoice.invoiceNumber}</strong>?</p>
+        <p style="font-size: 12px; color: #dc2626; margin-top: 8px; font-weight: 600;">ZERO stock impact: No quantities will be added to Stock 1.</p>
+      `,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#e11d48",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Cancel Invoice",
+      cancelButtonText: "Keep Scanning"
+    });
+
+    if (!result.isConfirmed) return;
+
+    setCancellingInvoice(true);
+    try {
+      if (onCancelInvoice) {
+        await onCancelInvoice(activePendingInvoice.id);
+      }
+      playScanBeep();
+      setLocalPendingInvoice(null);
+      setInvoiceNumber("");
+      localStorage.removeItem("op_invoice");
+      setReferenceCode("");
+      setQuantity("");
+      setActualQuantity("");
+      setIsEditMode(false);
+      setEditingItemId(null);
+      setSuccessMsg(`Invoice ${activePendingInvoice.invoiceNumber} cancelled. Zero stock was modified.`);
+      setTimeout(() => invoiceRef.current?.focus(), 50);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Cancellation failed: ${err.message || err}`);
+      playErrorBeep();
+    } finally {
+      setCancellingInvoice(false);
+    }
+  };
+
+  // ----------------------------------------------------
+  // PEGADAS BATCH ACTIONS (TRANSFER S1 -> S2 WITHOUT INVOICE)
+  // ----------------------------------------------------
+  const handleRemovePegadasItem = (itemId: string) => {
+    const updated = pegadasBatch.filter(item => item.id !== itemId);
+    setPegadasBatch(updated);
+    playScanBeep();
+    setSuccessMsg("Scanned record removed from Pegadas batch.");
+  };
+
+  const handleStartEditPegadasItem = (item: ScannedTransferItem) => {
+    setEditingPegadasItemId(item.id);
+    setEditPegadasRef(item.reference);
+    setEditPegadasQty(item.quantity.toString());
+  };
+
+  const handleSavePegadasItemEdit = (itemId: string) => {
+    const newQty = parseInt(editPegadasQty);
+    if (isNaN(newQty) || newQty <= 0) {
+      setErrorMsg("Please enter a valid positive quantity.");
+      playErrorBeep();
+      return;
+    }
+
+    const cleanRef = editPegadasRef.trim().toUpperCase();
+    const res = resolveReference(cleanRef);
+    if (!res) {
+      setErrorMsg(`Reference "${cleanRef}" not found in master catalog.`);
+      playErrorBeep();
+      return;
+    }
+
+    const updated = pegadasBatch.map(item => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          reference: res.match.code,
+          quantity: newQty,
+          materialType: res.match.materialType || item.materialType,
+          description: res.match.description || item.description
+        };
+      }
+      return item;
+    });
+
+    setPegadasBatch(updated);
+    setEditingPegadasItemId(null);
+    playScanBeep();
+    setSuccessMsg(`Updated Pegadas record: ${res.match.code} (${newQty} PCS).`);
+  };
+
+  // Action: Cancel Pegadas Batch
+  const handleCancelPegadasBatch = async () => {
+    if (pegadasBatch.length === 0) return;
+
+    const result = await Swal.fire({
+      title: "CANCEL PEGADAS BATCH?",
+      html: `
+        <p style="font-size: 13px; color: #475569;">Are you sure you want to cancel the current Pegadas batch (${pegadasBatch.length} items)?</p>
+        <p style="font-size: 12px; color: #dc2626; margin-top: 8px; font-weight: 600;">ZERO stock impact: No quantities will be moved.</p>
+      `,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#e11d48",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Cancel Batch",
+      cancelButtonText: "Keep Scanning"
+    });
+
+    if (!result.isConfirmed) return;
+
+    setCancellingPegadas(true);
+    try {
+      setPegadasBatch([]);
+      localStorage.removeItem("op_pegadas_batch");
+      setReferenceCode("");
+      setQuantity("");
+      setIsPegadasEditMode(false);
+      setEditingPegadasItemId(null);
+      playScanBeep();
+      setSuccessMsg("Pegadas batch cancelled. Zero stock was modified.");
+      setTimeout(() => referenceRef.current?.focus(), 50);
+    } finally {
+      setCancellingPegadas(false);
+    }
+  };
+
+  // Action: Atomically Commit & Validate Pegadas Batch (Stock 1 -> Stock 2)
+  const handleApprovePegadasBatch = async () => {
+    if (pegadasBatch.length === 0) {
+      setErrorMsg("Pegadas batch contains no scanned records to validate.");
+      playErrorBeep();
+      return;
+    }
+
+    setApprovingPegadas(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const batch = writeBatch(db);
+      const timestamp = new Date().toISOString();
+
+      // Group requested quantities by reference to validate Stock 1 availability
+      const totalsPerRef: { [code: string]: number } = {};
+      for (const item of pegadasBatch) {
+        totalsPerRef[item.reference] = (totalsPerRef[item.reference] || 0) + item.quantity;
+      }
+
+      // Fetch current reference stocks from Firestore
+      const refDataMap: { [code: string]: any } = {};
+      for (const code of Object.keys(totalsPerRef)) {
+        const refDocRef = doc(db, "references", code);
+        const refSnap = await getDoc(refDocRef);
+        if (refSnap.exists()) {
+          refDataMap[code] = refSnap.data();
+        } else {
+          const found = references.find(r => r.code === code);
+          refDataMap[code] = {
+            stock1: found?.stock1 || 0,
+            stock2: found?.stock2 || 0,
+            stock3: found?.stock3 || 0
+          };
+        }
+
+        const availableStock1 = refDataMap[code].stock1 || 0;
+        const requestedQty = totalsPerRef[code];
+        if (requestedQty > availableStock1) {
+          throw new Error(`Insufficient stock in Stock 1 for Reference ${code}. Available in Stock 1: ${availableStock1} PCS, Batch requested: ${requestedQty} PCS.`);
+        }
+      }
+
+      // Apply batch updates to Reference Stock balances
+      for (const code of Object.keys(totalsPerRef)) {
+        const currentStock1 = refDataMap[code].stock1 || 0;
+        const currentStock2 = refDataMap[code].stock2 || 0;
+        const currentStock3 = refDataMap[code].stock3 || 0;
+        const transferQty = totalsPerRef[code];
+
+        const newStock1 = Math.max(0, currentStock1 - transferQty);
+        const newStock2 = currentStock2 + transferQty;
+        const newTotal = newStock1 + newStock2 + currentStock3;
+
+        const refDocRef = doc(db, "references", code);
+        batch.update(refDocRef, {
+          stock1: newStock1,
+          stock2: newStock2,
+          currentStock: newTotal,
+          lastUpdate: timestamp
+        });
+      }
+
+      // Write individual transaction audit logs
+      for (const item of pegadasBatch) {
+        const transId = `trans-trf-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const transDocRef = doc(db, "transactions", transId);
+        batch.set(transDocRef, {
+          id: transId,
+          reference: item.reference,
+          movementType: "TRANSFER S1->S2",
+          stock: "Stock 1 -> Stock 2",
+          quantity: item.quantity,
+          expectedQty: item.quantity,
+          actualQty: item.quantity,
+          difference: 0,
+          operatorName: currentUser.fullName,
+          timestamp,
+          notes: `Mallas Pegadas (Sent to Gluing/Processing - Stock 1 -> Stock 2)`
+        });
+      }
+
+      await batch.commit();
+      playSuccessBeep();
+
+      const totalPcs = pegadasBatch.reduce((sum, item) => sum + item.quantity, 0);
+      const totalRecords = pegadasBatch.length;
+
+      await Swal.fire({
+        icon: "success",
+        title: "PEGADAS TRANSFER VALIDATED & COMMITTED",
+        html: `
+          <div style="font-family: monospace; font-size: 13px; text-align: left; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; line-height: 1.6;">
+            <p><strong>Operation:</strong> <span style="color: #2563eb; font-weight: bold;">Send Mesh to Pegadas (Stock 1 ➔ Stock 2)</span></p>
+            <p><strong>Total Scanned Records:</strong> ${totalRecords} items</p>
+            <p><strong>Total Quantity Moved:</strong> <strong style="color: #059669;">${totalPcs} PCS</strong></p>
+            <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2px 6px; border-radius: 4px;">COMMITTED &bull; TRANSFERRED TO STOCK 2</span></p>
+          </div>
+          <p style="margin-top: 12px; font-size: 12px; color: #64748b;">Inventory stocks have been updated in real-time across the system.</p>
+        `,
+        confirmButtonColor: "#059669",
+        confirmButtonText: "Done &bull; Continue Scanning"
+      });
+
+      setPegadasBatch([]);
+      localStorage.removeItem("op_pegadas_batch");
+      setReferenceCode("");
+      setQuantity("");
+      setActualQuantity("");
+      setIsPegadasEditMode(false);
+      setEditingPegadasItemId(null);
+      setSuccessMsg(`Pegadas Transfer Validated: ${totalPcs} PCS successfully moved from Stock 1 to Stock 2.`);
+      setTimeout(() => referenceRef.current?.focus(), 50);
+
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Transfer validation failed: ${err.message || err}`);
+      playErrorBeep();
+    } finally {
+      setApprovingPegadas(false);
     }
   };
 
@@ -521,24 +936,44 @@ export default function OperatorWorkspace({
     submitTransaction();
   };
 
-  // Quick Action to Clear scan inputs (Start scan from zero) including Invoice
+  // Quick Action to Clear scan inputs (Start scan from zero)
   const handleClearInputs = () => {
     setReferenceCode("");
     setQuantity("");
     setActualQuantity("");
-    setInvoiceNumber("");
-    localStorage.removeItem("op_invoice");
     setErrorMsg("");
     setSuccessMsg("");
     setAutoCorrectNotice("");
+    setIsEditMode(false);
+    setEditingItemId(null);
+    setIsPegadasEditMode(false);
+    setEditingPegadasItemId(null);
     playScanBeep();
-    invoiceRef.current?.focus();
+    referenceRef.current?.focus();
   };
 
-  // Reset Everything including Invoice Number
-  const handleResetAll = handleClearInputs;
+  // Reset Everything
+  const handleResetAll = () => {
+    setReferenceCode("");
+    setQuantity("");
+    setActualQuantity("");
+    if (opMode === "INTAKE") {
+      setInvoiceNumber("");
+      localStorage.removeItem("op_invoice");
+      setLocalPendingInvoice(null);
+    }
+    setErrorMsg("");
+    setSuccessMsg("");
+    setAutoCorrectNotice("");
+    setIsEditMode(false);
+    setEditingItemId(null);
+    setIsPegadasEditMode(false);
+    setEditingPegadasItemId(null);
+    playScanBeep();
+    referenceRef.current?.focus();
+  };
 
-  // ESC key shortcut to quickly reset scan fields to zero
+  // ESC key shortcut to quickly reset scan fields
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -548,17 +983,6 @@ export default function OperatorWorkspace({
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
-
-  // Get active lists of scanned boxes on this invoice
-  const recentScansList = useMemo(() => {
-    const cleanInvoice = invoiceNumber.trim().toUpperCase();
-    if (!cleanInvoice) return [];
-
-    return boxes
-      .filter(b => b.invoiceNumber?.toUpperCase() === cleanInvoice)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 5);
-  }, [boxes, invoiceNumber]);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6" id="operator-workspace-handsfree-station">
@@ -627,7 +1051,7 @@ export default function OperatorWorkspace({
               setErrorMsg("");
               setSuccessMsg("");
               setAutoCorrectNotice("");
-              setTimeout(() => invoiceRef.current?.focus(), 50);
+              setTimeout(() => referenceRef.current?.focus(), 50);
             }}
             className={`py-2.5 px-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               opMode === "INTAKE"
@@ -703,9 +1127,17 @@ export default function OperatorWorkspace({
           {/* INVOICE NUMBER (Only for Intake from New Truck) */}
           {opMode === "INTAKE" && (
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                1. Invoice / Delivery Note Number
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  1. Invoice / Delivery Note Number
+                </label>
+                {activePendingInvoice && (
+                  <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    SESSION ACTIVE ({activePendingInvoice.totalBoxes} boxes / {activePendingInvoice.totalQuantity} PCS)
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <FileText className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -753,9 +1185,14 @@ export default function OperatorWorkspace({
                   <span className="font-bold">{matchedReference.code}</span>
                   <span className="text-slate-500 font-sans truncate max-w-[180px]">({matchedReference.description})</span>
                 </div>
-                <span className="px-2 py-0.5 bg-emerald-200/60 rounded-md text-[9px] font-bold uppercase tracking-wider text-emerald-900 shrink-0">
-                  {matchedReference.materialType}
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-2 py-0.5 bg-slate-200/80 rounded-md text-[9px] font-bold uppercase tracking-wider text-slate-800">
+                    S1: {matchedReference.stock1 || 0} pcs
+                  </span>
+                  <span className="px-2 py-0.5 bg-emerald-200/60 rounded-md text-[9px] font-bold uppercase tracking-wider text-emerald-900">
+                    {matchedReference.materialType}
+                  </span>
+                </div>
               </div>
             ) : referenceCode ? (
               <div className="p-2.5 bg-amber-50 border border-amber-200/80 rounded-xl text-xs font-mono text-amber-900 flex items-center justify-between gap-2">
@@ -786,20 +1223,40 @@ export default function OperatorWorkspace({
           </div>
 
           {/* QUANTITY FIELDS */}
-          {opMode === "TRANSFER" || opMode === "RETURN" ? (
+          {opMode === "TRANSFER" ? (
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>{opMode === "TRANSFER" ? "2. Quantity (Transfer to Pegadas PCS)" : "2. Quantity (Return to Stock 1 PCS)"}</span>
-                <span className="text-[10px] text-amber-600 font-semibold font-mono">{opMode === "TRANSFER" ? "Stock 1 ➔ Stock 2" : "Stock 2 ➔ Stock 1 (Not Touched)"}</span>
+                <span>2. Quantity (Transfer to Pegadas PCS)</span>
+                <span className="text-[10px] text-amber-600 font-semibold font-mono">Stock 1 ➔ Stock 2</span>
               </label>
               <input
                 ref={quantityRef}
                 type="number"
                 required
                 min="1"
-                placeholder={opMode === "TRANSFER" ? "Enter quantity to send to Pegadas..." : "Enter quantity to return to Stock 1..."}
+                placeholder="Enter quantity to send to Pegadas..."
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
+                onChange={handleQuantityChange}
+                onKeyDown={handleQuantityKeyDown}
+                className="w-full px-4 py-2.5 bg-amber-50/40 focus:bg-white border border-amber-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all"
+                id="op-quantity-field"
+                autoComplete="off"
+              />
+            </div>
+          ) : opMode === "RETURN" ? (
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>2. Quantity (Return to Stock 1 PCS)</span>
+                <span className="text-[10px] text-amber-600 font-semibold font-mono">Stock 2 ➔ Stock 1 (Not Touched)</span>
+              </label>
+              <input
+                ref={quantityRef}
+                type="number"
+                required
+                min="1"
+                placeholder="Enter quantity to return to Stock 1..."
+                value={quantity}
+                onChange={handleQuantityChange}
                 onKeyDown={handleQuantityKeyDown}
                 className="w-full px-4 py-2.5 bg-amber-50/40 focus:bg-white border border-amber-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all"
                 id="op-quantity-field"
@@ -810,7 +1267,7 @@ export default function OperatorWorkspace({
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
                 <span>3. Quantity (PCS)</span>
-                <span className="text-[10px] text-slate-400 font-normal">Incoming Stock 1</span>
+                <span className="text-[10px] text-slate-400 font-normal">Incoming Box Count</span>
               </label>
               <input
                 ref={quantityRef}
@@ -842,7 +1299,7 @@ export default function OperatorWorkspace({
             <button
               type="button"
               onClick={handleResetAll}
-              title="Clear all inputs including Invoice Number"
+              title="Clear all inputs"
               className="px-3.5 py-2.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200/80"
             >
               <Eraser className="w-4 h-4 text-slate-400 group-hover:text-rose-600" />
@@ -851,67 +1308,473 @@ export default function OperatorWorkspace({
             <button
               type="submit"
               disabled={submitting}
-              className="flex-1 py-2.5 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+              className={`flex-1 py-2.5 px-6 font-bold text-xs uppercase tracking-wider rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 text-white ${
+                opMode === "TRANSFER"
+                  ? "bg-blue-600 hover:bg-blue-700"
+                  : opMode === "RETURN"
+                  ? "bg-amber-600 hover:bg-amber-700"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
               id="op-submit-trigger"
             >
               {submitting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  SAVING...
+                  ADDING RECORD...
                 </>
               ) : (
                 <>
                   <Check className="w-4 h-4" />
-                  CONFIRM &amp; SAVE RECORD
+                  {opMode === "INTAKE" ? "ADD BOX TO INVOICE" : opMode === "TRANSFER" ? "ADD TO PEGADAS BATCH" : "CONFIRM & SAVE RETURN"}
                 </>
               )}
             </button>
           </div>
         </form>
-      </div>
 
-      {/* Invoice Specific Scanned Registry */}
-      {recentScansList.length > 0 && (
-        <div className="glass-panel p-5 space-y-3" id="operator-invoice-batch">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-              <BoxIcon className="w-4 h-4 text-blue-600" />
-              Scanned on Invoice ({recentScansList.length})
-            </span>
-            <span className="text-[10px] font-mono text-slate-400">
-              Recent Activity
-            </span>
-          </div>
-          <div className="divide-y divide-slate-100 text-xs font-mono">
-            {recentScansList.map((box, idx) => (
-              <div key={box.id} className="py-2.5 flex items-center justify-between text-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-5 h-5 rounded-md bg-slate-100 text-[10px] flex items-center justify-center text-slate-600 font-bold">
-                    {recentScansList.length - idx}
-                  </span>
-                  <span className="font-bold text-slate-900">{box.reference}</span>
+        {/* ---------------------------------------------------- */}
+        {/* SCANNED RECORDS SECTION FOR PEGADAS (TRANSFER S1 -> S2, NO INVOICE) */}
+        {/* ---------------------------------------------------- */}
+        {opMode === "TRANSFER" && (
+          <div className="pt-6 border-t border-slate-200/80 space-y-4" id="operator-pegadas-records-section">
+            
+            {/* Header with Summary & Edit Toggle */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/80">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-100 text-blue-700 rounded-lg shrink-0">
+                  <BoxIcon className="w-4 h-4" />
                 </div>
-                <div className="flex items-center gap-2">
-                  {box.actualQty !== undefined && box.actualQty !== box.expectedQty ? (
-                    <div className="text-right">
-                      <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-xs inline-block">
-                        Real: {box.actualQty} PCS
-                      </span>
-                      <span className="text-[10px] text-slate-500 block font-mono mt-0.5">
-                        Label: {box.expectedQty} (Diff: {box.actualQty - box.expectedQty > 0 ? '+' : ''}{box.actualQty - box.expectedQty})
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-100">
-                      {box.actualQty ?? box.expectedQty} PCS
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                      SCANNED RECORDS FOR PEGADAS (TRANSFER S1 ➔ S2):
+                    </h4>
+                    <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-xs">
+                      PEGADAS BATCH (NO INVOICE)
                     </span>
-                  )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    {pegadasBatch.length > 0 
+                      ? `${pegadasBatch.length} Scanned Item(s) • Total: ${totalPegadasQty} PCS` 
+                      : "0 Scanned Records"}
+                  </p>
                 </div>
               </div>
-            ))}
+
+              {pegadasBatch.length > 0 && (
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsPegadasEditMode(!isPegadasEditMode)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                      isPegadasEditMode
+                        ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                        : "bg-white text-slate-700 hover:bg-slate-100 border-slate-200"
+                    }`}
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>{isPegadasEditMode ? "DONE EDITING" : "EDIT RECORDS"}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Scanned Records List / Table */}
+            {pegadasBatch.length > 0 ? (
+              <div className="divide-y divide-slate-100 text-xs font-mono max-h-72 overflow-y-auto bg-white rounded-xl border border-slate-200/80 p-2 shadow-2xs">
+                {pegadasBatch.map((item, idx) => {
+                  const isEditingThis = editingPegadasItemId === item.id;
+                  const currentRefData = references.find(r => r.code === item.reference);
+
+                  return (
+                    <div key={item.id} className="py-2.5 px-3 hover:bg-slate-50 rounded-lg transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      
+                      {/* Record Reference & Info */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className="w-6 h-6 rounded-md bg-slate-100 text-[10px] flex items-center justify-center text-slate-700 font-bold shrink-0">
+                          #{idx + 1}
+                        </span>
+
+                        {isEditingThis ? (
+                          <div className="flex items-center gap-2 flex-1">
+                            <input
+                              type="text"
+                              value={editPegadasRef}
+                              onChange={(e) => setEditPegadasRef(e.target.value.toUpperCase())}
+                              placeholder="REF CODE"
+                              className="px-2.5 py-1 bg-white border border-blue-400 rounded-md text-xs font-bold text-slate-900 uppercase w-32 focus:outline-none"
+                            />
+                            <input
+                              type="number"
+                              value={editPegadasQty}
+                              onChange={(e) => setEditPegadasQty(e.target.value)}
+                              placeholder="QTY"
+                              min="1"
+                              className="px-2.5 py-1 bg-white border border-blue-400 rounded-md text-xs font-bold text-slate-900 w-24 focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSavePegadasItemEdit(item.id)}
+                              className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer"
+                              title="Save record changes"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              <span>Save</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingPegadasItemId(null)}
+                              className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer"
+                              title="Cancel editing"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 text-xs truncate">{item.reference}</span>
+                              <span className="text-[10px] text-slate-500 font-sans truncate">
+                                ({currentRefData?.description || item.description || item.materialType || "Mesh"})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
+                              <span>Scanned: {item.scannedAt ? new Date(item.scannedAt).toLocaleTimeString() : "Just now"}</span>
+                              <span>&bull;</span>
+                              <span className="text-slate-600 font-semibold">Available S1: {currentRefData?.stock1 ?? "—"} pcs</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Record Quantity & Action Controls */}
+                      {!isEditingThis && (
+                        <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+                          <div className="text-right">
+                            <span className="font-bold text-blue-700 bg-blue-50 px-3 py-1 rounded-md border border-blue-200 text-xs inline-block">
+                              {item.quantity} PCS
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditPegadasItem(item)}
+                              title="Edit this scanned quantity or reference"
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer border border-slate-200/60"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePegadasItem(item.id)}
+                              title="Remove this item from Pegadas batch"
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer border border-slate-200/60"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-6 bg-slate-50/60 rounded-xl border border-dashed border-slate-200 text-center space-y-1">
+                <BoxIcon className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-semibold text-slate-600">
+                  No scanned records yet for Pegadas transfer
+                </p>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  Scan reference barcode and quantity above to build your Pegadas transfer batch.
+                </p>
+              </div>
+            )}
+
+            {/* ACTION BUTTONS DIRECTLY UNDER THE RECORDS: VALID / EDIT / CANCEL */}
+            {pegadasBatch.length > 0 && (
+              <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3" id="operator-pegadas-action-buttons">
+                
+                {/* EDIT BUTTON / CANCEL BUTTON */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPegadasEditMode(!isPegadasEditMode)}
+                    className={`flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-wider font-mono transition-all flex items-center justify-center gap-2 cursor-pointer border ${
+                      isPegadasEditMode
+                        ? "bg-slate-800 hover:bg-slate-900 text-white border-slate-800 shadow-xs"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"
+                    }`}
+                    id="op-toggle-pegadas-edit-mode-btn"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    <span>{isPegadasEditMode ? "DONE EDITING" : "EDIT RECORDS"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelPegadasBatch}
+                    disabled={cancellingPegadas || approvingPegadas}
+                    className="p-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-50"
+                    title="Cancel Pegadas batch (zero stock impact)"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* VALID (VALIDATE PEGADAS TRANSFER) BUTTON */}
+                <button
+                  type="button"
+                  onClick={handleApprovePegadasBatch}
+                  disabled={approvingPegadas || cancellingPegadas}
+                  className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                  id="op-validate-pegadas-btn"
+                >
+                  {approvingPegadas ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      MOVING TO STOCK 2...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      VALID ({totalPegadasQty} PCS)
+                    </>
+                  )}
+                </button>
+
+              </div>
+            )}
+
           </div>
-        </div>
-      )}
+        )}
+
+        {/* ---------------------------------------------------- */}
+        {/* SCANNED RECORDS SECTION FOR INTAKE (INVOICE-AFFILIATED) */}
+        {/* ---------------------------------------------------- */}
+        {opMode === "INTAKE" && (
+          <div className="pt-6 border-t border-slate-200/80 space-y-4" id="operator-scanned-records-section">
+            
+            {/* Header with Invoice Number Affiliation & Summary */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/80">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-100 text-blue-700 rounded-lg shrink-0">
+                  <BoxIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                      SCANNED RECORDS AFFIXED TO INVOICE:
+                    </h4>
+                    <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-xs">
+                      {invoiceNumber.trim() ? invoiceNumber.trim().toUpperCase() : "NO INVOICE ENTERED"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    {activePendingInvoice && activePendingInvoice.items.length > 0 
+                      ? `${activePendingInvoice.totalBoxes} Scanned Box(es) • Total: ${activePendingInvoice.totalQuantity} PCS` 
+                      : "0 Scanned Boxes"}
+                  </p>
+                </div>
+              </div>
+
+              {activePendingInvoice && activePendingInvoice.items.length > 0 && (
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditMode(!isEditMode)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                      isEditMode
+                        ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                        : "bg-white text-slate-700 hover:bg-slate-100 border-slate-200"
+                    }`}
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>{isEditMode ? "DONE EDITING" : "EDIT RECORDS"}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Scanned Records List / Table */}
+            {activePendingInvoice && activePendingInvoice.items.length > 0 ? (
+              <div className="divide-y divide-slate-100 text-xs font-mono max-h-72 overflow-y-auto bg-white rounded-xl border border-slate-200/80 p-2 shadow-2xs">
+                {activePendingInvoice.items.map((item, idx) => {
+                  const isEditingThis = editingItemId === item.id;
+
+                  return (
+                    <div key={item.id} className="py-2.5 px-3 hover:bg-slate-50 rounded-lg transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      
+                      {/* Record Reference & Barcode */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className="w-6 h-6 rounded-md bg-slate-100 text-[10px] flex items-center justify-center text-slate-700 font-bold shrink-0">
+                          #{idx + 1}
+                        </span>
+
+                        {isEditingThis ? (
+                          <div className="flex items-center gap-2 flex-1">
+                            <input
+                              type="text"
+                              value={editRef}
+                              onChange={(e) => setEditRef(e.target.value.toUpperCase())}
+                              placeholder="REF CODE"
+                              className="px-2.5 py-1 bg-white border border-blue-400 rounded-md text-xs font-bold text-slate-900 uppercase w-32 focus:outline-none"
+                            />
+                            <input
+                              type="number"
+                              value={editQty}
+                              onChange={(e) => setEditQty(e.target.value)}
+                              placeholder="QTY"
+                              min="1"
+                              className="px-2.5 py-1 bg-white border border-blue-400 rounded-md text-xs font-bold text-slate-900 w-24 focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveItemEdit(item.id)}
+                              className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer"
+                              title="Save record changes"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              <span>Save</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingItemId(null)}
+                              className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer"
+                              title="Cancel editing"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 text-xs truncate">{item.reference}</span>
+                              <span className="text-[10px] text-slate-500 font-sans truncate">
+                                ({references.find(r => r.code === item.reference)?.description || item.materialType || "Mesh"})
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 block truncate font-mono">
+                              Barcode: {item.boxBarcode} &bull; Scanned: {item.scannedAt ? new Date(item.scannedAt).toLocaleTimeString() : "Just now"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Record Quantity & Action Controls */}
+                      {!isEditingThis && (
+                        <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+                          <div className="text-right">
+                            <span className="font-bold text-blue-700 bg-blue-50 px-3 py-1 rounded-md border border-blue-200 text-xs inline-block">
+                              {item.quantity} PCS
+                            </span>
+                            {item.difference !== undefined && item.difference !== 0 && (
+                              <span className="text-[10px] text-amber-700 block mt-0.5 font-bold">
+                                Diff: {item.difference > 0 ? '+' : ''}${item.difference}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditItem(item)}
+                              title="Edit this scanned box quantity or reference"
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer border border-slate-200/60"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveScannedItem(item.id)}
+                              title="Remove this box from invoice"
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer border border-slate-200/60"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-6 bg-slate-50/60 rounded-xl border border-dashed border-slate-200 text-center space-y-1">
+                <BoxIcon className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-semibold text-slate-600">
+                  {invoiceNumber.trim() 
+                    ? `No scanned boxes yet for Invoice ${invoiceNumber.trim().toUpperCase()}` 
+                    : "No invoice entered yet"}
+                </p>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  Scan reference barcode and quantity above to attach boxes to this invoice.
+                </p>
+              </div>
+            )}
+
+            {/* ACTION BUTTONS DIRECTLY UNDER THE RECORDS: VALID / EDIT / CANCEL */}
+            {activePendingInvoice && activePendingInvoice.items.length > 0 && (
+              <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3" id="operator-invoice-action-buttons">
+                
+                {/* EDIT BUTTON / CANCEL BUTTON */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditMode(!isEditMode)}
+                    className={`flex-1 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-wider font-mono transition-all flex items-center justify-center gap-2 cursor-pointer border ${
+                      isEditMode
+                        ? "bg-slate-800 hover:bg-slate-900 text-white border-slate-800 shadow-xs"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"
+                    }`}
+                    id="op-toggle-edit-mode-btn"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    <span>{isEditMode ? "DONE EDITING" : "EDIT RECORDS"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelCurrentInvoice}
+                    disabled={cancellingInvoice || approvingInvoice}
+                    className="p-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-50"
+                    title="Cancel whole invoice (zero stock impact)"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* VALID (VALIDATE INVOICE) BUTTON */}
+                <button
+                  type="button"
+                  onClick={handleApproveCurrentInvoice}
+                  disabled={approvingInvoice || cancellingInvoice}
+                  className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                  id="op-validate-invoice-btn"
+                >
+                  {approvingInvoice ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      VALIDATING &amp; SAVING STOCK 1...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      VALID ({activePendingInvoice.totalQuantity} PCS)
+                    </>
+                  )}
+                </button>
+
+              </div>
+            )}
+
+          </div>
+        )}
+
+      </div>
 
     </div>
   );

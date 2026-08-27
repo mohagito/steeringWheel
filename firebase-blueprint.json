@@ -131,9 +131,27 @@
         "barcode": { "type": "string", "description": "Box barcode if applicable" }
       },
       "required": ["reference", "movementType", "stock", "quantity", "operatorName", "timestamp"]
+    },
+    "ReceivingInvoice": {
+      "title": "ReceivingInvoice",
+      "description": "An invoice-based receiving session grouping multiple scanned boxes for atomic Stock 1 confirmation",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string", "description": "Incoming supplier or delivery invoice number" },
+        "operator": { "type": "string", "description": "Operator name who performed the intake scans" },
+        "status": { "type": "string", "enum": ["pending", "approved", "cancelled"], "description": "Status of the invoice session" },
+        "createdAt": { "type": "string", "description": "Session creation timestamp" },
+        "totalBoxes": { "type": "number", "description": "Total count of scanned boxes" },
+        "totalQuantity": { "type": "number", "description": "Sum of all physical pieces across scanned boxes" }
+      },
+      "required": ["invoiceNumber", "operator", "status", "createdAt"]
     }
   },
   "firestore": {
+    "/invoices/{invoiceId}": {
+      "schema": "ReceivingInvoice",
+      "description": "Collection of invoice-based Stock 1 receiving sessions"
+    },
     "/boxes/{boxId}": {
       "schema": "Box",
       "description": "Collection of steering wheel boxes in storage"
