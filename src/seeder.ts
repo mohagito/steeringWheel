@@ -263,7 +263,7 @@ const DEFAULT_BOXES: Box[] = [];
 const DEFAULT_ADJUSTMENTS: Adjustment[] = [];
 
 // Helper to chunk large batch deletions (max 400 operations per batch)
-async function clearCollection(collectionName: string) {
+export async function clearCollection(collectionName: string) {
   const snapshot = await getDocs(collection(db, collectionName));
   if (snapshot.empty) return;
   
@@ -275,6 +275,10 @@ async function clearCollection(collectionName: string) {
     chunk.forEach((docSnap) => batch.delete(docSnap.ref));
     await batch.commit();
   }
+}
+
+export async function clearInvoicesCollection() {
+  await clearCollection("invoices");
 }
 
 export async function seedDatabaseIfNeeded() {
@@ -357,6 +361,7 @@ export async function resetDatabaseToPristineState() {
     await clearCollection("deliveries");
     await clearCollection("productions");
     await clearCollection("scraps");
+    await clearCollection("invoices");
 
     // 2. Reset master references to pristine state with 0 stock
     await clearCollection("references");

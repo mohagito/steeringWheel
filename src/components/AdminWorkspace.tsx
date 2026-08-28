@@ -14,6 +14,7 @@ interface AdminWorkspaceProps {
   onDeleteUser: (userId: string) => Promise<void>;
   onCleanDatabase: () => Promise<void>;
   onAuditDatabase?: () => Promise<{ repairedRefs: number; repairedUsers: number }>;
+  onClearInvoices?: () => Promise<void>;
 }
 
 export default function AdminWorkspace({
@@ -23,9 +24,11 @@ export default function AdminWorkspace({
   onDeleteUser,
   onCleanDatabase,
   onAuditDatabase,
+  onClearInvoices,
 }: AdminWorkspaceProps) {
   const [isResetting, setIsResetting] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
+  const [isClearingInvoices, setIsClearingInvoices] = useState(false);
 
   // State for User Form
   const [newUsername, setNewUsername] = useState("");
@@ -278,6 +281,44 @@ export default function AdminWorkspace({
         });
       } finally {
         setIsResetting(false);
+      }
+    }
+  };
+
+  // Handle Clear Invoices with SweetAlert
+  const handleClearInvoices = async () => {
+    if (!onClearInvoices) return;
+    const result = await Swal.fire({
+      title: "Clear All Incoming Invoices?",
+      text: "Are you sure you want to empty the Stock 1 Invoices register? All subsequent incoming material invoices will be logged moving forward.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Empty Invoices Register",
+      cancelButtonText: "Cancel"
+    });
+
+    if (result.isConfirmed) {
+      try {
+        setIsClearingInvoices(true);
+        await onClearInvoices();
+        await Swal.fire({
+          title: "Invoices Cleared!",
+          text: "The invoice register has been emptied. New invoices will be tracked starting now.",
+          icon: "success",
+          confirmButtonColor: "#2563eb"
+        });
+      } catch (e: any) {
+        console.error(e);
+        await Swal.fire({
+          title: "Failed to Clear",
+          text: e?.message || "Failed to clear invoices.",
+          icon: "error",
+          confirmButtonColor: "#2563eb"
+        });
+      } finally {
+        setIsClearingInvoices(false);
       }
     }
   };
@@ -587,12 +628,33 @@ export default function AdminWorkspace({
         </div>
       )}
 
-      {/* Danger Zone: Database Reset */}
-      <div className="glass-panel p-5 mt-4 border-rose-200/80 bg-rose-50/20">
-        <div className="flex items-center justify-between gap-4 font-sans text-xs">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <h4 className="font-mono font-bold text-rose-800 text-xs uppercase">Danger Zone</h4>
+      {/* Danger Zone: Database Reset & Invoices Clearing */}
+      <div className="glass-panel p-5 mt-4 border-rose-200/80 bg-rose-50/20 space-y-4">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <h4 className="font-mono font-bold text-rose-800 text-xs uppercase">Danger Zone & Reset Tools</h4>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-rose-100">
+          <div>
+            <div className="font-bold text-slate-800 text-xs">Clear Incoming Invoices Register</div>
+            <div className="text-[11px] text-slate-500">Remove all current receiving invoice records and start logging fresh from now forward.</div>
+          </div>
+          <button
+            onClick={handleClearInvoices}
+            disabled={isClearingInvoices}
+            id="admin-clear-invoices-btn"
+            className="px-4 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 text-xs font-mono shadow-2xs"
+          >
+            <Trash2 className={`w-3.5 h-3.5 ${isClearingInvoices ? 'animate-spin' : ''}`} />
+            <span>{isClearingInvoices ? "CLEARING..." : "CLEAR INVOICES REGISTER"}</span>
+          </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-rose-100">
+          <div>
+            <div className="font-bold text-rose-900 text-xs">Master Factory Database Reset</div>
+            <div className="text-[11px] text-slate-500">Reset all 3 stock tiers, boxes, dispatches, scraps, and history to 0 baseline.</div>
           </div>
           <button
             onClick={handleResetDatabase}

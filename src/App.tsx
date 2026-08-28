@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, getDoc, getDocs, writeBatch, runTransaction
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { seedDatabaseIfNeeded, resetDatabaseToPristineState } from "./seeder";
+import { seedDatabaseIfNeeded, resetDatabaseToPristineState, clearInvoicesCollection } from "./seeder";
 import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry, ReceivingInvoice } from "./types";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
@@ -15,10 +15,13 @@ import DeliveriesWorkspace from "./components/DeliveriesWorkspace";
 import ProductionWorkspace from "./components/ProductionWorkspace";
 import ScrapWorkspace from "./components/ScrapWorkspace";
 import ManageReferencesWorkspace from "./components/ManageReferencesWorkspace";
+import InvoicesWorkspace from "./components/InvoicesWorkspace";
+import { LowStockAlertModal } from "./components/LowStockAlertModal";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
-  RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2, FolderTree
+  RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2, FolderTree, FileText,
+  AlertTriangle
 } from "lucide-react";
 
 export default function App() {
@@ -40,7 +43,7 @@ export default function App() {
   const [invoices, setInvoices] = useState<ReceivingInvoice[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">(() => {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">(() => {
     try {
       const savedTab = sessionStorage.getItem("epp_active_tab") as any;
       if (savedTab) return savedTab;
@@ -52,6 +55,15 @@ export default function App() {
     } catch (e) {}
     return "dashboard";
   });
+  const [isGlobalLowStockModalOpen, setIsGlobalLowStockModalOpen] = useState(false);
+
+  // Authoritative real-time low stock calculation (Total Stock < 100 PCS)
+  const lowStockReferences = useMemo(() => {
+    return references.filter((r) => {
+      const total = (r.stock1 || 0) + (r.stock2 || 0) + (r.stock3 || 0);
+      return total < 100;
+    });
+  }, [references]);
 
   useEffect(() => {
     if (currentUser) {
@@ -85,6 +97,12 @@ export default function App() {
         await seedDatabaseIfNeeded();
         // 2. Automatically run self-healing database integrity audit
         await handleAuditDatabase();
+
+        // 3. Clear existing invoice records on start so register is empty and ready for fresh input forward
+        if (!localStorage.getItem("invoices_cleared_fresh_start")) {
+          localStorage.setItem("invoices_cleared_fresh_start", "true");
+          await clearInvoicesCollection();
+        }
       } catch (err) {
         console.error("Initialization / Audit failed", err);
       }
@@ -782,6 +800,17 @@ export default function App() {
       cancelledAt: now,
       cancelledBy: currentUser.fullName
     });
+  };
+
+  // Action: Delete a single receiving invoice record from the register
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    const invoiceRef = doc(db, "invoices", invoiceId);
+    await deleteDoc(invoiceRef);
+  };
+
+  // Action: Clear all invoices from the register
+  const handleClearAllInvoices = async () => {
+    await clearInvoicesCollection();
   };
 
   // Action: Operator submits a physical count adjustment
@@ -1903,6 +1932,24 @@ export default function App() {
               </div>
             </button>
 
+            {/* Invoices Tab (Supervisor & Admin) */}
+            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
+              <button
+                onClick={() => setActiveTab("invoices")}
+                id="nav-tab-invoices"
+                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                  activeTab === "invoices"
+                    ? "text-white font-bold bg-[#0f1e36] border-brand-500"
+                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <FileText className="w-4 h-4 shrink-0" />
+                  <span>Invoices</span>
+                </div>
+              </button>
+            )}
+
 
 
             {/* Deliveries Tab */}
@@ -2072,7 +2119,7 @@ export default function App() {
             <h1 className="text-base sm:text-lg font-bold text-slate-800 font-display">
               {activeTab === "dashboard" && "Operational Dashboard"}
               {activeTab === "stock" && "Real-time Stock Inventory"}
-
+              {activeTab === "invoices" && "Stock 1 Incoming Invoices & Verification"}
               {activeTab === "deliveries" && "Customer Deliveries & Dispatches"}
               {activeTab === "production" && "Daily Production Consumption"}
               {activeTab === "scrap" && "SCRAP & NOK Mesh Management"}
@@ -2084,6 +2131,19 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Low Stock Real-Time Alert Indicator for Supervisor & Manager / Admin */}
+            {(currentUser.role === "supervisor" || currentUser.role === "admin") && lowStockReferences.length > 0 && (
+              <button
+                onClick={() => setIsGlobalLowStockModalOpen(true)}
+                id="header-low-stock-alert-btn"
+                className="flex items-center gap-2 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold font-mono transition-all shadow-2xs cursor-pointer active:scale-95 animate-pulse"
+                title="Click to view all references with stock below 100 PCS"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span>LOW STOCK: {lowStockReferences.length} REF{lowStockReferences.length > 1 ? "S" : ""}</span>
+              </button>
+            )}
+
             {activeTab !== "operator" && currentUser.role !== "admin" && (
               <button
                 onClick={() => setActiveTab("operator")}
@@ -2130,6 +2190,17 @@ export default function App() {
                   onUpdateBox={handleUpdateBox}
                   onCreateReference={handleCreateReference}
                   onUpdateReference={handleUpdateReference}
+                />
+              )}
+
+              {activeTab === "invoices" && (currentUser.role === "supervisor" || currentUser.role === "admin") && (
+                <InvoicesWorkspace
+                  invoices={invoices}
+                  transactions={transactions}
+                  references={references}
+                  currentUser={currentUser}
+                  onDeleteInvoice={handleDeleteInvoice}
+                  onClearAllInvoices={handleClearAllInvoices}
                 />
               )}
 
@@ -2201,6 +2272,8 @@ export default function App() {
                   productions={productions}
                   transactions={transactions}
                   scraps={scraps}
+                  references={references}
+                  invoices={invoices}
                   currentUser={currentUser} 
                   onApproveAdjustment={handleApproveAdjustment}
                   onRejectAdjustment={handleRejectAdjustment}
@@ -2218,6 +2291,7 @@ export default function App() {
                   onDeleteUser={handleDeleteUser}
                   onCleanDatabase={handleCleanDatabase}
                   onAuditDatabase={handleAuditDatabase}
+                  onClearInvoices={handleClearAllInvoices}
                 />
               )}
             </motion.div>
@@ -2225,6 +2299,13 @@ export default function App() {
         </main>
 
       </div>
+
+      {/* Global Low Stock Alert Modal for Header Button */}
+      <LowStockAlertModal
+        isOpen={isGlobalLowStockModalOpen}
+        onClose={() => setIsGlobalLowStockModalOpen(false)}
+        references={references}
+      />
 
     </div>
   );

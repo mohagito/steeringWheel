@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from "react";
-import { Box, Adjustment, Delivery, Production, ScrapEntry, InventoryTransaction, User, ReceivingInvoice } from "../types";
+import { Box, Adjustment, Delivery, Production, ScrapEntry, InventoryTransaction, User, ReceivingInvoice, Reference } from "../types";
 import { motion } from "motion/react";
 import { CustomSelect } from "./CustomSelect";
+import { LowStockAlertModal } from "./LowStockAlertModal";
 import { 
   Check, X, FileText, Search, TrendingDown, TrendingUp, Calendar, RefreshCw, AlertTriangle,
   CheckCircle, XCircle, AlertCircle, Activity, Clock, Layers, Truck, Factory, ShieldAlert, MoreVertical,
@@ -16,6 +17,7 @@ interface SupervisorWorkspaceProps {
   transactions: InventoryTransaction[];
   scraps: ScrapEntry[];
   invoices?: ReceivingInvoice[];
+  references?: Reference[];
   currentUser: User;
   onApproveAdjustment: (adjustmentId: string) => Promise<void>;
   onRejectAdjustment: (adjustmentId: string) => Promise<void>;
@@ -32,6 +34,7 @@ export default function SupervisorWorkspace({
   transactions,
   scraps,
   invoices = [],
+  references = [],
   currentUser,
   onApproveAdjustment,
   onRejectAdjustment,
@@ -39,11 +42,7 @@ export default function SupervisorWorkspace({
   onReverseOperation,
   onDeleteOperation
 }: SupervisorWorkspaceProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"pending" | "operations" | "logs" | "reports">("operations");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "approved" | "pending" | "rejected">("all");
-  const [processingId, setProcessingId] = useState<string | null>(null);
-
+  const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
   // Operation management states
   const [actionMenuOpenId, setActionMenuOpenId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -134,105 +133,6 @@ export default function SupervisorWorkspace({
       setActionLoading(false);
     }
   };
-
-  // 1. Filtered Adjustments
-  const filteredAdjustments = useMemo(() => {
-    return adjustments.filter((adj) => {
-      const matchesSearch = 
-        adj.barcode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        adj.reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        adj.operatorName.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchesStatus = statusFilter === "all" || adj.status === statusFilter;
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [adjustments, searchQuery, statusFilter]);
-
-  // 2. Pending Validation List
-  const pendingAdjustments = useMemo(() => {
-    return adjustments.filter(adj => adj.status === "pending");
-  }, [adjustments]);
-
-  // 3. Supervisor Metrics & Analytics
-  const reportsData = useMemo(() => {
-    // Operator Activity Analysis
-    const operatorStats: { [name: string]: { total: number; approved: number; rejected: number; diffSum: number } } = {};
-    // Reference Discrepancy Analysis
-    const referenceStats: { [ref: string]: { counts: number; totalDiff: number; absoluteDiff: number } } = {};
-    // Daily Summary
-    const dailyStats: { [date: string]: { counts: number; diffSum: number; correct: number } } = {};
-
-    adjustments.forEach((adj) => {
-      // 1. Operator
-      const op = adj.operatorName;
-      if (!operatorStats[op]) {
-        operatorStats[op] = { total: 0, approved: 0, rejected: 0, diffSum: 0 };
-      }
-      operatorStats[op].total++;
-      if (adj.status === "approved") {
-        operatorStats[op].approved++;
-        operatorStats[op].diffSum += adj.difference;
-      } else if (adj.status === "rejected") {
-        operatorStats[op].rejected++;
-      }
-
-      // 2. Reference
-      const ref = adj.reference;
-      if (!referenceStats[ref]) {
-        referenceStats[ref] = { counts: 0, totalDiff: 0, absoluteDiff: 0 };
-      }
-      referenceStats[ref].counts++;
-      if (adj.status === "approved") {
-        referenceStats[ref].totalDiff += adj.difference;
-        referenceStats[ref].absoluteDiff += Math.abs(adj.difference);
-      }
-
-      // 3. Daily
-      const date = adj.timestamp.split("T")[0];
-      if (!dailyStats[date]) {
-        dailyStats[date] = { counts: 0, diffSum: 0, correct: 0 };
-      }
-      dailyStats[date].counts++;
-      if (adj.status === "approved") {
-        dailyStats[date].diffSum += adj.difference;
-        if (adj.difference === 0) dailyStats[date].correct++;
-      }
-    });
-
-    const formattedOperators = Object.entries(operatorStats).map(([name, stat]) => ({
-      name,
-      total: stat.total,
-      approved: stat.approved,
-      rejected: stat.rejected,
-      netDifference: stat.diffSum,
-      accuracy: stat.approved > 0 ? Math.round((stat.approved / stat.total) * 100) : 0
-    }));
-
-    const formattedReferences = Object.entries(referenceStats).map(([ref, stat]) => ({
-      reference: ref,
-      counts: stat.counts,
-      totalDifference: stat.totalDiff,
-      absoluteDifference: stat.absoluteDiff
-    })).sort((a, b) => b.absoluteDifference - a.absoluteDifference);
-
-    const formattedDaily = Object.entries(dailyStats).map(([date, stat]) => {
-      const dateObj = new Date(date);
-      return {
-        date,
-        label: dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        counts: stat.counts,
-        netDifference: stat.diffSum,
-        accuracy: stat.counts > 0 ? Math.round((stat.correct / stat.counts) * 100) : 100
-      };
-    }).sort((a, b) => a.date.localeCompare(b.date));
-
-    return {
-      operators: formattedOperators,
-      references: formattedReferences,
-      daily: formattedDaily
-    };
-  }, [adjustments]);
 
   // Unified All Inventory Operations List
   const [operationsTypeFilter, setOperationsTypeFilter] = useState<string>("all");
@@ -349,33 +249,17 @@ export default function SupervisorWorkspace({
     });
   }, [allOperations, operationsSearch, operationsTypeFilter]);
 
-  // Handle Approve/Reject action
-  const handleApprove = async (id: string) => {
-    setProcessingId(id);
-    try {
-      await onApproveAdjustment(id);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const handleReject = async (id: string) => {
-    setProcessingId(id);
-    try {
-      await onRejectAdjustment(id);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setProcessingId(null);
-    }
-  };
+  const lowStockReferences = useMemo(() => {
+    return references.filter((r) => {
+      const total = (r.stock1 || 0) + (r.stock2 || 0) + (r.stock3 || 0);
+      return total < 100;
+    });
+  }, [references]);
 
   return (
     <div className="space-y-6" id="supervisor-workspace-tab">
       
-      {/* Header Profile Indicator */}
+      {/* Header Profile Indicator & Low Stock Alert Summary */}
       <div className="glass-panel p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-mono font-bold text-sm shrink-0 shadow-xs">
@@ -387,64 +271,62 @@ export default function SupervisorWorkspace({
           </div>
         </div>
 
-        {/* Workspace Tab Switcher */}
-        <div className="flex bg-slate-100/80 p-1 border border-slate-200/60 rounded-xl self-start md:self-auto font-mono text-xs flex-wrap gap-1" id="supervisor-subtab-switcher">
+        {/* Low Stock Quick Status Pill */}
+        {lowStockReferences.length > 0 ? (
           <button
-            onClick={() => setActiveSubTab("operations")}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeSubTab === "operations"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-            id="subtab-operations-btn"
+            type="button"
+            onClick={() => setIsAlertModalOpen(true)}
+            id="supervisor-low-stock-alert-trigger"
+            className="flex items-center gap-2.5 px-4 py-2 bg-rose-50 hover:bg-rose-100/90 text-rose-800 border border-rose-200 rounded-xl text-xs font-mono font-bold transition-all shadow-xs cursor-pointer active:scale-95 animate-pulse"
           >
-            <Activity className="w-3.5 h-3.5" />
-            <span>ALL OPERATIONS</span>
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>LOW STOCK ALERT: {lowStockReferences.length} REFERENCE{lowStockReferences.length > 1 ? "S" : ""} &lt; 100 PCS</span>
+            <span className="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px] font-extrabold ml-1">VIEW</span>
           </button>
-          <button
-            onClick={() => setActiveSubTab("pending")}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeSubTab === "pending"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-            id="subtab-pending-btn"
-          >
-            <span>PENDING SIGN-OFF</span>
-            {pendingAdjustments.length > 0 && (
-              <span className="px-1.5 py-0.2 bg-rose-600 text-white text-[9px] font-bold rounded-full">
-                {pendingAdjustments.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("logs")}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              activeSubTab === "logs"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-            id="subtab-logs-btn"
-          >
-            AUDIT TRAILS
-          </button>
-          <button
-            onClick={() => setActiveSubTab("reports")}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              activeSubTab === "reports"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-            id="subtab-reports-btn"
-          >
-            METRICS
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-mono font-bold">
+            <CheckCircle className="w-4 h-4 text-emerald-600" />
+            <span>ALL REFERENCES STOCKS &ge; 100 PCS (NORMAL)</span>
+          </div>
+        )}
       </div>
 
-      {/* Tab 0: Complete Operational Control Center ("All Operations") */}
-      {activeSubTab === "operations" && (
-        <div className="glass-panel p-5 sm:p-6 space-y-5" id="all-operations-control-center">
+      {/* Prominent Low Stock Alert Banner (when active) */}
+      {lowStockReferences.length > 0 && (
+        <div 
+          className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm"
+          id="supervisor-low-stock-active-banner"
+        >
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-extrabold text-rose-900 font-mono flex items-center gap-2">
+                <span>SUPERVISOR ATTENTION: STOCK LOW-LEVEL ALERT</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-200 text-rose-900 font-bold">
+                  {lowStockReferences.length} CRITICAL
+                </span>
+              </h4>
+              <p className="text-xs text-rose-700 mt-0.5">
+                {lowStockReferences.length} product {lowStockReferences.length === 1 ? "reference has" : "references have"} total stock (Stock 1 + Stock 2 + Stock 3) below the mandatory threshold of 100 PCS.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsAlertModalOpen(true)}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs font-mono flex items-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>Open Alert Console</span>
+          </button>
+        </div>
+      )}
+
+      {/* Complete Operational Control Center */}
+      <div className="glass-panel p-5 sm:p-6 space-y-5" id="all-operations-control-center">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pb-3 border-b border-slate-100">
             <div>
               <h4 className="font-bold text-slate-900 text-sm tracking-tight flex items-center gap-2 font-mono">
@@ -642,333 +524,10 @@ export default function SupervisorWorkspace({
             )}
           </div>
         </div>
-      )}
 
-      {/* Tab 1: Pending Validations */}
-      {activeSubTab === "pending" && (
-        <div className="space-y-4" id="pending-validations-view">
-          <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-            <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider font-mono">Awaiting Carton Verification</h4>
-            <span className="text-[10px] text-slate-500 font-mono font-bold">
-              PENDING: {pendingAdjustments.length}
-            </span>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4" id="pending-adjustments-grid">
-            {pendingAdjustments.map((adj) => {
-              const diffColor = adj.difference === 0 
-                ? "text-emerald-700 bg-emerald-50 border-emerald-200" 
-                : adj.difference > 0 
-                  ? "text-blue-700 bg-blue-50 border-blue-200" 
-                  : "text-rose-600 bg-rose-50 border-rose-200";
-              
-              const isProcessing = processingId === adj.id;
 
-               return (
-                <div
-                  key={adj.id}
-                  id={`pending-card-${adj.id}`}
-                  className="glass-panel p-5 space-y-3 relative"
-                >
-                  {/* Card Header */}
-                  <div className="flex items-start justify-between pb-2 border-b border-slate-100">
-                    <div>
-                      <span className="text-xs font-bold text-slate-900 block font-mono">{adj.barcode}</span>
-                      <div className="flex flex-wrap gap-1.5 items-center mt-0.5">
-                        <span className="text-[10px] text-slate-500 font-mono font-bold">REF: {adj.reference}</span>
-                        {adj.materialType && (
-                          <span className="text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.2 rounded uppercase font-mono">
-                            {adj.materialType}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`px-2.5 py-0.5 rounded-lg text-xs font-mono font-bold border ${diffColor}`}>
-                      {adj.difference > 0 ? `+${adj.difference}` : adj.difference} PCS
-                    </span>
-                  </div>
 
-                  {/* Card Info Details */}
-                  <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50/80 p-3 rounded-xl border border-slate-200/80 font-mono">
-                    <div>
-                      <span className="text-[9px] text-slate-500 uppercase tracking-wider block font-bold">Expected</span>
-                      <span className="font-bold text-slate-900 block mt-0.5">{adj.expectedQty} pcs</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-blue-600 uppercase tracking-wider block font-bold">Physical Count</span>
-                      <span className="font-bold text-blue-900 block mt-0.5">{adj.actualQty} pcs</span>
-                    </div>
-                    <div className="col-span-2 pt-1 border-t border-slate-200/50">
-                      <span className="text-[9px] text-slate-500 uppercase tracking-wider block font-bold">Comments</span>
-                      <p className="text-slate-700 italic block mt-0.5 font-sans">"{adj.comment}"</p>
-                    </div>
-                  </div>
-
-                  {/* Operator metadata */}
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 font-mono">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-                      Op: {adj.operatorName}
-                    </span>
-                    <span className="flex items-center gap-1 text-slate-400">
-                      <Clock className="w-3.5 h-3.5" />
-                      {new Date(adj.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-
-                  {/* Validation Actions */}
-                  <div className="grid grid-cols-2 gap-2 pt-1.5">
-                    <button
-                      onClick={() => handleReject(adj.id)}
-                      disabled={isProcessing}
-                      id={`reject-btn-${adj.id}`}
-                      className="py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs uppercase transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-                    >
-                      <XCircle className="w-3.5 h-3.5" />
-                      Reject
-                    </button>
-                    <button
-                      onClick={() => handleApprove(adj.id)}
-                      disabled={isProcessing}
-                      id={`approve-btn-${adj.id}`}
-                      className="py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
-                    >
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      Approve
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-
-            {pendingAdjustments.length === 0 && (
-              <div className="col-span-2 py-12 glass-panel border-dashed flex flex-col items-center justify-center text-center">
-                <CheckCircle className="w-8 h-8 text-emerald-600 mb-2" />
-                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider font-mono">ALL CLEAR</h4>
-                <p className="text-xs text-slate-500 max-w-sm mt-1">
-                  There are currently no pending carton adjustments requiring sign-off.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Tab 2: Audit Logs */}
-      {activeSubTab === "logs" && (
-        <div className="glass-panel p-5 sm:p-6 space-y-4" id="audit-logs-view">
-          {/* Filters Bar */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pb-3 border-b border-slate-100">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search logs (barcode, reference, operator)..."
-                value={searchQuery}
-                id="logs-search-input"
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-600 font-mono text-slate-800"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 font-mono">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">STATUS FILTER:</span>
-              <CustomSelect
-                value={statusFilter}
-                onChange={(val) => setStatusFilter(val)}
-                options={[
-                  { value: "all", label: "ALL RECORDS" },
-                  { value: "approved", label: "APPROVED" },
-                  { value: "pending", label: "PENDING" },
-                  { value: "rejected", label: "REJECTED" }
-                ]}
-                className="w-36"
-                size="sm"
-              />
-            </div>
-          </div>
-
-          {/* Records Table */}
-          <div className="overflow-x-auto rounded-xl border border-slate-200/80">
-            <table className="industrial-table w-full min-w-[950px]" id="audit-trail-logs-table">
-              <thead>
-                <tr>
-                  <th className="w-[15%] min-w-[130px]">Timestamp</th>
-                  <th className="w-[15%] min-w-[120px]">Carton ID</th>
-                  <th className="w-[15%] min-w-[110px]">Reference</th>
-                  <th className="w-[15%] min-w-[110px]">Operator</th>
-                  <th className="w-[10%] min-w-[80px] text-right">Expected</th>
-                  <th className="w-[10%] min-w-[80px] text-right">Physical</th>
-                  <th className="w-[10%] min-w-[80px] text-right">Variance</th>
-                  <th className="w-[10%] min-w-[90px] text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono text-slate-800">
-                {filteredAdjustments.map((adj) => {
-                  const diffColor = adj.difference === 0 
-                    ? "text-slate-500" 
-                    : adj.difference > 0 
-                      ? "text-blue-600 font-bold" 
-                      : "text-rose-600 font-bold";
-                  
-                  const statusColors = {
-                    approved: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
-                    pending: "bg-amber-50 text-amber-700 border-amber-200/80",
-                    rejected: "bg-rose-50 text-rose-700 border-rose-200/80"
-                  };
-
-                  return (
-                    <tr key={adj.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="text-slate-500 text-[10px]">
-                        {new Date(adj.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                      </td>
-                      <td className="font-bold text-slate-900">{adj.barcode}</td>
-                      <td className="text-slate-600 flex items-center gap-1.5 flex-wrap">
-                        <span>{adj.reference}</span>
-                        {adj.materialType && (
-                          <span className="text-[8px] font-bold bg-slate-100 text-slate-700 border border-slate-200 px-1 py-0.2 rounded uppercase">
-                            {adj.materialType}
-                          </span>
-                        )}
-                      </td>
-                      <td className="text-slate-700 font-sans font-medium text-xs">{adj.operatorName}</td>
-                      <td className="text-right text-slate-500">{adj.expectedQty}</td>
-                      <td className="text-right text-slate-950 font-bold">{adj.actualQty}</td>
-                      <td className={`text-right font-bold ${diffColor}`}>
-                        {adj.difference > 0 ? `+${adj.difference}` : adj.difference}
-                      </td>
-                      <td className="text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border uppercase ${statusColors[adj.status]}`}>
-                          {adj.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-                {filteredAdjustments.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400 font-sans">
-                      No matching trace logs found for the selected filter criteria.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Reports */}
-      {activeSubTab === "reports" && (
-        <div className="space-y-4" id="performance-reports-view">
-          
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            
-            {/* Operator Activity Report */}
-            <div className="glass-panel p-5 lg:col-span-7 flex flex-col">
-              <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
-                <Activity className="w-4 h-4 text-blue-600" />
-                <div>
-                  <h4 className="font-mono font-bold text-slate-800 text-xs uppercase">Operator Throughput Summary</h4>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto flex-1 font-mono rounded-xl border border-slate-200/80">
-                <table className="industrial-table w-full min-w-[500px]" id="operator-activity-table">
-                  <thead>
-                    <tr>
-                      <th className="w-[30%] min-w-[120px]">Operator</th>
-                      <th className="w-[15%] min-w-[70px] text-center">Checks</th>
-                      <th className="w-[15%] min-w-[85px] text-center">Approved</th>
-                      <th className="w-[15%] min-w-[85px] text-center">Rejected</th>
-                      <th className="w-[25%] min-w-[110px] text-right">Net Reconciled</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {reportsData.operators.map((op) => (
-                      <tr key={op.name} className="hover:bg-slate-50/80">
-                        <td className="font-sans font-bold text-slate-900">{op.name}</td>
-                        <td className="text-center text-slate-600">{op.total}</td>
-                        <td className="text-center text-emerald-600 font-bold">{op.approved}</td>
-                        <td className="text-center text-rose-500 font-bold">{op.rejected}</td>
-                        <td className={`text-right font-bold ${op.netDifference === 0 ? "text-slate-500" : op.netDifference > 0 ? "text-blue-600" : "text-rose-500"}`}>
-                          {op.netDifference > 0 ? `+${op.netDifference}` : op.netDifference} PCS
-                        </td>
-                      </tr>
-                    ))}
-                    
-                    {reportsData.operators.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-400 font-sans">No operator trace data logged.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Most Problematic References */}
-            <div className="glass-panel p-5 lg:col-span-5 flex flex-col">
-              <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
-                <div>
-                  <h4 className="font-mono font-bold text-slate-800 text-xs uppercase">Reference Deviations</h4>
-                </div>
-              </div>
-
-              <div className="space-y-2 flex-1 overflow-y-auto max-h-[220px] pr-1 font-mono">
-                {reportsData.references.map((item) => (
-                  <div key={item.reference} className="flex items-center justify-between p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs">
-                    <div>
-                      <span className="font-bold text-slate-900 block">{item.reference}</span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">Checked {item.counts} times</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] font-bold text-slate-900 block">Abs Dev: {item.absoluteDifference} pcs</span>
-                      <span className={`text-[10px] block mt-0.5 font-bold ${item.totalDifference >= 0 ? "text-blue-600" : "text-rose-600"}`}>
-                        Net: {item.totalDifference > 0 ? `+${item.totalDifference}` : item.totalDifference} pcs
-                      </span>
-                    </div>
-                  </div>
-                ))}
-
-                {reportsData.references.length === 0 && (
-                  <p className="text-xs text-slate-400 text-center py-8 font-sans">No references check history found.</p>
-                )}
-              </div>
-            </div>
-
-          </div>
-
-          {/* Daily Summaries timeline list */}
-          <div className="glass-panel p-5">
-            <h4 className="font-mono font-bold text-slate-800 text-xs uppercase mb-3 border-b border-slate-100 pb-2">Stock Reconciliation History Timeline</h4>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
-              {reportsData.daily.map((day) => (
-                <div key={day.date} className="p-3 bg-slate-50/80 border border-slate-200/80 text-center font-mono space-y-1 rounded-xl">
-                  <span className="text-[10px] text-slate-400 block font-bold">{day.label}</span>
-                  <span className="text-sm font-bold text-slate-900 block">{day.counts} <span className="text-[9px] font-normal text-slate-500">checks</span></span>
-                  <span className={`text-[10px] font-bold block ${day.netDifference === 0 ? "text-emerald-600" : day.netDifference > 0 ? "text-blue-600" : "text-rose-500"}`}>
-                    {day.netDifference > 0 ? `+${day.netDifference}` : day.netDifference} pcs
-                  </span>
-                  <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.2 rounded inline-block">
-                    {day.accuracy}% Acc
-                  </span>
-                </div>
-              ))}
-
-              {reportsData.daily.length === 0 && (
-                <div className="col-span-7 py-8 text-center text-slate-400 text-xs font-sans">
-                  No historical summaries available yet.
-                </div>
-              )}
-            </div>
-          </div>
-
-        </div>
-      )}
 
       {/* View Details Modal */}
       {detailOp && (
@@ -1302,6 +861,13 @@ export default function SupervisorWorkspace({
           </div>
         </>
       )}
+
+      {/* Supervisor Low Stock Alert Modal */}
+      <LowStockAlertModal
+        isOpen={isAlertModalOpen}
+        onClose={() => setIsAlertModalOpen(false)}
+        references={references}
+      />
 
     </div>
   );

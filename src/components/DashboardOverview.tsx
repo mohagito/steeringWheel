@@ -6,12 +6,13 @@ import {
 } from "recharts";
 import { 
   Package, ArrowRight, Truck, AlertTriangle, Search, 
-  Warehouse, Factory, X, Layers, Disc, Send, ArrowLeftRight
+  Warehouse, Factory, X, Layers, Disc, Send, ArrowLeftRight, ShieldAlert, Eye
 } from "lucide-react";
 import { doc, writeBatch, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
+import { LowStockAlertModal } from "./LowStockAlertModal";
 import Swal from "sweetalert2";
 
 interface DashboardOverviewProps {
@@ -36,6 +37,7 @@ export default function DashboardOverview({
   const [searchQuery, setSearchQuery] = useState("");
   const [materialFilter, setMaterialFilter] = useState<"All" | "Mesh" | "Soft">("All");
   const [stockStatusFilter, setStockStatusFilter] = useState<"All" | "Low Stock" | "Normal">("All");
+  const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
 
   // Quick Action Modal State
   const [activeModal, setActiveModal] = useState<"incoming" | "mallas" | "production" | "precosido" | "villanova" | "remove" | null>(null);
@@ -51,11 +53,16 @@ export default function DashboardOverview({
     return new Date().toISOString().split("T")[0];
   }, []);
 
-  // 1. Calculate General Metrics
+  // 1. Calculate General Metrics & Low Stock Count (Total Stock < 100 PCS)
   const metrics = useMemo(() => {
     const totalWarehouseStock = references.reduce((sum, r) => sum + (r.stock1 || 0), 0);
     const totalProductionStock = references.reduce((sum, r) => sum + (r.stock2 || 0), 0);
     const totalFinishedStock = references.reduce((sum, r) => sum + (r.stock3 || 0), 0);
+
+    const lowStockRefs = references.filter(r => {
+      const total = (r.stock1 || 0) + (r.stock2 || 0) + (r.stock3 || 0);
+      return total < 100;
+    });
 
     const todaysTransfers = transactions
       .filter(t => t.timestamp.startsWith(todayStr) && (t.movementType === "TRANSFER" || t.movementType === "TRANSFER S1->S2"))
@@ -69,6 +76,7 @@ export default function DashboardOverview({
       totalWarehouseStock,
       totalProductionStock,
       totalFinishedStock,
+      lowStockCount: lowStockRefs.length,
       todaysTransfers,
       todaysDeliveries
     };
@@ -81,7 +89,8 @@ export default function DashboardOverview({
                             ref.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesMaterial = materialFilter === "All" || ref.materialType === materialFilter;
       
-      const isLowStock = (ref.stock1 || 0) < 100 || (ref.stock2 || 0) < 30 || (ref.stock3 || 0) < 30;
+      const total = (ref.stock1 || 0) + (ref.stock2 || 0) + (ref.stock3 || 0);
+      const isLowStock = total < 100;
       const matchesStockStatus = stockStatusFilter === "All" || 
                                  (stockStatusFilter === "Low Stock" && isLowStock) || 
                                  (stockStatusFilter === "Normal" && !isLowStock);
@@ -381,15 +390,43 @@ export default function DashboardOverview({
           </div>
         </div>
 
-        {/* Card 4: Deliveries */}
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 shadow-inner">
-            <Truck className="w-6 h-6" />
+        {/* Card 4: Low Stock Alerts */}
+        <div 
+          onClick={() => setIsAlertModalOpen(true)}
+          className={`border rounded-3xl p-5 shadow-xl transition-all cursor-pointer relative overflow-hidden flex items-center justify-between gap-4 ${
+            metrics.lowStockCount > 0 
+              ? "bg-gradient-to-br from-rose-50/90 to-white border-rose-200 shadow-rose-500/10 hover:border-rose-300" 
+              : "bg-white border-slate-100 shadow-slate-200/40"
+          }`}
+          id="dashboard-low-stock-kpi-card"
+        >
+          <div className="flex items-center gap-4 min-w-0">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-inner ${
+              metrics.lowStockCount > 0 
+                ? "bg-rose-600 text-white shadow-rose-500/30 animate-pulse" 
+                : "bg-emerald-50 text-emerald-600"
+            }`}>
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
+                <span>Low Stock Alert</span>
+                {metrics.lowStockCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block"></span>
+                )}
+              </p>
+              <h3 className={`text-xl font-extrabold mt-0.5 truncate ${metrics.lowStockCount > 0 ? "text-rose-600" : "text-slate-900"}`}>
+                {metrics.lowStockCount} <span className="text-xs font-medium text-slate-400">Refs &lt; 100 PCS</span>
+              </h3>
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Deliveries</p>
-            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{metrics.todaysDeliveries.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
-          </div>
+          <button 
+            type="button"
+            className="p-2 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 transition-colors shrink-0"
+            title="View Low Stock References"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
         </div>
 
       </div>
@@ -636,10 +673,10 @@ export default function DashboardOverview({
                 const s2 = ref.stock2 || 0;
                 const s3 = ref.stock3 || 0;
                 const total = s1 + s2 + s3;
-                const isLow = s1 < 100 || s2 < 30 || s3 < 30;
+                const isLow = total < 100;
 
                 return (
-                  <tr key={ref.id} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={ref.id} className={`hover:bg-slate-50/70 transition-colors ${isLow ? "bg-rose-50/20" : ""}`}>
                     <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
                     <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
                     <td className="py-3 px-3 text-center">
@@ -656,18 +693,22 @@ export default function DashboardOverview({
                     <td className="py-3 px-4 text-right font-mono font-extrabold text-emerald-600">
                       {s3.toLocaleString()}
                     </td>
-                    <td className="py-3 px-4 text-right font-mono font-extrabold text-slate-900">
+                    <td className={`py-3 px-4 text-right font-mono font-black ${isLow ? "text-rose-600 text-sm" : "text-slate-900"}`}>
                       {total.toLocaleString()}
                     </td>
                     <td className="py-3 px-4 text-center">
                       {isLow ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                          <AlertTriangle className="w-3 h-3" />
-                          LOW
+                        <span 
+                          onClick={() => setIsAlertModalOpen(true)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 cursor-pointer hover:bg-rose-100 transition-colors font-mono uppercase"
+                          title="Click to view alert details"
+                        >
+                          <AlertTriangle className="w-3 h-3 text-rose-600" />
+                          LOW STOCK
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                          OK
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 font-mono uppercase">
+                          NORMAL
                         </span>
                       )}
                     </td>
@@ -876,6 +917,13 @@ export default function DashboardOverview({
           </div>
         </div>
       )}
+
+      {/* Global Low Stock Alert Modal */}
+      <LowStockAlertModal
+        isOpen={isAlertModalOpen}
+        onClose={() => setIsAlertModalOpen(false)}
+        references={references}
+      />
 
     </div>
   );
