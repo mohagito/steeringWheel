@@ -109,9 +109,6 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
                   {lowStockList.length} {lowStockList.length === 1 ? "Reference" : "References"} Below 100 PCS
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Authoritative real-time alert trigger: Total Stock (Stock 1 + Stock 2 + Stock 3) &lt; 100 PCS
-              </p>
             </div>
           </div>
 
@@ -236,10 +233,7 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
-          <span className="font-mono text-[11px]">
-            Safety Threshold: &lt; 100 PCS Total Across All 3 Stock Tiers
-          </span>
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end text-xs text-slate-500 shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-all cursor-pointer font-mono"

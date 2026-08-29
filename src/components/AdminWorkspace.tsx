@@ -635,11 +635,7 @@ export default function AdminWorkspace({
           <h4 className="font-mono font-bold text-rose-800 text-xs uppercase">Danger Zone & Reset Tools</h4>
         </div>
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-rose-100">
-          <div>
-            <div className="font-bold text-slate-800 text-xs">Clear Incoming Invoices Register</div>
-            <div className="text-[11px] text-slate-500">Remove all current receiving invoice records and start logging fresh from now forward.</div>
-          </div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3 pt-2 border-t border-rose-100">
           <button
             onClick={handleClearInvoices}
             disabled={isClearingInvoices}
@@ -651,11 +647,7 @@ export default function AdminWorkspace({
           </button>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-rose-100">
-          <div>
-            <div className="font-bold text-rose-900 text-xs">Master Factory Database Reset</div>
-            <div className="text-[11px] text-slate-500">Reset all 3 stock tiers, boxes, dispatches, scraps, and history to 0 baseline.</div>
-          </div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3 pt-3 border-t border-rose-100">
           <button
             onClick={handleResetDatabase}
             disabled={isResetting}

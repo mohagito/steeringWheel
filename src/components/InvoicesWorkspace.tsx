@@ -481,9 +481,6 @@ export default function InvoicesWorkspace({
           <div className="p-12 text-center text-slate-400 space-y-3" id="invoices-empty-state">
             <FileText className="w-12 h-12 mx-auto text-slate-300 stroke-1" />
             <div className="text-sm font-semibold text-slate-600">No invoices found matching criteria</div>
-            <div className="text-xs text-slate-400 max-w-sm mx-auto">
-              Scanned incoming materials under Stock 1 intake in Operator count will automatically appear here grouped by invoice number.
-            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">

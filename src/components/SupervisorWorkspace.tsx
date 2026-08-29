@@ -308,9 +308,6 @@ export default function SupervisorWorkspace({
                   {lowStockReferences.length} CRITICAL
                 </span>
               </h4>
-              <p className="text-xs text-rose-700 mt-0.5">
-                {lowStockReferences.length} product {lowStockReferences.length === 1 ? "reference has" : "references have"} total stock (Stock 1 + Stock 2 + Stock 3) below the mandatory threshold of 100 PCS.
-              </p>
             </div>
           </div>
 
