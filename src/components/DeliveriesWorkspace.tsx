@@ -2,8 +2,8 @@ import React, { useState, useMemo } from "react";
 import { Delivery, Reference, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  Truck, Search, Package, AlertCircle, Plus, Calendar, FileText, 
-  BarChart2, User as UserIcon, CheckCircle, TrendingDown, ArrowUpRight, HelpCircle, Trash2
+  Truck, Search, AlertCircle, Plus, FileText, 
+  TrendingDown, ArrowUpRight, Trash2, CheckCircle, Building2, Layers
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
@@ -16,11 +16,9 @@ interface DeliveriesWorkspaceProps {
   onSubmitDeliveries: (deliveriesData: Omit<Delivery, "id" | "timestamp" | "operatorName">[]) => Promise<void>;
 }
 
-interface DispatchRow {
+interface DeliveryItemRow {
   referenceCode: string;
   quantity: string;
-  customer: string;
-  deliveryType: "PRECOSIDO" | "Villanova" | "Normal Delivery";
 }
 
 export default function DeliveriesWorkspace({
@@ -29,186 +27,154 @@ export default function DeliveriesWorkspace({
   currentUser,
   onSubmitDeliveries
 }: DeliveriesWorkspaceProps) {
+  // Step 1: Invoice / Note # (belongs to the entire delivery)
   const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [defaultCustomer, setDefaultCustomer] = useState("");
-  const [defaultDeliveryType, setDefaultDeliveryType] = useState<"PRECOSIDO" | "Villanova" | "Normal Delivery">("Villanova");
-  const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState<DispatchRow[]>([
-    { referenceCode: "", quantity: "", customer: "", deliveryType: "Villanova" }
+
+  // Step 2: Delivery Type (selected ONCE for the entire invoice)
+  // "PRECOSIDO" -> Stock 2, "STEERING WHEELS" -> Stock 3
+  const [deliveryType, setDeliveryType] = useState<"PRECOSIDO" | "STEERING WHEELS">("PRECOSIDO");
+
+  // Step 3, 4, 5: Multiple Reference Items in the Invoice
+  const [rows, setRows] = useState<DeliveryItemRow[]>([
+    { referenceCode: "", quantity: "" }
   ]);
 
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Search and filter for deliveries history
+  // Search and filter for deliveries ledger
   const [searchQuery, setSearchQuery] = useState("");
   const [customerFilter, setCustomerFilter] = useState("All");
 
+  const isPrecosido = deliveryType === "PRECOSIDO";
+
   const handleAddRow = () => {
-    setRows([
-      ...rows, 
-      { 
-        referenceCode: "", 
-        quantity: "", 
-        customer: defaultCustomer.trim().toUpperCase() || "", 
-        deliveryType: defaultDeliveryType 
-      }
-    ]);
+    setRows((prev) => [...prev, { referenceCode: "", quantity: "" }]);
   };
 
   const handleRemoveRow = (index: number) => {
     if (rows.length === 1) return;
-    const updatedRows = [...rows];
-    updatedRows.splice(index, 1);
-    setRows(updatedRows);
+    setRows((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleRowChange = (index: number, field: keyof DispatchRow, value: string) => {
+  const handleRowChange = (index: number, field: keyof DeliveryItemRow, value: string) => {
     const updatedRows = [...rows];
-    updatedRows[index] = {
-      ...updatedRows[index],
-      [field]: value
-    };
+    let processedValue = value;
 
-    // Auto-fill customer & auto-resolve scanner prefix for referenceCode
+    // Handle barcode scanner prefix stripping for reference code if applicable
     if (field === "referenceCode" && value) {
       const upper = value.trim().toUpperCase();
       const directRef = references.find((r) => r.code.toUpperCase() === upper);
       if (directRef) {
-        updatedRows[index].referenceCode = directRef.code;
-        if (directRef.customer && !updatedRows[index].customer) {
-          updatedRows[index].customer = directRef.customer;
-        }
+        processedValue = directRef.code;
       } else if (upper.length > 1) {
         const stripped = upper.slice(1);
         const strippedRef = references.find((r) => r.code.toUpperCase() === stripped);
         if (strippedRef) {
-          updatedRows[index].referenceCode = strippedRef.code;
-          if (strippedRef.customer && !updatedRows[index].customer) {
-            updatedRows[index].customer = strippedRef.customer;
-          }
+          processedValue = strippedRef.code;
         }
       }
     }
 
+    updatedRows[index] = {
+      ...updatedRows[index],
+      [field]: processedValue
+    };
     setRows(updatedRows);
   };
 
-  // Handle Dispatch submission
+  // Handle Delivery Submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
     setSuccessMsg("");
 
-    if (!invoiceNumber.trim()) {
-      setErrorMsg("An Invoice / Delivery Note Number is required.");
-      return;
-    }
-
-    // Validate rows
-    if (rows.length === 0) {
-      setErrorMsg("Please add at least one reference delivery.");
-      return;
-    }
-
     const cleanedInvoice = invoiceNumber.trim().toUpperCase();
+    if (!cleanedInvoice) {
+      setErrorMsg("Step 1: Please enter an Invoice / Note #.");
+      return;
+    }
 
+    if (rows.length === 0) {
+      setErrorMsg("Please add at least one reference item to this delivery.");
+      return;
+    }
+
+    // Cumulative quantities validation per reference in this invoice
+    const cumulativeQtyMap: Record<string, number> = {};
     const submissions: Omit<Delivery, "id" | "timestamp" | "operatorName">[] = [];
-    const warnings: string[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (!row.referenceCode) {
-        setErrorMsg(`Row ${i + 1}: Please select a Reference.`);
+        setErrorMsg(`Item #${i + 1}: Please select a Reference.`);
         return;
       }
 
-      const rowCustomer = (row.customer || defaultCustomer || "").trim().toUpperCase();
-      if (!rowCustomer) {
-        setErrorMsg(`Row ${i + 1} (${row.referenceCode}): Please specify the destination Customer.`);
+      const refObj = references.find((r) => r.code === row.referenceCode);
+      if (!refObj) {
+        setErrorMsg(`Item #${i + 1}: Reference "${row.referenceCode}" was not found in catalog.`);
         return;
       }
 
       const deliverQty = parseInt(row.quantity, 10);
       if (isNaN(deliverQty) || deliverQty <= 0) {
-        setErrorMsg(`Row ${i + 1} (${row.referenceCode}): Please enter a valid quantity greater than 0.`);
+        setErrorMsg(`Item #${i + 1} (${row.referenceCode}): Please enter a valid quantity greater than 0.`);
         return;
       }
 
-      const rowType = row.deliveryType || defaultDeliveryType || "Villanova";
+      cumulativeQtyMap[row.referenceCode] = (cumulativeQtyMap[row.referenceCode] || 0) + deliverQty;
 
-      // Check stock warning against correct stock level (Stock 2 for Precosido, Stock 3 for Villanova)
-      const refObj = references.find((r) => r.code === row.referenceCode);
-      if (rowType === "PRECOSIDO") {
-        const stock2Val = refObj ? (refObj.stock2 || 0) : 0;
-        if (deliverQty > stock2Val) {
-          warnings.push(`Part ${row.referenceCode}: Qty (${deliverQty} pcs) exceeds Stock 2 Glued Mesh (${stock2Val} pcs)`);
-        }
-      } else {
-        const stock3Val = refObj ? (refObj.stock3 || 0) : 0;
-        if (deliverQty > stock3Val) {
-          warnings.push(`Part ${row.referenceCode}: Qty (${deliverQty} pcs) exceeds Stock 3 Steering Wheels (${stock3Val} pcs)`);
-        }
+      // Check available stock in the relevant tier
+      // PRECOSIDO -> Stock 2; STEERING WHEELS -> Stock 3
+      const availableStock = isPrecosido ? (refObj.stock2 || 0) : (refObj.stock3 || 0);
+      const stockTierName = isPrecosido ? "Stock 2 (Glued Mesh WIP)" : "Stock 3 (Finished Goods)";
+
+      if (cumulativeQtyMap[row.referenceCode] > availableStock) {
+        setErrorMsg(
+          `Item #${i + 1} (${row.referenceCode}): Total requested quantity (${cumulativeQtyMap[row.referenceCode]} pcs) exceeds available ${stockTierName} (${availableStock} pcs). Negative stock is not allowed.`
+        );
+        return;
       }
 
+      // Customer is automatically retrieved from the reference data
+      const autoCustomer = (refObj.customer || "GENERAL").trim().toUpperCase();
+
       submissions.push({
+        invoiceNumber: cleanedInvoice,
         reference: row.referenceCode,
         quantity: deliverQty,
-        invoiceNumber: cleanedInvoice,
-        customer: rowCustomer,
-        deliveryType: rowType,
-        notes: notes.trim() || undefined
+        customer: autoCustomer,
+        deliveryType: deliveryType
       });
-    }
-
-    if (warnings.length > 0) {
-      const result = await Swal.fire({
-        title: "Dispatch Warning",
-        html: `
-          <div class="text-left text-xs font-mono space-y-1 bg-amber-50 p-3 border border-amber-200 text-amber-900 rounded-none mb-3">
-            ${warnings.map(w => `<p>⚠️ ${w}</p>`).join("")}
-          </div>
-          <p class="text-sm font-sans font-bold text-slate-800">Do you still want to proceed with this customer delivery dispatch?</p>
-        `,
-        icon: "warning",
-        showCancelButton: true,
-        confirmButtonColor: "#2563eb",
-        cancelButtonColor: "#64748b",
-        confirmButtonText: "Yes, Proceed Dispatch",
-        cancelButtonText: "Cancel"
-      });
-      if (!result.isConfirmed) return;
     }
 
     setSubmitting(true);
     try {
       await onSubmitDeliveries(submissions);
 
-      const msg = `Successfully registered invoice ${cleanedInvoice} with ${submissions.length} dispatched reference(s)!`;
-      setSuccessMsg(msg);
-      
-      // Clear inputs
+      const successText = `Successfully registered invoice ${cleanedInvoice} (${deliveryType}) with ${submissions.length} item(s)!`;
+      setSuccessMsg(successText);
+
+      // Reset form to clean initial state
       setInvoiceNumber("");
-      setDefaultCustomer("");
-      setNotes("");
-      setRows([{ referenceCode: "", quantity: "", customer: "", deliveryType: defaultDeliveryType }]);
+      setRows([{ referenceCode: "", quantity: "" }]);
 
       Swal.fire({
-        title: "Good job!",
-        text: msg,
+        title: "Delivery Created!",
+        text: successText,
         icon: "success",
         confirmButtonText: "OK",
-        confirmButtonColor: "#2563eb"
+        confirmButtonColor: "#e11d48"
       });
 
-      // Fade success message
       setTimeout(() => {
         setSuccessMsg("");
       }, 6000);
     } catch (err: any) {
       console.error("Delivery dispatch error:", err);
-      setErrorMsg(err?.message || "Failed to log delivery. Please check connection.");
+      setErrorMsg(err?.message || "Failed to create delivery. Please check connection.");
     } finally {
       setSubmitting(false);
     }
@@ -222,7 +188,8 @@ export default function DeliveriesWorkspace({
     // Group by customer
     const customerMap: Record<string, number> = {};
     deliveries.forEach((d) => {
-      customerMap[d.customer] = (customerMap[d.customer] || 0) + d.quantity;
+      const cust = d.customer || "GENERAL";
+      customerMap[cust] = (customerMap[cust] || 0) + d.quantity;
     });
 
     return {
@@ -240,7 +207,7 @@ export default function DeliveriesWorkspace({
         d.invoiceNumber.toLowerCase().includes(q) ||
         d.reference.toLowerCase().includes(q) ||
         d.customer.toLowerCase().includes(q) ||
-        (d.notes && d.notes.toLowerCase().includes(q))
+        (d.deliveryType && d.deliveryType.toLowerCase().includes(q))
       );
       const matchesCustomer = customerFilter === "All" || d.customer === customerFilter;
       return matchesSearch && matchesCustomer;
@@ -250,13 +217,13 @@ export default function DeliveriesWorkspace({
   // Unique list of customers in deliveries
   const uniqueCustomers = useMemo(() => {
     const customers = new Set(deliveries.map((d) => d.customer));
-    return Array.from(customers);
+    return Array.from(customers).filter(Boolean);
   }, [deliveries]);
 
   return (
     <div className="space-y-6" id="deliveries-workspace">
       
-      {/* Dynamic Overview Metrics Cards */}
+      {/* Overview Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <div className="glass-panel p-5 flex items-center gap-4">
           <div className="p-3 rounded-xl bg-rose-50 text-rose-600">
@@ -301,170 +268,206 @@ export default function DeliveriesWorkspace({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* Left Column: Register Dispatch */}
+        {/* Left Column: New Delivery Form */}
         <div className="lg:col-span-5 space-y-6">
           <div className="glass-panel p-5 sm:p-6">
-            <div className="flex items-center gap-2.5 mb-5 pb-3 border-b border-slate-100">
-              <ArrowUpRight className="w-5 h-5 text-rose-600" />
-              <div>
-                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">New Batch Dispatch</h3>
+            <div className="flex items-center justify-between gap-2.5 mb-5 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <ArrowUpRight className="w-5 h-5 text-rose-600" />
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">New Delivery</h3>
+                  <p className="text-[11px] text-slate-400 font-medium">Customer dispatch register</p>
+                </div>
               </div>
+
+              {/* Delivery Tier Indicator Badge */}
+              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono uppercase border ${
+                isPrecosido
+                  ? "bg-amber-50 text-amber-800 border-amber-200"
+                  : "bg-blue-50 text-blue-800 border-blue-200"
+              }`}>
+                Deducts {isPrecosido ? "Stock 2" : "Stock 3"}
+              </span>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5" id="delivery-dispatch-form">
-              <div className="grid grid-cols-3 gap-3">
-                {/* Invoice Number */}
+              
+              {/* Top Controls: Step 1 (Invoice #) & Step 2 (Delivery Type) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl">
+                
+                {/* STEP 1: Invoice / Note # */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Invoice / Note #
-                  </label>
-                  <div className="relative">
-                    <FileText className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="MPT2286"
-                      value={invoiceNumber}
-                      onChange={(e) => setInvoiceNumber(e.target.value)}
-                      className="w-full pl-8 pr-2 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 focus:bg-white transition-all text-slate-900 font-mono font-bold uppercase"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Default Customer fallback */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Default Customer
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-mono">
+                    <FileText className="w-3 h-3 text-slate-500" />
+                    <span>Invoice / Note #</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="RENAULT"
-                    value={defaultCustomer}
-                    onChange={(e) => setDefaultCustomer(e.target.value)}
-                    className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 focus:bg-white transition-all text-slate-900 font-bold uppercase font-mono"
+                    placeholder="e.g. MPT2286"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-900 font-mono font-bold uppercase transition-all placeholder:font-normal placeholder:normal-case placeholder:text-slate-400 shadow-2xs"
+                    required
                   />
                 </div>
 
-                {/* Default Delivery Type */}
+                {/* STEP 2: Delivery Type (Selected ONCE for the entire invoice) */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Default Type
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-mono">
+                    <Layers className="w-3 h-3 text-slate-500" />
+                    <span>Delivery Type</span>
                   </label>
                   <CustomSelect
-                    value={defaultDeliveryType}
-                    onChange={(val) => setDefaultDeliveryType(val as any)}
+                    value={deliveryType}
+                    onChange={(val) => setDeliveryType(val as "PRECOSIDO" | "STEERING WHEELS")}
                     options={[
-                      { value: "Villanova", label: "Steering Wheels stock 3" },
-                      { value: "PRECOSIDO", label: "PRECOSIDO stock 2" }
+                      { 
+                        value: "PRECOSIDO", 
+                        label: "PRECOSIDO (Stock 2)",
+                        description: "Deducts from Production Stock 2"
+                      },
+                      { 
+                        value: "STEERING WHEELS", 
+                        label: "STEERING WHEELS (Stock 3)",
+                        description: "Deducts from Finished Goods Stock 3"
+                      }
                     ]}
                     size="sm"
                   />
                 </div>
               </div>
 
-              {/* Multiple Reference Rows */}
-              <div className="space-y-3.5">
+              {/* STEP 3, 4, 5: Delivery Items */}
+              <div className="space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-                    Dispatched Items
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                    <span>Delivery Items</span>
+                    <span className="text-slate-400">({rows.length})</span>
                   </span>
-                  <span className="text-[10px] font-mono text-slate-400">
-                    {rows.length} item{rows.length > 1 ? "s" : ""}
+                  <span className="text-[10px] font-mono text-slate-500">
+                    Source: <span className="font-bold text-slate-700">{isPrecosido ? "Stock 2 (WIP)" : "Stock 3 (Finished)"}</span>
                   </span>
                 </div>
 
                 <div className="space-y-3 overflow-visible">
                   {rows.map((row, index) => {
                     const selectedRefObj = references.find((r) => r.code === row.referenceCode);
-                    const rowDeliveryType = row.deliveryType || defaultDeliveryType || "Villanova";
-                    const isPrecosido = rowDeliveryType === "PRECOSIDO";
-                    const relevantStock = selectedRefObj 
+                    const autoCustomer = selectedRefObj?.customer?.trim() || "";
+                    const availableStock = selectedRefObj 
                       ? (isPrecosido ? (selectedRefObj.stock2 || 0) : (selectedRefObj.stock3 || 0))
                       : 0;
 
+                    const rowQtyNumber = parseInt(row.quantity, 10);
+                    const isOverStock = !isNaN(rowQtyNumber) && rowQtyNumber > availableStock;
+
                     return (
-                      <div key={index} className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl relative space-y-2.5 overflow-visible">
+                      <div 
+                        key={index} 
+                        className="p-3.5 bg-slate-50/90 border border-slate-200/90 rounded-2xl relative space-y-3 transition-all hover:border-slate-300 shadow-2xs overflow-visible"
+                      >
+                        {/* Row Header */}
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold bg-slate-200/80 text-slate-700 px-2 py-0.5 rounded-md">
-                            Item #{index + 1}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-bold bg-slate-200/90 text-slate-700 px-2 py-0.5 rounded-md">
+                              Item #{index + 1}
+                            </span>
+                            {autoCustomer && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-mono font-bold text-slate-700">
+                                <Building2 className="w-3 h-3 text-slate-400" />
+                                {autoCustomer}
+                              </span>
+                            )}
+                          </div>
+
                           {rows.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleRemoveRow(index)}
                               className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Remove Reference"
+                              title="Remove Reference Item"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
 
-                        <div className="grid grid-cols-12 gap-2.5 items-start overflow-visible">
-                          {/* Reference Selector */}
-                          <div className="col-span-12 sm:col-span-6 overflow-visible">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reference</label>
+                        {/* Item Fields Layout: Responsive & Clean */}
+                        <div className="space-y-3">
+                          {/* STEP 3: Select Reference (Full width for clear, un-cramped display) */}
+                          <div className="overflow-visible">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
+                              Reference Code
+                            </label>
                             <CustomReferenceSelect
                               references={references}
                               value={row.referenceCode}
                               onChange={(val) => handleRowChange(index, "referenceCode", val)}
                               placeholder="Select reference..."
+                              showStockBadges={false}
                               required
                               size="sm"
                             />
                           </div>
 
-                          {/* Customer per Row */}
-                          <div className="col-span-12 sm:col-span-6">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Customer</label>
-                            <input
-                              type="text"
-                              placeholder={defaultCustomer || "FORD / RENAULT"}
-                              value={row.customer}
-                              onChange={(e) => handleRowChange(index, "customer", e.target.value.toUpperCase())}
-                              className="w-full min-h-[38px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-900 font-mono font-bold uppercase"
-                              required
-                            />
-                          </div>
+                          {/* STEP 4 & 5: Customer (Auto) and Quantity side-by-side */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                            {/* STEP 4: Customer (Auto-determined from Reference) */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
+                                Customer (Auto)
+                              </label>
+                              <div className="w-full min-h-[38px] px-3 py-2 text-xs bg-slate-100/90 border border-slate-200/90 rounded-xl text-slate-800 font-mono font-bold uppercase flex items-center justify-between select-none">
+                                <span className="truncate">
+                                  {autoCustomer || (row.referenceCode ? "GENERAL" : "—")}
+                                </span>
+                                {autoCustomer && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-normal font-sans shrink-0">
+                                    Auto
+                                  </span>
+                                )}
+                              </div>
+                            </div>
 
-                          {/* Delivery Type per Row */}
-                          <div className="col-span-12 sm:col-span-7 overflow-visible">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Delivery Type</label>
-                            <CustomSelect
-                              value={row.deliveryType || defaultDeliveryType}
-                              onChange={(val) => handleRowChange(index, "deliveryType", val as any)}
-                              options={[
-                                { value: "Villanova", label: "Steering Wheels stock 3" },
-                                { value: "PRECOSIDO", label: "PRECOSIDO stock 2" }
-                              ]}
-                              size="sm"
-                            />
-                          </div>
-
-                          {/* Quantity per Row */}
-                          <div className="col-span-12 sm:col-span-5">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dispatched Qty</label>
-                            <input
-                              type="number"
-                              min="1"
-                              placeholder="Qty"
-                              value={row.quantity}
-                              onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
-                              className="w-full min-h-[38px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-900 font-mono font-bold"
-                              required
-                            />
+                            {/* STEP 5: Quantity */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
+                                Quantity (PCS)
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="Enter PCS..."
+                                value={row.quantity}
+                                onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
+                                className={`w-full min-h-[38px] px-3 py-2 text-xs bg-white border rounded-xl focus:outline-none focus:ring-2 transition-all font-mono font-bold ${
+                                  isOverStock
+                                    ? "border-rose-300 text-rose-700 focus:ring-rose-500/20 focus:border-rose-500 bg-rose-50/40"
+                                    : "border-slate-200 text-slate-900 focus:ring-rose-500/20 focus:border-rose-500"
+                                }`}
+                                required
+                              />
+                            </div>
                           </div>
                         </div>
 
+                        {/* Real-time stock status bar for this reference & tier */}
                         {selectedRefObj && (
-                          <div className="flex items-center justify-between text-[10px] font-mono px-0.5 pt-1 border-t border-slate-200/50">
-                            <span className="text-slate-400 truncate max-w-[170px]">{selectedRefObj.description}</span>
+                          <div className="flex items-center justify-between text-[10px] font-mono px-1 pt-1.5 border-t border-slate-200/60">
+                            <span className="text-slate-500 truncate max-w-[200px]" title={selectedRefObj.description}>
+                              {selectedRefObj.description}
+                            </span>
                             <div className="flex items-center gap-1.5">
                               <span className="text-slate-400 text-[9px]">
-                                Avail {isPrecosido ? "S2" : "S3"}:
+                                Avail {isPrecosido ? "Stock 2" : "Stock 3"}:
                               </span>
-                              <span className={`font-bold ${relevantStock > 0 ? "text-emerald-600" : "text-rose-500"}`}>
-                                {relevantStock} pcs
+                              <span className={`font-bold ${
+                                availableStock <= 0 
+                                  ? "text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200" 
+                                  : isOverStock 
+                                    ? "text-rose-600 font-black"
+                                    : "text-emerald-700 font-bold"
+                              }`}>
+                                {availableStock} PCS
                               </span>
                             </div>
                           </div>
@@ -474,28 +477,15 @@ export default function DeliveriesWorkspace({
                   })}
                 </div>
 
+                {/* Add Another Reference Button */}
                 <button
                   type="button"
                   onClick={handleAddRow}
-                  className="w-full py-2 bg-slate-50 hover:bg-slate-100/80 border border-dashed border-slate-200/80 rounded-xl text-xs font-bold text-slate-600 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs font-mono"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Another Reference</span>
+                  <Plus className="w-3.5 h-3.5 text-slate-500" />
+                  <span>+ Add Another Reference</span>
                 </button>
-              </div>
-
-              {/* Optional Notes */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Optional Comments
-                </label>
-                <textarea
-                  placeholder="Truck plate, package seals..."
-                  rows={2}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 focus:bg-white transition-all text-slate-800"
-                />
               </div>
 
               {/* Notification Banners */}
@@ -505,10 +495,10 @@ export default function DeliveriesWorkspace({
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -5 }}
-                    className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2"
+                    className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2.5"
                   >
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <p className="font-medium">{errorMsg}</p>
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                    <p className="font-medium leading-relaxed">{errorMsg}</p>
                   </motion.div>
                 )}
 
@@ -517,38 +507,38 @@ export default function DeliveriesWorkspace({
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -5 }}
-                    className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs rounded-xl flex items-start gap-2"
+                    className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs rounded-xl flex items-start gap-2.5"
                   >
                     <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
-                    <p className="font-medium">{successMsg}</p>
+                    <p className="font-medium leading-relaxed">{successMsg}</p>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Submit Button */}
+              {/* Submit / Create Delivery Button */}
               <button
                 type="submit"
                 disabled={submitting}
-                className={`w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer uppercase tracking-wider ${
+                className={`w-full py-3 rounded-xl text-xs font-bold text-white shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer uppercase tracking-wider font-mono ${
                   submitting
                     ? "bg-slate-400 cursor-not-allowed"
-                    : "bg-rose-600 hover:bg-rose-700 active:scale-98"
+                    : "bg-rose-600 hover:bg-rose-700 active:scale-98 shadow-rose-600/20"
                 }`}
               >
                 <Truck className="w-4 h-4" />
-                <span>{submitting ? "Dispatching..." : "Dispatch Shipment"}</span>
+                <span>{submitting ? "Processing Delivery..." : "Create Delivery"}</span>
               </button>
             </form>
           </div>
         </div>
 
-        {/* Right Column: Shipment History / Logs */}
+        {/* Right Column: Shipment History / Dispatches Ledger */}
         <div className="lg:col-span-7 space-y-4">
           <div className="glass-panel p-5 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Dispatches Ledger</h3>
-                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Customer shipment logs</p>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Historical customer shipment records</p>
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -578,14 +568,14 @@ export default function DeliveriesWorkspace({
               </div>
             </div>
 
-            {/* List Table */}
+            {/* Dispatches List Table */}
             <div className="overflow-x-auto rounded-xl border border-slate-200/80">
               <table className="industrial-table">
                 <thead>
                   <tr>
                     <th>Invoice / Note</th>
-                    <th>Reference Code</th>
-                    <th>Type</th>
+                    <th>Delivery Type</th>
+                    <th>Reference</th>
                     <th>Quantity</th>
                     <th>Customer</th>
                     <th>Dispatched By</th>
@@ -601,7 +591,7 @@ export default function DeliveriesWorkspace({
                       minute: "2-digit"
                     });
 
-                    const isPrecosido = delivery.deliveryType === "PRECOSIDO";
+                    const isItemPrecosido = delivery.deliveryType === "PRECOSIDO";
 
                     return (
                       <tr key={delivery.id} className="hover:bg-slate-50/80 transition-colors">
@@ -611,24 +601,24 @@ export default function DeliveriesWorkspace({
                             {delivery.invoiceNumber}
                           </span>
                         </td>
-                        <td className="font-mono font-bold text-slate-900">
-                          {delivery.reference}
-                        </td>
                         <td>
                           <span className={`px-2 py-0.5 rounded font-mono text-[9px] font-bold uppercase border ${
-                            isPrecosido 
+                            isItemPrecosido 
                               ? "bg-amber-50 text-amber-800 border-amber-200/80" 
                               : "bg-blue-50 text-blue-800 border-blue-200/80"
                           }`}>
-                            {delivery.deliveryType || "Villanova"}
+                            {delivery.deliveryType || "STEERING WHEELS"}
                           </span>
                         </td>
-                        <td className="font-mono font-bold text-slate-900 text-xs">
+                        <td className="font-mono font-bold text-slate-900">
+                          {delivery.reference}
+                        </td>
+                        <td className="font-mono font-bold text-rose-700 text-xs">
                           -{delivery.quantity} pcs
                         </td>
                         <td>
                           <span className="px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200/80 rounded font-mono text-[9px] font-bold uppercase">
-                            {delivery.customer}
+                            {delivery.customer || "GENERAL"}
                           </span>
                         </td>
                         <td className="text-slate-600 font-sans font-medium text-xs">
@@ -660,3 +650,4 @@ export default function DeliveriesWorkspace({
     </div>
   );
 }
+

@@ -2,153 +2,46 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default deny all unmapped documents and collections
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Helper functions
-    function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.\\/\\s]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    function isValidUser(d) {
-      return d.username is string && d.username.size() > 0 && d.username.size() <= 64
-          && d.fullName is string && d.fullName.size() > 0 && d.fullName.size() <= 100
-          && d.role in ['operator', 'supervisor', 'admin']
-          && d.pin is string && d.pin.size() >= 4 && d.pin.size() <= 12;
-    }
-
-    function isValidBox(d) {
-      return d.barcode is string && d.barcode.size() > 0 && d.barcode.size() <= 64
-          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
-          && d.expectedQty is number
-          && (!('location' in d) || (d.location is string && d.location.size() <= 100));
-    }
-
-    function isValidAdjustment(d) {
-      return d.barcode is string && d.barcode.size() > 0 && d.barcode.size() <= 64
-          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
-          && d.expectedQty is number
-          && d.actualQty is number
-          && d.operatorName is string && d.operatorName.size() > 0 && d.operatorName.size() <= 100
-          && d.status in ['pending', 'approved', 'rejected', 'edited', 'deleted']
-          && d.timestamp is string;
-    }
-
-    function isValidReference(d) {
-      return d.code is string && d.code.size() > 0 && d.code.size() <= 64
-          && d.description is string && d.description.size() <= 500
-          && d.materialType is string && d.materialType.size() > 0 && d.materialType.size() <= 64
-          && d.currentStock is number;
-    }
-
-    function isValidDelivery(d) {
-      return d.invoiceNumber is string && d.invoiceNumber.size() > 0 && d.invoiceNumber.size() <= 64
-          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
-          && d.quantity is number
-          && d.operatorName is string && d.operatorName.size() > 0 && d.operatorName.size() <= 100
-          && d.timestamp is string;
-    }
-
-    function isValidProduction(d) {
-      return d.date is string && d.date.size() >= 8
-          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
-          && d.quantity is number
-          && d.operatorName is string && d.operatorName.size() > 0 && d.operatorName.size() <= 100
-          && d.timestamp is string;
-    }
-
-    function isValidScrap(d) {
-      return d.date is string && d.date.size() >= 8
-          && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
-          && d.quantity is number
-          && d.condition in ['CON COLA', 'SIN COLA']
-          && d.supervisorName is string && d.supervisorName.size() > 0 && d.supervisorName.size() <= 100
-          && d.timestamp is string
-          && d.stockDeductedFrom in ['Stock 2', 'Stock 3']
-          && d.stockBefore is number
-          && d.stockAfter is number;
-    }
-
-    function isValidTransaction(d) {
-      return d.reference is string && d.reference.size() > 0 && d.reference.size() <= 64
-          && d.movementType is string && d.movementType.size() > 0 && d.movementType.size() <= 100
-          && d.stock is string && d.stock.size() > 0 && d.stock.size() <= 50
-          && d.quantity is number
-          && d.operatorName is string && d.operatorName.size() > 0 && d.operatorName.size() <= 100
-          && d.timestamp is string;
-    }
-
-    function isValidInvoice(d) {
-      return d.invoiceNumber is string && d.invoiceNumber.size() > 0 && d.invoiceNumber.size() <= 64
-          && d.operator is string && d.operator.size() > 0 && d.operator.size() <= 100
-          && d.status in ['pending', 'approved', 'cancelled']
-          && d.createdAt is string;
-    }
-
-    // Collection Rules
-
     match /users/{userId} {
-      allow read: if true;
-      allow create, update: if isValidId(userId) && isValidUser(incoming());
-      allow delete: if isValidId(userId);
+      allow read, write: if true;
     }
 
     match /invoices/{invoiceId} {
-      allow read: if true;
-      allow create, update: if isValidId(invoiceId) && isValidInvoice(incoming());
-      allow delete: if isValidId(invoiceId);
+      allow read, write: if true;
     }
 
     match /boxes/{boxId} {
-      allow read: if true;
-      allow create, update: if isValidId(boxId) && isValidBox(incoming());
-      allow delete: if isValidId(boxId);
+      allow read, write: if true;
     }
 
     match /adjustments/{adjustmentId} {
-      allow read: if true;
-      allow create, update: if isValidId(adjustmentId) && isValidAdjustment(incoming());
-      allow delete: if isValidId(adjustmentId);
+      allow read, write: if true;
     }
 
     match /references/{referenceId} {
-      allow read: if true;
-      allow create, update: if isValidId(referenceId) && isValidReference(incoming());
-      allow delete: if isValidId(referenceId);
+      allow read, write: if true;
     }
 
     match /deliveries/{deliveryId} {
-      allow read: if true;
-      allow create, update: if isValidId(deliveryId) && isValidDelivery(incoming());
-      allow delete: if isValidId(deliveryId);
+      allow read, write: if true;
     }
 
     match /productions/{productionId} {
-      allow read: if true;
-      allow create, update: if isValidId(productionId) && isValidProduction(incoming());
-      allow delete: if isValidId(productionId);
+      allow read, write: if true;
     }
 
     match /scraps/{scrapId} {
-      allow read: if true;
-      allow create, update: if isValidId(scrapId) && isValidScrap(incoming());
-      allow delete: if isValidId(scrapId);
+      allow read, write: if true;
     }
 
     match /transactions/{transactionId} {
-      allow read: if true;
-      allow create, update: if isValidId(transactionId) && isValidTransaction(incoming());
-      allow delete: if isValidId(transactionId);
+      allow read, write: if true;
+    }
+
+    // Default catch-all
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
+

@@ -1,12 +1,11 @@
 import React, { useState, useMemo } from "react";
 import { Box, Adjustment, Delivery, Production, ScrapEntry, InventoryTransaction, User, ReceivingInvoice, Reference } from "../types";
-import { motion } from "motion/react";
 import { CustomSelect } from "./CustomSelect";
 import { LowStockAlertModal } from "./LowStockAlertModal";
 import { 
   Check, X, FileText, Search, TrendingDown, TrendingUp, Calendar, RefreshCw, AlertTriangle,
   CheckCircle, XCircle, AlertCircle, Activity, Clock, Layers, Truck, Factory, ShieldAlert, MoreVertical,
-  Eye, RotateCcw
+  Eye, RotateCcw, Package, ArrowRightLeft, Undo2, Hash, UserCheck, ShieldCheck
 } from "lucide-react";
 
 interface SupervisorWorkspaceProps {
@@ -25,6 +24,56 @@ interface SupervisorWorkspaceProps {
   onReverseOperation?: (opId: string, category: string, reason: string) => Promise<void>;
   onDeleteOperation?: (opId: string, category: string, reason: string) => Promise<void>;
 }
+
+// Unified Operational Record Interface
+export interface UnifiedOperation {
+  id: string;
+  rawId: string;
+  timestamp: string;
+  type: string;
+  category: "invoice" | "delivery" | "production" | "scrap" | "transfer" | "return" | "adjustment" | "admin" | "transaction";
+  reference: string;
+  quantity: number;
+  operator: string;
+  affectedStock: string;
+  details: string;
+  status: string;
+  invoiceNumber?: string;
+  customer?: string;
+  batchItems?: Array<{
+    id?: string;
+    reference: string;
+    description?: string;
+    materialType?: string;
+    quantity: number;
+    expectedQty?: number;
+    boxBarcode?: string;
+    barcode?: string;
+    difference?: number;
+    scannedAt?: string;
+  }>;
+  rawInvoice?: ReceivingInvoice;
+  rawDelivery?: Delivery;
+  rawProduction?: Production;
+  rawScrap?: ScrapEntry;
+  rawAdjustment?: Adjustment;
+  rawTransaction?: InventoryTransaction;
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number | string; reason: string }>;
+}
+
+export const formatExactTimestamp = (ts?: string | number) => {
+  if (!ts) return "N/A";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return String(ts);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  const seconds = pad(d.getSeconds());
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+};
 
 export default function SupervisorWorkspace({
   boxes,
@@ -46,36 +95,34 @@ export default function SupervisorWorkspace({
   // Operation management states
   const [actionMenuOpenId, setActionMenuOpenId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const [activeOp, setActiveOp] = useState<any | null>(null);
+  const [activeOp, setActiveOp] = useState<UnifiedOperation | null>(null);
   const [deleteMode, setDeleteMode] = useState<"delete" | "reverse">("delete");
-  const [detailOp, setDetailOp] = useState<any | null>(null);
-  const [editOp, setEditOp] = useState<any | null>(null);
+  const [detailOp, setDetailOp] = useState<UnifiedOperation | null>(null);
+  const [editOp, setEditOp] = useState<UnifiedOperation | null>(null);
   const [editQty, setEditQty] = useState<string>("");
   const [editReason, setEditReason] = useState<string>("");
-  const [deleteOp, setDeleteOp] = useState<any | null>(null);
+  const [deleteOp, setDeleteOp] = useState<UnifiedOperation | null>(null);
   const [deleteReason, setDeleteReason] = useState<string>("");
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const handleOpenMenu = (e: React.MouseEvent<HTMLButtonElement>, op: any) => {
+  const handleOpenMenu = (e: React.MouseEvent<HTMLButtonElement>, op: UnifiedOperation) => {
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
     const menuWidth = 190;
-    const menuHeight = 160; // Estimated height of 4 buttons
+    const menuHeight = 160;
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceRight = window.innerWidth - rect.right;
 
     let fixedTop = rect.bottom;
     let fixedLeft = rect.left;
 
-    // If there's not enough space below, open upward
     if (spaceBelow < menuHeight && rect.top > menuHeight) {
-      fixedTop = rect.top - menuHeight - 8; // 8px spacing
+      fixedTop = rect.top - menuHeight - 8;
     } else {
       fixedTop = rect.bottom + 8;
     }
 
-    // If there's not enough space on the right, align menu right-edge with button right-edge
     if (spaceRight < menuWidth && rect.right > menuWidth) {
       fixedLeft = rect.right - menuWidth;
     }
@@ -103,7 +150,7 @@ export default function SupervisorWorkspace({
     try {
       setActionLoading(true);
       setActionError(null);
-      await onEditOperation(editOp.id, editOp.category, qtyNum, editReason);
+      await onEditOperation(editOp.rawId, editOp.category, qtyNum, editReason);
       setEditOp(null);
       setEditQty("");
       setEditReason("");
@@ -116,124 +163,283 @@ export default function SupervisorWorkspace({
 
   const handleExecuteDelete = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!deleteOp || !onDeleteOperation) return;
+    if (!deleteOp) return;
     if (!deleteReason || deleteReason.trim() === "") {
-      setActionError("A reason for deletion is required.");
+      setActionError("A reason for deletion or reversal is required.");
       return;
     }
     try {
       setActionLoading(true);
       setActionError(null);
-      await onDeleteOperation(deleteOp.id, deleteOp.category, deleteReason);
+      if (deleteMode === "reverse" && onReverseOperation) {
+        await onReverseOperation(deleteOp.rawId, deleteOp.category, deleteReason);
+      } else if (onDeleteOperation) {
+        await onDeleteOperation(deleteOp.rawId, deleteOp.category, deleteReason);
+      }
       setDeleteOp(null);
       setDeleteReason("");
     } catch (err: any) {
-      setActionError(err.message || "Failed to delete operation.");
+      setActionError(err.message || "Failed to process operation.");
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Unified All Inventory Operations List
+  // Unified All Inventory Operations List (1 Real Operation = 1 Record)
   const [operationsTypeFilter, setOperationsTypeFilter] = useState<string>("all");
   const [operationsSearch, setOperationsSearch] = useState<string>("");
 
-  const allOperations = useMemo(() => {
-    const list: {
-      id: string;
-      timestamp: string;
-      type: string;
-      category: "adjustment" | "delivery" | "production" | "scrap" | "transaction";
-      reference: string;
-      quantity: number;
-      operator: string;
-      details: string;
-      status?: string;
-    }[] = [];
+  const allOperations = useMemo<UnifiedOperation[]>(() => {
+    const list: UnifiedOperation[] = [];
+    const processedKeys = new Set<string>();
 
-    // 1. Deliveries / Dispatches
-    deliveries.forEach(del => {
+    // 1. Receiving Invoices (Stock 1 Receiving Sessions)
+    invoices.forEach(inv => {
+      const invKey = `inv-${inv.id || inv.invoiceNumber}`;
+      if (processedKeys.has(invKey)) return;
+      processedKeys.add(invKey);
+
+      const items = inv.items || [];
+      const uniqueRefs = Array.from(new Set(items.map(i => i.reference))).filter(Boolean);
+      const refDisplay = uniqueRefs.length > 1 
+        ? `${uniqueRefs.length} Refs (${uniqueRefs.slice(0, 3).join(", ")}${uniqueRefs.length > 3 ? "..." : ""})`
+        : (uniqueRefs[0] || "General Mesh");
+
+      const commitTime = inv.approvedAt || inv.createdAt;
+      const totalQty = inv.totalQuantity || items.reduce((s, it) => s + (it.quantity || 0), 0);
+
       list.push({
-        id: del.id,
+        id: `inv-${inv.id}`,
+        rawId: inv.id,
+        timestamp: commitTime,
+        type: inv.status === "approved" 
+          ? "S1 IN" 
+          : inv.status === "cancelled" 
+            ? "S1 IN (CANCELLED)" 
+            : "S1 IN (PENDING)",
+        category: "invoice",
+        reference: refDisplay,
+        quantity: totalQty,
+        operator: inv.approvedBy ? `${inv.operator} (Approved by ${inv.approvedBy})` : inv.operator,
+        affectedStock: "Stock 1 (Warehouse)",
+        details: `Invoice #${inv.invoiceNumber} • ${inv.totalBoxes || items.length} box(es) • ${totalQty} PCS`,
+        status: inv.status === "approved" ? "approved" : inv.status === "cancelled" ? "deleted" : "pending",
+        invoiceNumber: inv.invoiceNumber,
+        batchItems: items,
+        rawInvoice: inv
+      });
+    });
+
+    // 2. Customer Deliveries & Dispatches (Stock 2 / Stock 3 OUT)
+    deliveries.forEach(del => {
+      const delKey = `del-${del.id}`;
+      if (processedKeys.has(delKey)) return;
+      processedKeys.add(delKey);
+
+      const isPrecosido = del.deliveryType === "PRECOSIDO";
+      const affectedStock = isPrecosido ? "Stock 2 (WIP)" : "Stock 3 (Finished Goods)";
+      const typeLabel = isPrecosido ? "S2 OUT" : "S3 OUT";
+
+      list.push({
+        id: `del-${del.id}`,
+        rawId: del.id,
         timestamp: del.timestamp,
-        type: `Delivery (${del.deliveryType || "Villanova"})`,
+        type: typeLabel,
         category: "delivery",
         reference: del.reference,
         quantity: del.quantity,
         operator: del.operatorName,
-        details: `Invoice: ${del.invoiceNumber} | Customer: ${del.customer} | Note: ${del.notes || "None"}`,
-        status: del.status || "approved"
+        affectedStock,
+        details: `${isPrecosido ? 'Precosido' : 'Delivery SW'} • Inv: ${del.invoiceNumber} • Dest: ${del.customer}${del.notes ? ` • ${del.notes}` : ''}`,
+        status: del.status || "approved",
+        invoiceNumber: del.invoiceNumber,
+        customer: del.customer,
+        rawDelivery: del,
+        changeHistory: del.changeHistory
       });
     });
 
-    // 2. Physical Counts / Adjustments (handled in transactions list and trace logs tab - no need to duplicate)
-
-    // 3. Productions / WIP -> Finished
+    // 3. Daily Production Completions (Stock 2 WIP → Stock 3 Finished)
     productions.forEach(prod => {
+      const prodKey = `prod-${prod.id}`;
+      if (processedKeys.has(prodKey)) return;
+      processedKeys.add(prodKey);
+
       list.push({
-        id: prod.id,
+        id: `prod-${prod.id}`,
+        rawId: prod.id,
         timestamp: prod.timestamp,
-        type: "Production Completion",
+        type: "S2 => S3",
         category: "production",
         reference: prod.reference,
         quantity: prod.quantity,
         operator: prod.operatorName,
-        details: `Prod Date: ${prod.date} | Stock 2 WIP -> Stock 3 Finished | Note: ${prod.notes || "None"}`,
-        status: prod.status || "approved"
+        affectedStock: "Stock 2 → Stock 3",
+        details: `Production Date: ${prod.date}${prod.notes ? ` • ${prod.notes}` : ''}`,
+        status: prod.status || "approved",
+        rawProduction: prod,
+        changeHistory: prod.changeHistory
       });
     });
 
-    // 4. Scraps / NOK
+    // 4. Scrap / NOK Discards (CON COLA / SIN COLA)
     scraps.forEach(scrap => {
+      const scrapKey = `scrap-${scrap.id}`;
+      if (processedKeys.has(scrapKey)) return;
+      processedKeys.add(scrapKey);
+
+      const isConCola = scrap.condition === "CON COLA";
+      const typeLabel = isConCola ? "S3 OUT" : "S2 OUT";
+
       list.push({
-        id: scrap.id,
+        id: `scrap-${scrap.id}`,
+        rawId: scrap.id,
         timestamp: scrap.timestamp,
-        type: `Scrap (${scrap.condition})`,
+        type: typeLabel,
         category: "scrap",
         reference: scrap.reference,
         quantity: scrap.quantity,
         operator: scrap.supervisorName || "Supervisor",
-        details: `Deducted from ${scrap.stockDeductedFrom} | Inv: ${scrap.invoiceNumber || "N/A"} | Note: ${scrap.notes || "None"}`,
-        status: scrap.status || "approved"
+        affectedStock: scrap.stockDeductedFrom || (isConCola ? "Stock 3" : "Stock 2"),
+        details: `Scrap (${scrap.condition}) • ${scrap.invoiceNumber ? `Inv: ${scrap.invoiceNumber} • ` : ''}${scrap.notes || "Verified by supervisor"}`,
+        status: scrap.status || "approved",
+        invoiceNumber: scrap.invoiceNumber,
+        rawScrap: scrap,
+        changeHistory: scrap.changeHistory
       });
     });
 
-    // 5. Generic Transactions (Transfers, Stock 1 IN, etc.) if not already covered
+    // 5. Generic / Batch Transactions (Pegadas Transfers, Returns, Admin Reversals)
+    const approvedInvoiceNumbers = new Set(invoices.filter(i => i.status === "approved").map(i => i.invoiceNumber));
+
+    // Group batch Pegadas transfers (transactions occurring together with TRANSFER S1->S2)
+    const pegadasBatches: { [batchKey: string]: InventoryTransaction[] } = {};
+    const standaloneTransactions: InventoryTransaction[] = [];
+
     transactions.forEach(tx => {
+      // Eliminate duplicate transactions that were spawned by Delivery, Production, Scrap, Invoice, or Adjustment writes
+      if (tx.movementType === "DELIVERY" || tx.id.startsWith("trans-del-del-")) {
+        return;
+      }
+      if (tx.movementType === "STOCK 2 OUT / STOCK 3 IN" || tx.id.startsWith("trans-del-prod-") || tx.id.startsWith("trans-edit-prod-")) {
+        return;
+      }
+      if (tx.movementType?.startsWith("SCRAP") || tx.id.startsWith("trans-del-scrap-") || tx.id.startsWith("trans-edit-scrap-")) {
+        return;
+      }
+      if (tx.movementType === "STOCK 1 IN" || tx.id.startsWith("trans-s1in-")) {
+        return;
+      }
+      if (tx.notes?.includes("Invoice") && Array.from(approvedInvoiceNumbers).some(invNum => invNum && tx.notes?.includes(invNum))) {
+        return;
+      }
+      if (tx.id.startsWith("trans-del-") && tx.notes?.includes("reversal") && adjustments.some(a => a.reference === tx.reference)) {
+        return;
+      }
+
+      // Check if it is a Pegadas transfer (TRANSFER S1->S2 or TRANSFER)
+      if (tx.movementType === "TRANSFER S1->S2" || tx.movementType === "TRANSFER") {
+        const batchKey = `${tx.operatorName}_${tx.timestamp.slice(0, 16)}_${tx.movementType}`;
+        if (!pegadasBatches[batchKey]) {
+          pegadasBatches[batchKey] = [];
+        }
+        pegadasBatches[batchKey].push(tx);
+      } else {
+        standaloneTransactions.push(tx);
+      }
+    });
+
+    // Add consolidated Pegadas Transfer Batches
+    Object.entries(pegadasBatches).forEach(([batchKey, items]) => {
+      if (items.length === 0) return;
+      const first = items[0];
+      const totalQty = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      const uniqueRefs = Array.from(new Set(items.map(i => i.reference))).filter(Boolean);
+      const refDisplay = uniqueRefs.length > 1
+        ? `${uniqueRefs.length} Refs (${uniqueRefs.slice(0, 3).join(", ")}${uniqueRefs.length > 3 ? "..." : ""})`
+        : (uniqueRefs[0] || "Mesh Transfer");
+
+      const batchItems = items.map((it, idx) => ({
+        id: it.id || `trf-item-${idx}`,
+        reference: it.reference,
+        quantity: it.quantity,
+        scannedAt: it.timestamp,
+        materialType: "Mesh"
+      }));
+
+      list.push({
+        id: `batch-trf-${first.id}`,
+        rawId: first.id,
+        timestamp: first.timestamp,
+        type: "S1 => S2",
+        category: "transfer",
+        reference: refDisplay,
+        quantity: totalQty,
+        operator: first.operatorName,
+        affectedStock: "Stock 1 → Stock 2 (WIP)",
+        details: `Pegadas Transfer • ${items.length} item(s) • ${totalQty} PCS moved to S2`,
+        status: "approved",
+        batchItems,
+        rawTransaction: first
+      });
+    });
+
+    // Add remaining standalone transactions
+    standaloneTransactions.forEach(tx => {
+      const isReturn = tx.movementType === "RETURN S2->S1" || tx.movementType?.includes("RETURN");
+      const isReversal = tx.notes?.toLowerCase().includes("reversal") || tx.operatorName?.includes("Reversal") || tx.movementType?.includes("REMOVED");
+
+      let category: UnifiedOperation["category"] = "transaction";
+      let typeLabel: string = tx.movementType;
+      let affectedStock = tx.stock || "Stock Balances";
+
+      if (isReturn) {
+        category = "return";
+        typeLabel = "S1 RETURN";
+        affectedStock = "Stock 2 → Stock 1";
+      } else if (tx.movementType === "STOCK 1 IN") {
+        category = "invoice";
+        typeLabel = "S1 IN";
+        affectedStock = "Stock 1 (Warehouse)";
+      } else if (isReversal) {
+        category = "admin";
+        if (tx.notes?.toLowerCase().includes("invoice") || tx.movementType?.includes("INVOICE")) {
+          typeLabel = "DELETED INVOICE";
+        } else if (tx.notes?.toLowerCase().includes("delivery") || tx.movementType?.includes("DELIVERY")) {
+          typeLabel = "CANCELLED DELIVERY";
+        } else if (tx.notes?.toLowerCase().includes("production") || tx.movementType?.includes("PRODUCTION")) {
+          typeLabel = "CANCELLED PROD";
+        } else if (tx.notes?.toLowerCase().includes("scrap") || tx.movementType?.includes("SCRAP")) {
+          typeLabel = "CANCELLED SCRAP";
+        } else {
+          typeLabel = "DELETED / REVERSED";
+        }
+      } else if (tx.movementType?.startsWith("REFERENCE_")) {
+        category = "admin";
+        typeLabel = "CATALOG CHANGE";
+      }
+
       list.push({
         id: `tx-${tx.id}`,
+        rawId: tx.id,
         timestamp: tx.timestamp,
-        type: tx.movementType,
-        category: "transaction",
-        reference: tx.reference,
-        quantity: tx.quantity,
+        type: typeLabel,
+        category,
+        reference: tx.reference || "System",
+        quantity: tx.quantity || 0,
         operator: tx.operatorName,
-        details: `${tx.stock} | ${tx.notes || "System movement"}`,
-        status: "approved"
+        affectedStock,
+        details: `${tx.stock ? `${tx.stock} • ` : ''}${tx.notes || "System inventory movement"}`,
+        status: isReversal ? "reversed" : "approved",
+        rawTransaction: tx
       });
     });
 
-    // 6. Receiving Invoices (Stock 1 Receiving Sessions)
-    invoices.forEach(inv => {
-      const uniqueRefs = Array.from(new Set(inv.items.map(i => i.reference))).join(", ") || "No items";
-      list.push({
-        id: `inv-${inv.id}`,
-        timestamp: inv.createdAt,
-        type: `Invoice Intake (${inv.status.toUpperCase()})`,
-        category: "invoice" as any,
-        reference: uniqueRefs,
-        quantity: inv.totalQuantity,
-        operator: inv.operator,
-        details: `Invoice: ${inv.invoiceNumber} | ${inv.totalBoxes} boxes | Status: ${inv.status.toUpperCase()}${inv.approvedAt ? ` | Approved: ${new Date(inv.approvedAt).toLocaleTimeString()}` : ''}`,
-        status: inv.status,
-        rawInvoice: inv
-      } as any);
-    });
-
-    // Sort descending by timestamp
+    // Sort strictly descending by exact timestamp
     list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
     return list;
-  }, [adjustments, deliveries, productions, scraps, transactions, invoices]);
+  }, [invoices, deliveries, productions, scraps, adjustments, transactions]);
 
   const filteredOperations = useMemo(() => {
     return allOperations.filter(op => {
@@ -241,9 +447,19 @@ export default function SupervisorWorkspace({
         op.reference.toLowerCase().includes(operationsSearch.toLowerCase()) ||
         op.operator.toLowerCase().includes(operationsSearch.toLowerCase()) ||
         op.type.toLowerCase().includes(operationsSearch.toLowerCase()) ||
-        op.details.toLowerCase().includes(operationsSearch.toLowerCase());
+        op.details.toLowerCase().includes(operationsSearch.toLowerCase()) ||
+        (op.invoiceNumber && op.invoiceNumber.toLowerCase().includes(operationsSearch.toLowerCase())) ||
+        (op.customer && op.customer.toLowerCase().includes(operationsSearch.toLowerCase()));
 
-      const matchesType = operationsTypeFilter === "all" || op.category === operationsTypeFilter;
+      const matchesType = 
+        operationsTypeFilter === "all" ||
+        (operationsTypeFilter === "S1 IN" && op.type.startsWith("S1 IN")) ||
+        (operationsTypeFilter === "S1 => S2" && op.type === "S1 => S2") ||
+        (operationsTypeFilter === "S2 => S3" && op.type === "S2 => S3") ||
+        (operationsTypeFilter === "S2 OUT" && op.type === "S2 OUT") ||
+        (operationsTypeFilter === "S3 OUT" && op.type === "S3 OUT") ||
+        (operationsTypeFilter === "S1 RETURN" && op.type === "S1 RETURN") ||
+        (operationsTypeFilter === "DELETED" && (op.type.includes("DELETED") || op.type.includes("CANCELLED") || op.category === "admin" || op.type === "REVERSAL"));
 
       return matchesSearch && matchesType;
     });
@@ -251,10 +467,61 @@ export default function SupervisorWorkspace({
 
   const lowStockReferences = useMemo(() => {
     return references.filter((r) => {
-      const total = (r.stock1 || 0) + (r.stock2 || 0) + (r.stock3 || 0);
-      return total < 100;
+      const s1PlusS2 = (r.stock1 || 0) + (r.stock2 || 0);
+      return s1PlusS2 < 100;
     });
   }, [references]);
+
+  const getOperationBadge = (type: string) => {
+    switch (type) {
+      case "S1 IN":
+      case "S1 IN (PENDING)":
+      case "S1 IN (CANCELLED)":
+        return "bg-amber-100 text-amber-900 border-amber-300 font-black";
+      case "S1 => S2":
+        return "bg-blue-100 text-blue-900 border-blue-300 font-black";
+      case "S2 => S3":
+        return "bg-emerald-100 text-emerald-900 border-emerald-300 font-black";
+      case "S2 OUT":
+        return "bg-purple-100 text-purple-900 border-purple-300 font-black";
+      case "S3 OUT":
+        return "bg-indigo-100 text-indigo-900 border-indigo-300 font-black";
+      case "S1 RETURN":
+        return "bg-cyan-100 text-cyan-900 border-cyan-300 font-black";
+      case "DELETED INVOICE":
+      case "CANCELLED DELIVERY":
+      case "CANCELLED PROD":
+      case "CANCELLED SCRAP":
+      case "DELETED / REVERSED":
+      case "REVERSAL":
+        return "bg-rose-100 text-rose-900 border-rose-300 font-black";
+      default:
+        return "bg-slate-100 text-slate-800 border-slate-300 font-black";
+    }
+  };
+
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case "invoice":
+        return "bg-amber-50 text-amber-800 border-amber-200";
+      case "transfer":
+        return "bg-blue-50 text-blue-700 border-blue-200";
+      case "return":
+        return "bg-cyan-50 text-cyan-800 border-cyan-200";
+      case "production":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
+      case "delivery":
+        return "bg-purple-50 text-purple-700 border-purple-200";
+      case "scrap":
+        return "bg-rose-50 text-rose-700 border-rose-200";
+      case "adjustment":
+        return "bg-indigo-50 text-indigo-700 border-indigo-200";
+      case "admin":
+        return "bg-slate-100 text-slate-700 border-slate-300";
+      default:
+        return "bg-slate-100 text-slate-700 border-slate-200";
+    }
+  };
 
   return (
     <div className="space-y-6" id="supervisor-workspace-tab">
@@ -330,11 +597,10 @@ export default function SupervisorWorkspace({
                 <Activity className="w-4 h-4 text-blue-600" />
                 <span>COMPLETE INVENTORY OPERATIONAL CONTROL CENTER</span>
               </h4>
-
             </div>
 
             <div className="flex items-center gap-3 font-mono text-xs">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">TOTAL EVENTS:</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">TOTAL OPERATIONS:</span>
               <span className="px-2.5 py-1 bg-slate-900 text-white rounded-lg font-bold text-xs">
                 {allOperations.length}
               </span>
@@ -347,7 +613,7 @@ export default function SupervisorWorkspace({
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search operations by reference, operator, or details..."
+                placeholder="Search by reference, operator, invoice #, customer, notes..."
                 value={operationsSearch}
                 onChange={(e) => setOperationsSearch(e.target.value)}
                 id="operations-search-input"
@@ -362,13 +628,15 @@ export default function SupervisorWorkspace({
                 onChange={(val) => setOperationsTypeFilter(val)}
                 options={[
                   { value: "all", label: "ALL OPERATIONS" },
-                  { value: "invoice", label: "RECEIVING INVOICES (STOCK 1)" },
-                  { value: "delivery", label: "DELIVERIES" },
-                  { value: "production", label: "PRODUCTION" },
-                  { value: "scrap", label: "SCRAP / NOK" },
-                  { value: "transaction", label: "TRANSFERS / OTHER" }
+                  { value: "S1 IN", label: "S1 IN (TRUCK INTAKE)" },
+                  { value: "S1 => S2", label: "S1 => S2 (PEGADAS)" },
+                  { value: "S2 => S3", label: "S2 => S3 (PRODUCTION)" },
+                  { value: "S2 OUT", label: "S2 OUT (PRECOSIDO / SCRAP)" },
+                  { value: "S3 OUT", label: "S3 OUT (SW DELIVERY / SCRAP)" },
+                  { value: "S1 RETURN", label: "S1 RETURN" },
+                  { value: "DELETED", label: "DELETED / CANCELLED" }
                 ]}
-                className="w-48"
+                className="w-56"
                 size="sm"
               />
             </div>
@@ -376,62 +644,63 @@ export default function SupervisorWorkspace({
 
           {/* Desktop view: table */}
           <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200/80">
-            <table className="industrial-table w-full min-w-[1050px]" id="all-operations-table">
+            <table className="industrial-table w-full min-w-[1100px]" id="all-operations-table">
               <thead>
                 <tr>
-                  <th className="w-[14%] min-w-[130px]">Timestamp</th>
-                  <th className="w-[18%] min-w-[170px]">Operation Type</th>
-                  <th className="w-[12%] min-w-[110px]">Reference</th>
-                  <th className="w-[8%] min-w-[80px] text-right">Quantity</th>
+                  <th className="w-[15%] min-w-[140px]">Exact Timestamp</th>
+                  <th className="w-[13%] min-w-[110px]">Operation Type</th>
+                  <th className="w-[16%] min-w-[130px]">Reference</th>
+                  <th className="w-[10%] min-w-[90px] text-right">Quantity</th>
                   <th className="w-[14%] min-w-[120px]">Operator / User</th>
-                  <th className="w-[22%] min-w-[200px]">Operational Details & Notes</th>
-                  <th className="w-[8%] min-w-[80px] text-center">Status</th>
-                  <th className="w-[4%] min-w-[50px] text-center">Actions</th>
+                  <th className="w-[27%] min-w-[200px]">Operational Details & Notes</th>
+                  <th className="w-[5%] min-w-[60px] text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono text-slate-800">
                 {filteredOperations.map((op) => {
-                  const categoryColors: Record<string, string> = {
-                    adjustment: "bg-blue-50 text-blue-700 border-blue-200",
-                    invoice: "bg-amber-50 text-amber-800 border-amber-200",
-                    delivery: "bg-purple-50 text-purple-700 border-purple-200",
-                    production: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                    scrap: "bg-rose-50 text-rose-700 border-rose-200",
-                    transaction: "bg-slate-100 text-slate-700 border-slate-200"
-                  };
-
                   return (
-                    <tr key={op.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="text-slate-500 text-[10px] whitespace-nowrap">
-                        {new Date(op.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                    <tr 
+                      key={op.id} 
+                      className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                      onClick={() => setDetailOp(op)}
+                    >
+                      <td className="text-slate-700 text-[11px] whitespace-nowrap font-bold">
+                        {formatExactTimestamp(op.timestamp)}
                       </td>
                       <td>
-                        <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border uppercase ${categoryColors[op.category] || "bg-slate-100 text-slate-700 border-slate-200"}`}>
+                        <span className={`inline-flex items-center justify-center min-w-[70px] px-2 py-0.5 rounded text-[10px] font-mono font-black border uppercase shadow-2xs ${getOperationBadge(op.type)}`}>
                           {op.type}
                         </span>
                       </td>
-                      <td className="font-bold text-slate-900">{op.reference}</td>
-                      <td className="text-right font-bold text-slate-950">
-                        {op.quantity > 0 ? op.quantity : "-"}
+                      <td className="font-bold text-slate-900 text-xs">{op.reference}</td>
+                      <td className="text-right font-bold text-slate-950 text-xs">
+                        {op.quantity > 0 ? `${op.quantity.toLocaleString()} PCS` : "-"}
                       </td>
                       <td className="text-slate-700 font-sans font-medium text-xs">{op.operator}</td>
                       <td className="text-xs text-slate-600 font-sans max-w-xs truncate" title={op.details}>
                         {op.details}
                       </td>
-                      <td className="text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border uppercase ${op.status === 'deleted' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                          {op.status || "Completed"}
-                        </span>
-                      </td>
-                      <td className="text-center">
-                        <button
-                          onClick={(e) => handleOpenMenu(e, op)}
-                          className="p-1.5 hover:bg-slate-200/80 rounded-lg text-slate-600 transition-colors cursor-pointer"
-                          title="Operation Actions"
-                          id={`op-actions-btn-${op.id}`}
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </button>
+                      <td className="text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setDetailOp(op)}
+                            className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors cursor-pointer"
+                            title="View Full Details"
+                            id={`op-view-btn-${op.id}`}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenMenu(e, op)}
+                            className="p-1.5 hover:bg-slate-200/80 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                            title="Operation Actions"
+                            id={`op-actions-btn-${op.id}`}
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -439,7 +708,7 @@ export default function SupervisorWorkspace({
 
                 {filteredOperations.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400 font-sans">
+                    <td colSpan={7} className="py-12 text-center text-slate-400 font-sans">
                       No matching operations found for the current filter.
                     </td>
                   </tr>
@@ -451,24 +720,17 @@ export default function SupervisorWorkspace({
           {/* Mobile view: list of cards */}
           <div className="md:hidden space-y-3" id="all-operations-mobile-list">
             {filteredOperations.map((op) => {
-              const categoryColors: Record<string, string> = {
-                adjustment: "bg-blue-50 text-blue-700 border-blue-200",
-                delivery: "bg-purple-50 text-purple-700 border-purple-200",
-                production: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                scrap: "bg-rose-50 text-rose-700 border-rose-200",
-                transaction: "bg-slate-100 text-slate-700 border-slate-200"
-              };
-
               return (
-                <div key={op.id} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 font-mono text-slate-800 relative">
+                <div 
+                  key={op.id} 
+                  className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 font-mono text-slate-800 relative cursor-pointer"
+                  onClick={() => setDetailOp(op)}
+                >
                   <div className="flex justify-between items-start">
-                    <span className="text-slate-500 text-[10px]">
-                      {new Date(op.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                    <span className="text-slate-700 font-bold text-[11px]">
+                      {formatExactTimestamp(op.timestamp)}
                     </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border uppercase ${op.status === 'deleted' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                        {op.status || "Completed"}
-                      </span>
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={(e) => handleOpenMenu(e, op)}
                         className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors cursor-pointer"
@@ -480,8 +742,8 @@ export default function SupervisorWorkspace({
                   </div>
 
                   <div className="space-y-1">
-                    <div className="text-[10px] text-slate-400 uppercase">Operation</div>
-                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${categoryColors[op.category] || "bg-slate-100 text-slate-700"}`}>
+                    <div className="text-[10px] text-slate-400 uppercase">Operation Type</div>
+                    <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded text-[11px] font-mono font-black border uppercase shadow-2xs ${getOperationBadge(op.type)}`}>
                       {op.type}
                     </span>
                   </div>
@@ -494,7 +756,7 @@ export default function SupervisorWorkspace({
                     <div>
                       <div className="text-[10px] text-slate-400 uppercase text-right">Quantity</div>
                       <div className="font-bold text-slate-950 text-xs text-right">
-                        {op.quantity > 0 ? op.quantity : "-"}
+                        {op.quantity > 0 ? `${op.quantity.toLocaleString()} PCS` : "-"}
                       </div>
                     </div>
                   </div>
@@ -522,90 +784,120 @@ export default function SupervisorWorkspace({
           </div>
         </div>
 
-
-
-
-
-      {/* View Details Modal */}
+      {/* View Details Modal with Complete Batch & Audit Breakdown */}
       {detailOp && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-5 font-mono">
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-6 space-y-5 font-mono max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
-                <span>OPERATION AUDIT DETAILS</span>
+                <span>OPERATIONAL LEDGER AUDIT DETAILS</span>
               </h3>
               <button onClick={() => setDetailOp(null)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-700">
-              <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl">
+            <div className="space-y-4 text-xs text-slate-700">
+              
+              {/* Header Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100">
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase">Operation ID</span>
-                  <span className="font-bold text-slate-900 truncate block">{detailOp.id}</span>
+                  <span className="font-bold text-slate-900 truncate block text-[11px]">{detailOp.rawId || detailOp.id}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase">Timestamp</span>
-                  <span className="font-bold text-slate-900">{new Date(detailOp.timestamp).toLocaleString()}</span>
+                  <span className="text-[10px] text-slate-400 block uppercase">Exact Commit Time</span>
+                  <span className="font-bold text-blue-700">{formatExactTimestamp(detailOp.timestamp)}</span>
                 </div>
                 <div>
+                  <span className="text-[10px] text-slate-400 block uppercase">Operation Category</span>
+                  <span className="font-bold text-slate-900 uppercase">{detailOp.category}</span>
+                </div>
+                <div className="sm:col-span-2">
                   <span className="text-[10px] text-slate-400 block uppercase">Operation Type</span>
-                  <span className="font-bold text-blue-600">{detailOp.type}</span>
+                  <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded text-xs font-mono font-black border uppercase shadow-2xs mt-1 ${getOperationBadge(detailOp.type)}`}>
+                    {detailOp.type}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase">Reference</span>
+                  <span className="text-[10px] text-slate-400 block uppercase">Affected Stock</span>
+                  <span className="font-bold text-slate-900">{detailOp.affectedStock || "Stock Balances"}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block uppercase">Reference / Summary</span>
                   <span className="font-bold text-slate-900">{detailOp.reference}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase">Quantity</span>
-                  <span className="font-bold text-slate-950 text-sm">{detailOp.quantity > 0 ? detailOp.quantity : "N/A"}</span>
+                  <span className="text-[10px] text-slate-400 block uppercase">Total Quantity</span>
+                  <span className="font-bold text-emerald-700 text-sm">
+                    {detailOp.quantity > 0 ? `${detailOp.quantity.toLocaleString()} PCS` : "N/A"}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase">Operator</span>
+                  <span className="text-[10px] text-slate-400 block uppercase">Operator / Supervisor</span>
                   <span className="font-bold text-slate-900 font-sans">{detailOp.operator}</span>
                 </div>
               </div>
 
+              {/* Operational Summary Card */}
               <div>
-                <span className="text-[10px] text-slate-400 block uppercase mb-1">Operational Details & Notes</span>
-                <div className="p-3 bg-slate-50 rounded-xl text-slate-800 font-sans text-xs">
+                <span className="text-[10px] text-slate-400 block uppercase mb-1">Operational Summary & Context</span>
+                <div className="p-3 bg-slate-50 rounded-xl text-slate-800 font-sans text-xs border border-slate-100">
                   {detailOp.details}
                 </div>
               </div>
 
-              {detailOp.rawInvoice?.items && detailOp.rawInvoice.items.length > 0 && (
+              {/* Itemized Batch Breakdown Table (for Invoices, Pegadas Transfer Batches, or multi-item dispatches) */}
+              {detailOp.batchItems && detailOp.batchItems.length > 0 && (
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase mb-1">
-                    Scanned Boxes under Invoice ({detailOp.rawInvoice.items.length} boxes &bull; {detailOp.rawInvoice.totalQuantity} PCS)
+                  <span className="text-[10px] text-slate-500 block uppercase font-bold mb-1.5 flex items-center justify-between">
+                    <span>Itemized Breakdown ({detailOp.batchItems.length} record{detailOp.batchItems.length > 1 ? "s" : ""} &bull; {detailOp.quantity} PCS)</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Exact records captured in database</span>
                   </span>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
-                    {detailOp.rawInvoice.items.map((item: any, idx: number) => (
-                      <div key={item.id || idx} className="p-2 bg-slate-50 rounded-lg flex items-center justify-between text-xs font-mono">
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded bg-slate-200 text-[10px] flex items-center justify-center font-bold text-slate-700">
-                            {idx + 1}
-                          </span>
-                          <div>
-                            <span className="font-bold text-slate-900">{item.reference}</span>
-                            <span className="text-[10px] text-slate-400 block">{item.boxBarcode}</span>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                            {item.quantity} PCS
-                          </span>
-                          <span className="text-[10px] text-slate-400 block mt-0.5">
-                            {item.scannedAt ? new Date(item.scannedAt).toLocaleTimeString() : ''}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div className="max-h-60 overflow-y-auto">
+                      <table className="w-full text-left text-xs font-mono">
+                        <thead className="bg-slate-50 text-[10px] text-slate-500 border-b border-slate-200 sticky top-0">
+                          <tr>
+                            <th className="p-2 w-8 text-center">#</th>
+                            <th className="p-2">Reference</th>
+                            <th className="p-2">Barcode / ID</th>
+                            <th className="p-2 text-right">Quantity</th>
+                            <th className="p-2 text-right">Scanned Time</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {detailOp.batchItems.map((item, idx) => (
+                            <tr key={item.id || idx} className="hover:bg-slate-50/60">
+                              <td className="p-2 text-center text-slate-400 text-[10px]">{idx + 1}</td>
+                              <td className="p-2 font-bold text-slate-900">{item.reference}</td>
+                              <td className="p-2 text-slate-500 text-[10px] truncate max-w-[140px]" title={item.boxBarcode || item.barcode || "-"}>
+                                {item.boxBarcode || item.barcode || "-"}
+                              </td>
+                              <td className="p-2 text-right font-bold text-blue-700">
+                                {item.quantity} PCS
+                              </td>
+                              <td className="p-2 text-right text-slate-400 text-[10px]">
+                                {item.scannedAt ? new Date(item.scannedAt).toLocaleTimeString() : "-"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-slate-50 font-bold border-t border-slate-200">
+                          <tr>
+                            <td colSpan={3} className="p-2 text-right text-slate-600 text-[11px]">Total Itemized Quantity:</td>
+                            <td className="p-2 text-right text-emerald-700 text-[11px]">{detailOp.quantity} PCS</td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
 
+              {/* Audit Change History */}
               {detailOp.changeHistory && detailOp.changeHistory.length > 0 && (
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase mb-1">Audit Change History</span>
@@ -614,7 +906,7 @@ export default function SupervisorWorkspace({
                       <div key={idx} className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-lg text-[11px] space-y-0.5">
                         <div className="flex justify-between font-bold text-blue-900">
                           <span>{h.action} ({h.oldQty} → {h.newQty})</span>
-                          <span>{new Date(h.timestamp).toLocaleString()}</span>
+                          <span>{formatExactTimestamp(h.timestamp)}</span>
                         </div>
                         <div className="text-slate-600 font-sans">By: {h.modifiedBy} | Reason: {h.reason}</div>
                       </div>
@@ -629,7 +921,7 @@ export default function SupervisorWorkspace({
                 onClick={() => setDetailOp(null)}
                 className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 cursor-pointer"
               >
-                CLOSE
+                CLOSE DETAILS
               </button>
             </div>
           </div>
@@ -660,11 +952,12 @@ export default function SupervisorWorkspace({
               <div className="p-3 bg-slate-50 rounded-xl space-y-1">
                 <div className="text-slate-500">Operation: <span className="font-bold text-slate-900">{editOp.type}</span></div>
                 <div className="text-slate-500">Reference: <span className="font-bold text-slate-900">{editOp.reference}</span></div>
-                <div className="text-slate-500">Original Quantity: <span className="font-bold text-slate-900">{editOp.quantity}</span></div>
+                <div className="text-slate-500">Original Quantity: <span className="font-bold text-slate-900">{editOp.quantity} PCS</span></div>
+                <div className="text-slate-500">Committed At: <span className="font-bold text-blue-600">{formatExactTimestamp(editOp.timestamp)}</span></div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">New Quantity *</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">New Quantity (PCS) *</label>
                 <input
                   type="number"
                   value={editQty}
@@ -736,7 +1029,8 @@ export default function SupervisorWorkspace({
                 </div>
                 <div className="text-slate-600">Reference: <span className="font-bold text-slate-900">{deleteOp.reference}</span></div>
                 <div className="text-slate-600">Type: <span className="font-bold text-slate-900">{deleteOp.type}</span></div>
-                <div className="text-slate-600">Quantity: <span className="font-bold text-slate-900">{deleteOp.quantity}</span></div>
+                <div className="text-slate-600">Quantity: <span className="font-bold text-slate-900">{deleteOp.quantity} PCS</span></div>
+                <div className="text-slate-600">Committed At: <span className="font-bold text-blue-600">{formatExactTimestamp(deleteOp.timestamp)}</span></div>
               </div>
 
               <div>
@@ -800,6 +1094,19 @@ export default function SupervisorWorkspace({
             }}
             className="bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 text-left font-sans text-xs"
           >
+            {/* View Full Details */}
+            <button
+              onClick={() => { 
+                setDetailOp(activeOp); 
+                setActionMenuOpenId(null); 
+                setMenuPosition(null); 
+              }}
+              className="w-full px-4 py-2 hover:bg-slate-50 text-slate-700 flex items-center gap-2 cursor-pointer font-medium"
+            >
+              <Eye className="w-3.5 h-3.5 text-blue-600" />
+              <span>View Full Details</span>
+            </button>
+
             {/* Edit / Correct */}
             {(currentUser.role === "supervisor" || currentUser.role === "admin") && 
              activeOp.status !== "deleted" && (
@@ -811,17 +1118,17 @@ export default function SupervisorWorkspace({
                   setActionMenuOpenId(null); 
                   setMenuPosition(null); 
                 }}
-                className="w-full px-4 py-2 hover:bg-slate-50 text-slate-700 flex items-center gap-2 cursor-pointer font-medium"
+                className="w-full px-4 py-2 hover:bg-slate-50 text-slate-700 flex items-center gap-2 cursor-pointer font-medium border-t border-slate-100"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
                 <span>Edit / Correct</span>
               </button>
             )}
 
-            {/* Reverse Operation (only for deliveries, productions, scraps) */}
+            {/* Reverse Operation (for deliveries, productions, scraps, transfers, returns) */}
             {(currentUser.role === "supervisor" || currentUser.role === "admin") && 
              activeOp.status !== "deleted" && 
-             (activeOp.category === "delivery" || activeOp.category === "production" || activeOp.category === "scrap") && (
+             (activeOp.category === "delivery" || activeOp.category === "production" || activeOp.category === "scrap" || activeOp.category === "transfer" || activeOp.category === "return") && (
               <button
                 onClick={() => { 
                   setDeleteOp(activeOp); 

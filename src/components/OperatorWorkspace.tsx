@@ -3,8 +3,9 @@ import { Box, Adjustment, User, Reference, ReceivingInvoice, ScannedInvoiceBox, 
 import { doc, getDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { 
-  Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon, Sparkles, ArrowRight, Layers, Box as BoxIcon, RotateCcw, Eraser, Trash2, CheckCircle2, XCircle, Edit3, Save, X, PlusCircle
+  Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon, Sparkles, ArrowRight, Layers, Box as BoxIcon, RotateCcw, Eraser, Trash2, CheckCircle2, XCircle, Edit3, Save, X, PlusCircle, Search, Barcode
 } from "lucide-react";
+import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import Swal from "sweetalert2";
 
 interface OperatorWorkspaceProps {
@@ -324,6 +325,20 @@ export default function OperatorWorkspace({
     }
   };
 
+  // Handle Selection directly from CustomReferenceSelect dropdown
+  const handleSelectReference = (selectedCode: string) => {
+    setErrorMsg("");
+    setAutoCorrectNotice("");
+    setReferenceCode(selectedCode);
+
+    if (selectedCode) {
+      playScanBeep();
+      setTimeout(() => {
+        quantityRef.current?.focus();
+      }, 60);
+    }
+  };
+
   // Handle Quantity Input
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuantity(e.target.value);
@@ -466,10 +481,11 @@ export default function OperatorWorkspace({
       } else {
         // INTAKE MODE: INVOICE-BASED RECEIVING
         const diff = actualQtyVal - expectedQtyVal;
-        const boxBarcode = `BOX-${finalCode}-${cleanInvoice}-${Date.now().toString().slice(-4)}`;
+        const safeInvoiceSlug = cleanInvoice.replace(/[\/\\]/g, "-").replace(/\s+/g, "_");
+        const boxBarcode = `BOX-${finalCode}-${safeInvoiceSlug}-${Date.now().toString().slice(-4)}`;
 
         const newBoxItem: ScannedInvoiceBox = {
-          id: `box-${finalCode}-${cleanInvoice}-${Date.now().toString().slice(-6)}`,
+          id: `box-${finalCode}-${safeInvoiceSlug}-${Date.now().toString().slice(-6)}`,
           boxBarcode,
           reference: finalCode,
           expectedQty: expectedQtyVal,
@@ -1156,25 +1172,54 @@ export default function OperatorWorkspace({
             </div>
           )}
 
-          {/* REFERENCE CODE */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-              <span>{opMode === "INTAKE" ? "2. Reference Code (Scan Barcode)" : "1. Reference Code (Scan Barcode)"}</span>
-              <span className="text-[10px] text-blue-600 font-normal font-mono">Smart Matching Active</span>
-            </label>
-            <div>
-              <input
-                ref={referenceRef}
-                type="text"
-                required
-                placeholder="Scan reference barcode..."
+          {/* REFERENCE SELECTION & BARCODE SCANNING */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                <Barcode className="w-3.5 h-3.5 text-blue-600" />
+                <span>{opMode === "INTAKE" ? "2. Reference (Select or Scan Barcode)" : "1. Reference (Select or Scan Barcode)"}</span>
+              </label>
+              <span className="text-[10px] text-blue-600 font-semibold font-mono bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                Select or Scan Active
+              </span>
+            </div>
+
+            {/* Searchable Reference Select Dropdown (Identical to Deliveries & Production) */}
+            <div className="space-y-1">
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono flex items-center gap-1">
+                <Search className="w-3 h-3 text-slate-400" />
+                <span>Choose Reference (Searchable Dropdown)</span>
+              </div>
+              <CustomReferenceSelect
+                references={references}
                 value={referenceCode}
-                onChange={handleReferenceChange}
-                onKeyDown={handleReferenceKeyDown}
-                className="w-full px-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-all text-slate-900"
-                id="op-reference-field"
-                autoComplete="off"
+                onChange={handleSelectReference}
+                placeholder="Click to search & select reference..."
+                showStockBadges={true}
+                size="md"
               />
+            </div>
+
+            {/* Direct Barcode Scanner Input */}
+            <div className="space-y-1 pt-1">
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono flex items-center gap-1">
+                <Scan className="w-3 h-3 text-slate-400" />
+                <span>Or Scan Barcode Directly</span>
+              </div>
+              <div className="relative">
+                <Barcode className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  ref={referenceRef}
+                  type="text"
+                  placeholder="Scan barcode with scanner or type code..."
+                  value={referenceCode}
+                  onChange={handleReferenceChange}
+                  onKeyDown={handleReferenceKeyDown}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-all text-slate-900 shadow-2xs"
+                  id="op-reference-field"
+                  autoComplete="off"
+                />
+              </div>
             </div>
             
             {/* Live Master Data visual confirmation feedback */}

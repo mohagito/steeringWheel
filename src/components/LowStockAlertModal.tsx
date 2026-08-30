@@ -11,20 +11,19 @@ interface LowStockAlertModalProps {
 export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAlertModalProps) {
   const [search, setSearch] = useState("");
 
-  // Strictly filter references where TOTAL STOCK (Stock 1 + Stock 2 + Stock 3) < 100
+  // Strictly filter references where (Stock 1 + Stock 2) < 100
   const lowStockList = useMemo(() => {
     return references
       .filter((r) => {
         const s1 = r.stock1 || 0;
         const s2 = r.stock2 || 0;
-        const s3 = r.stock3 || 0;
-        const total = s1 + s2 + s3;
-        return total < 100;
+        const s1PlusS2 = s1 + s2;
+        return s1PlusS2 < 100;
       })
       .sort((a, b) => {
-        const totalA = (a.stock1 || 0) + (a.stock2 || 0) + (a.stock3 || 0);
-        const totalB = (b.stock1 || 0) + (b.stock2 || 0) + (b.stock3 || 0);
-        return totalA - totalB; // Lowest stock first
+        const s1PlusS2A = (a.stock1 || 0) + (a.stock2 || 0);
+        const s1PlusS2B = (b.stock1 || 0) + (b.stock2 || 0);
+        return s1PlusS2A - s1PlusS2B; // Lowest (S1 + S2) first
       });
   }, [references]);
 
@@ -50,6 +49,7 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
       "Material Type",
       "Stock 1 (Warehouse)",
       "Stock 2 (Production WIP)",
+      "STOCK 1 + STOCK 2",
       "Stock 3 (Finished Goods)",
       "TOTAL STOCK",
       "Status",
@@ -60,6 +60,7 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
       const s1 = r.stock1 || 0;
       const s2 = r.stock2 || 0;
       const s3 = r.stock3 || 0;
+      const s1PlusS2 = s1 + s2;
       const total = s1 + s2 + s3;
       return [
         r.code,
@@ -68,9 +69,10 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
         r.materialType || "Mesh",
         s1.toString(),
         s2.toString(),
+        s1PlusS2.toString(),
         s3.toString(),
         total.toString(),
-        "LOW STOCK (< 100 PCS)",
+        "LOW STOCK (S1 + S2 < 100 PCS)",
         r.lastUpdate ? new Date(r.lastUpdate).toLocaleString() : "N/A"
       ];
     });
@@ -82,7 +84,7 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     const dateStr = new Date().toISOString().split("T")[0];
-    link.setAttribute("download", `LOW_STOCK_ALERTS_${dateStr}.csv`);
+    link.setAttribute("download", `LOW_STOCK_ALERTS_S1_S2_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -92,7 +94,7 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
       <div 
         id="low-stock-alert-modal-container"
-        className="bg-white border border-rose-200 rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-white border border-rose-200 rounded-3xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden"
       >
         {/* Header */}
         <div className="p-5 sm:p-6 bg-gradient-to-r from-rose-50 via-white to-amber-50/50 border-b border-rose-100 flex items-center justify-between shrink-0">
@@ -106,9 +108,12 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
                   Stock Low-Level Alerts
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-rose-100 text-rose-800 border border-rose-200">
-                  {lowStockList.length} {lowStockList.length === 1 ? "Reference" : "References"} Below 100 PCS
+                  {lowStockList.length} {lowStockList.length === 1 ? "Reference" : "References"} (Stock 1 + Stock 2 &lt; 100 PCS)
                 </span>
               </div>
+              <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                Monitoring combined Warehouse (S1) + WIP (S2) inventory safety threshold.
+              </p>
             </div>
           </div>
 
@@ -153,9 +158,9 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
               <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3 border border-emerald-100">
                 <ShieldAlert className="w-6 h-6 text-emerald-600" />
               </div>
-              <h4 className="text-sm font-bold text-slate-900">All Stock Levels Healthy</h4>
+              <h4 className="text-sm font-bold text-slate-900">All S1 + S2 Levels Healthy</h4>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                No references are currently below the 100 PCS safety threshold. Real-time monitoring is active.
+                No references are currently below 100 PCS for Stock 1 + Stock 2 combined. Real-time monitoring is active.
               </p>
             </div>
           ) : filteredList.length === 0 ? (
@@ -172,8 +177,9 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
                     <th className="py-3 px-3">Description</th>
                     <th className="py-3 px-3 text-right">Stock 1</th>
                     <th className="py-3 px-3 text-right">Stock 2</th>
+                    <th className="py-3 px-3 text-right font-black text-rose-700 bg-rose-50/70">S1 + S2</th>
                     <th className="py-3 px-3 text-right">Stock 3</th>
-                    <th className="py-3 px-3 text-right font-black text-rose-900">TOTAL</th>
+                    <th className="py-3 px-3 text-right font-bold text-slate-800">Total</th>
                     <th className="py-3 px-3 text-center">Status</th>
                   </tr>
                 </thead>
@@ -182,6 +188,7 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
                     const s1 = ref.stock1 || 0;
                     const s2 = ref.stock2 || 0;
                     const s3 = ref.stock3 || 0;
+                    const s1PlusS2 = s1 + s2;
                     const total = s1 + s2 + s3;
 
                     return (
@@ -211,16 +218,19 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
                         <td className="py-3 px-3 text-right font-mono font-bold text-amber-600">
                           {s2.toLocaleString()} <span className="text-[10px] text-slate-400">PCS</span>
                         </td>
+                        <td className="py-3 px-3 text-right font-mono font-black text-rose-600 text-sm bg-rose-50/50">
+                          {s1PlusS2.toLocaleString()} <span className="text-[10px] text-rose-500 font-bold">PCS</span>
+                        </td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600">
                           {s3.toLocaleString()} <span className="text-[10px] text-slate-400">PCS</span>
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-black text-rose-600 text-sm">
-                          {total.toLocaleString()} <span className="text-[10px] text-rose-500 font-bold">PCS</span>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">
+                          {total.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">PCS</span>
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200 font-mono uppercase shadow-2xs">
                             <AlertTriangle className="w-3 h-3 text-rose-600" />
-                            LOW STOCK
+                            &lt; 100 PCS
                           </span>
                         </td>
                       </tr>

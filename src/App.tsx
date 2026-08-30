@@ -57,11 +57,11 @@ export default function App() {
   });
   const [isGlobalLowStockModalOpen, setIsGlobalLowStockModalOpen] = useState(false);
 
-  // Authoritative real-time low stock calculation (Total Stock < 100 PCS)
+  // Authoritative real-time low stock calculation (Stock 1 + Stock 2 < 100 PCS)
   const lowStockReferences = useMemo(() => {
     return references.filter((r) => {
-      const total = (r.stock1 || 0) + (r.stock2 || 0) + (r.stock3 || 0);
-      return total < 100;
+      const s1PlusS2 = (r.stock1 || 0) + (r.stock2 || 0);
+      return s1PlusS2 < 100;
     });
   }, [references]);
 
@@ -707,7 +707,7 @@ export default function App() {
         });
       }
 
-      // 2. Create box records, transactions, and adjustments for each individual scanned box
+      // 2. Create box records and transaction logs for each individual scanned box
       for (let i = 0; i < invoiceData.items.length; i++) {
         const item = invoiceData.items[i];
         const diff = item.quantity - item.expectedQty;
@@ -715,9 +715,10 @@ export default function App() {
           ? `Discrepancy: Label=${item.expectedQty}, Real=${item.quantity} (${diff > 0 ? '+' : ''}${diff} PCS)` 
           : "";
 
-        const boxDocRef = doc(db, "boxes", item.boxBarcode);
+        const safeBoxDocId = (item.id || item.boxBarcode || `box-${Date.now()}-${i}`).replace(/[\/\\]/g, "-").replace(/\s+/g, "_");
+        const boxDocRef = doc(db, "boxes", safeBoxDocId);
         transaction.set(boxDocRef, cleanUndefined({
-          id: item.boxBarcode,
+          id: safeBoxDocId,
           barcode: item.boxBarcode,
           reference: item.reference,
           expectedQty: item.expectedQty,
@@ -747,29 +748,6 @@ export default function App() {
           notes: diff !== 0
             ? `Received via Invoice ${invoiceData.invoiceNumber} (Label: ${item.expectedQty} | Count: ${item.quantity} | Diff: ${diff > 0 ? '+' : ''}${diff} PCS)`
             : `Received via Invoice ${invoiceData.invoiceNumber}`,
-          invoiceNumber: invoiceData.invoiceNumber,
-          palletQuality: discNote
-        }));
-
-        const adjId = `adj-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 5)}`;
-        const adjDocRef = doc(db, "adjustments", adjId);
-        const refItemData = refDocs.find(r => r.code === item.reference)?.data;
-        const currentStock1 = refItemData?.stock1 || 0;
-
-        transaction.set(adjDocRef, cleanUndefined({
-          id: adjId,
-          barcode: item.boxBarcode,
-          reference: item.reference,
-          expectedQty: item.expectedQty,
-          actualQty: item.quantity,
-          difference: diff,
-          operatorName: currentUser.fullName,
-          timestamp: now,
-          status: "approved",
-          materialType: item.materialType || "Mesh",
-          stockBefore: currentStock1,
-          stockAdded: item.quantity,
-          stockAfter: currentStock1 + (refQtyMap[item.reference] || 0),
           invoiceNumber: invoiceData.invoiceNumber,
           palletQuality: discNote
         }));
@@ -997,7 +975,7 @@ export default function App() {
         let s2 = refData.stock2;
         let s3 = refData.stock3;
         if (delData.deliveryType === "PRECOSIDO") {
-          s1 = Math.max(0, s1 - delta);
+          s2 = Math.max(0, s2 - delta);
         } else {
           s3 = Math.max(0, s3 - delta);
         }
@@ -1148,8 +1126,8 @@ export default function App() {
         timestamp: now,
         notes: `Edited Scrap ${oldQty} → ${newQty}. Reason: ${reason}`
       });
-    } else if (category === "transaction") {
-      const txId = opId.startsWith("tx-") ? opId.replace("tx-", "") : opId;
+    } else if (category === "transfer" || category === "return" || category === "transaction") {
+      const txId = opId.startsWith("tx-") ? opId.replace("tx-", "") : opId.startsWith("batch-trf-") ? opId.replace("batch-trf-", "") : opId;
       const txRef = doc(db, "transactions", txId);
       const txSnap = await getDoc(txRef);
       if (!txSnap.exists()) throw new Error("Transaction record not found");
@@ -1165,18 +1143,26 @@ export default function App() {
         let s2 = refData.stock2;
         let s3 = refData.stock3;
 
-        const isAddition = txData.movementType?.includes("IN") || txData.movementType?.includes("ADD") || txData.movementType?.includes("ADJUSTMENT");
-        const change = isAddition ? delta : -delta;
-
-        if (txData.stock === "Stock 1") {
-          s1 = Math.max(0, s1 + change);
-        } else if (txData.stock === "Stock 2") {
-          s2 = Math.max(0, s2 + change);
-        } else if (txData.stock === "Stock 3") {
-          s3 = Math.max(0, s3 + change);
-        } else if (txData.stock === "Stock 2 -> Stock 3") {
+        if (txData.movementType === "TRANSFER S1->S2" || txData.movementType === "TRANSFER") {
+          s1 = Math.max(0, s1 - delta);
+          s2 = Math.max(0, s2 + delta);
+        } else if (txData.movementType === "RETURN S2->S1" || txData.movementType?.includes("RETURN")) {
           s2 = Math.max(0, s2 - delta);
-          s3 = Math.max(0, s3 + delta);
+          s1 = Math.max(0, s1 + delta);
+        } else {
+          const isAddition = txData.movementType?.includes("IN") || txData.movementType?.includes("ADD") || txData.movementType?.includes("ADJUSTMENT");
+          const change = isAddition ? delta : -delta;
+
+          if (txData.stock === "Stock 1") {
+            s1 = Math.max(0, s1 + change);
+          } else if (txData.stock === "Stock 2") {
+            s2 = Math.max(0, s2 + change);
+          } else if (txData.stock === "Stock 3") {
+            s3 = Math.max(0, s3 + change);
+          } else if (txData.stock === "Stock 2 -> Stock 3") {
+            s2 = Math.max(0, s2 - delta);
+            s3 = Math.max(0, s3 + delta);
+          }
         }
 
         const newTotal = s1 + s2 + s3;
@@ -1367,8 +1353,45 @@ export default function App() {
         timestamp: now,
         notes: `Deleted scrap reversal. Reason: ${reason}`
       });
-    } else if (category === "transaction") {
-      const txId = opId.startsWith("tx-") ? opId.replace("tx-", "") : opId;
+    } else if (category === "invoice") {
+      const invRef = doc(db, "invoices", opId);
+      const invSnap = await getDoc(invRef);
+      if (!invSnap.exists()) throw new Error("Invoice record not found");
+      const invData = invSnap.data() as ReceivingInvoice;
+
+      // Reverse stock 1 additions for all items in the invoice
+      if (invData.status === "approved" && invData.items) {
+        for (const item of invData.items) {
+          const refRef = doc(db, "references", item.reference);
+          const refSnap = await getDoc(refRef);
+          if (refSnap.exists()) {
+            const refData = refSnap.data() as Reference;
+            const newS1 = Math.max(0, refData.stock1 - item.quantity);
+            const newTotal = newS1 + refData.stock2 + refData.stock3;
+            batch.set(refRef, {
+              stock1: newS1,
+              currentStock: newTotal,
+              lastUpdate: now
+            }, { merge: true });
+          }
+        }
+      }
+
+      batch.delete(invRef);
+
+      const transId = `trans-del-inv-${Date.now()}`;
+      batch.set(doc(db, "transactions", transId), {
+        id: transId,
+        reference: invData.invoiceNumber,
+        movementType: "STOCK 1 OUT",
+        stock: "Stock 1",
+        quantity: invData.totalQuantity || 0,
+        operatorName: `${currentUser.fullName} (Reversal)`,
+        timestamp: now,
+        notes: `Deleted invoice intake #${invData.invoiceNumber} reversal. Reason: ${reason}`
+      });
+    } else if (category === "transfer" || category === "return" || category === "transaction") {
+      const txId = opId.startsWith("tx-") ? opId.replace("tx-", "") : opId.startsWith("batch-trf-") ? opId.replace("batch-trf-", "") : opId;
       const txRef = doc(db, "transactions", txId);
       const txSnap = await getDoc(txRef);
       if (!txSnap.exists()) throw new Error("Transaction record not found");
@@ -1383,19 +1406,27 @@ export default function App() {
         let s3 = refData.stock3;
 
         const qty = txData.quantity || 0;
-        const isAddition = txData.movementType?.includes("IN") || txData.movementType?.includes("ADD") || txData.movementType?.includes("ADJUSTMENT");
-        const factor = isAddition ? -1 : 1;
-        const change = qty * factor;
+        if (txData.movementType === "TRANSFER S1->S2" || txData.movementType === "TRANSFER") {
+          s1 = s1 + qty;
+          s2 = Math.max(0, s2 - qty);
+        } else if (txData.movementType === "RETURN S2->S1" || txData.movementType?.includes("RETURN")) {
+          s2 = s2 + qty;
+          s1 = Math.max(0, s1 - qty);
+        } else {
+          const isAddition = txData.movementType?.includes("IN") || txData.movementType?.includes("ADD") || txData.movementType?.includes("ADJUSTMENT");
+          const factor = isAddition ? -1 : 1;
+          const change = qty * factor;
 
-        if (txData.stock === "Stock 1") {
-          s1 = Math.max(0, s1 + change);
-        } else if (txData.stock === "Stock 2") {
-          s2 = Math.max(0, s2 + change);
-        } else if (txData.stock === "Stock 3") {
-          s3 = Math.max(0, s3 + change);
-        } else if (txData.stock === "Stock 2 -> Stock 3") {
-          s2 = Math.max(0, s2 + qty);
-          s3 = Math.max(0, s3 - qty);
+          if (txData.stock === "Stock 1") {
+            s1 = Math.max(0, s1 + change);
+          } else if (txData.stock === "Stock 2") {
+            s2 = Math.max(0, s2 + change);
+          } else if (txData.stock === "Stock 3") {
+            s3 = Math.max(0, s3 + change);
+          } else if (txData.stock === "Stock 2 -> Stock 3") {
+            s2 = Math.max(0, s2 + qty);
+            s3 = Math.max(0, s3 - qty);
+          }
         }
 
         const newTotal = s1 + s2 + s3;
@@ -1409,6 +1440,18 @@ export default function App() {
       }
 
       batch.delete(txRef);
+
+      const transId = `trans-del-tx-${Date.now()}`;
+      batch.set(doc(db, "transactions", transId), {
+        id: transId,
+        reference: txData.reference || "System",
+        movementType: "REVERSAL",
+        stock: txData.stock || "Stock Balances",
+        quantity: txData.quantity || 0,
+        operatorName: `${currentUser.fullName} (Reversal)`,
+        timestamp: now,
+        notes: `Deleted operation (${txData.movementType}) reversal. Reason: ${reason}`
+      });
     }
 
     await batch.commit();

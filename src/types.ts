@@ -52,7 +52,7 @@ export interface Delivery {
   operatorName: string;
   timestamp: string;
   customer: string;
-  deliveryType?: "PRECOSIDO" | "Villanova" | "Mini Project" | "Normal Delivery";
+  deliveryType?: "PRECOSIDO" | "STEERING WHEELS" | "Villanova" | "Mini Project" | "Normal Delivery";
   notes?: string;
   status?: "completed" | "edited" | "deleted";
   changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number; reason: string }>;
@@ -116,7 +116,7 @@ export interface InventoryTransaction {
   operatorName: string;
   timestamp: string;
   notes?: string;
-  deliveryType?: "PRECOSIDO" | "Villanova" | "Mini Project" | "Normal Delivery";
+  deliveryType?: "PRECOSIDO" | "STEERING WHEELS" | "Villanova" | "Mini Project" | "Normal Delivery";
   stock1Before?: number;
   stock1After?: number;
   stock2Before?: number;

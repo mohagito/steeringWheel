@@ -53,15 +53,15 @@ export default function DashboardOverview({
     return new Date().toISOString().split("T")[0];
   }, []);
 
-  // 1. Calculate General Metrics & Low Stock Count (Total Stock < 100 PCS)
+  // 1. Calculate General Metrics & Low Stock Count (Stock 1 + Stock 2 < 100 PCS)
   const metrics = useMemo(() => {
     const totalWarehouseStock = references.reduce((sum, r) => sum + (r.stock1 || 0), 0);
     const totalProductionStock = references.reduce((sum, r) => sum + (r.stock2 || 0), 0);
     const totalFinishedStock = references.reduce((sum, r) => sum + (r.stock3 || 0), 0);
 
     const lowStockRefs = references.filter(r => {
-      const total = (r.stock1 || 0) + (r.stock2 || 0) + (r.stock3 || 0);
-      return total < 100;
+      const s1PlusS2 = (r.stock1 || 0) + (r.stock2 || 0);
+      return s1PlusS2 < 100;
     });
 
     const todaysTransfers = transactions
@@ -89,8 +89,8 @@ export default function DashboardOverview({
                             ref.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesMaterial = materialFilter === "All" || ref.materialType === materialFilter;
       
-      const total = (ref.stock1 || 0) + (ref.stock2 || 0) + (ref.stock3 || 0);
-      const isLowStock = total < 100;
+      const s1PlusS2 = (ref.stock1 || 0) + (ref.stock2 || 0);
+      const isLowStock = s1PlusS2 < 100;
       const matchesStockStatus = stockStatusFilter === "All" || 
                                  (stockStatusFilter === "Low Stock" && isLowStock) || 
                                  (stockStatusFilter === "Normal" && !isLowStock);
@@ -673,7 +673,8 @@ export default function DashboardOverview({
                 const s2 = ref.stock2 || 0;
                 const s3 = ref.stock3 || 0;
                 const total = s1 + s2 + s3;
-                const isLow = total < 100;
+                const s1PlusS2 = s1 + s2;
+                const isLow = s1PlusS2 < 100;
 
                 return (
                   <tr key={ref.id} className={`hover:bg-slate-50/70 transition-colors ${isLow ? "bg-rose-50/20" : ""}`}>

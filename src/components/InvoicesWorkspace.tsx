@@ -190,7 +190,7 @@ export default function InvoicesWorkspace({
       "Created Date",
       "Approved Date",
       "Operator",
-      "Box Barcode",
+      "Reference Description",
       "Reference Code",
       "Customer",
       "Material Type",
@@ -212,7 +212,7 @@ export default function InvoicesWorkspace({
             `"${i.createdAt}"`,
             `"${i.approvedAt || ''}"`,
             `"${i.operator}"`,
-            `"${it.boxBarcode || it.id}"`,
+            `"${refData?.description || ''}"`,
             `"${it.reference}"`,
             `"${refData?.customer || 'Standard'}"`,
             `"${refData?.materialType || it.materialType || 'Mesh'}"`,
@@ -783,73 +783,6 @@ export default function InvoicesWorkspace({
                   </div>
                 </div>
 
-                {/* Reference Hierarchical Grouping Breakdown */}
-                <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
-                  <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-indigo-600" />
-                      <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                        Reference Breakdown Grouping
-                      </h3>
-                    </div>
-                    <span className="text-[11px] text-slate-500 font-mono">
-                      {selectedInvoiceBreakdown.length} unique references
-                    </span>
-                  </div>
-
-                  <div className="p-4 divide-y divide-slate-100 space-y-3">
-                    {selectedInvoiceBreakdown.map((grp) => {
-                      const percentage = selectedInvoice.totalQuantity > 0 
-                        ? Math.round((grp.totalQuantity / selectedInvoice.totalQuantity) * 100)
-                        : 0;
-
-                      return (
-                        <div key={grp.reference} className="pt-3 first:pt-0">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-sm text-slate-900">
-                                  {grp.reference}
-                                </span>
-                                <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                                  {grp.materialType}
-                                </span>
-                                <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
-                                  {grp.customer}
-                                </span>
-                              </div>
-                              {grp.description && (
-                                <div className="text-xs text-slate-500">
-                                  {grp.description}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-3 font-mono">
-                              <div className="text-right">
-                                <div className="text-sm font-extrabold text-slate-800">
-                                  {grp.totalQuantity.toLocaleString()} PCS
-                                </div>
-                                <div className="text-[11px] text-slate-500">
-                                  {grp.boxCount} {grp.boxCount === 1 ? 'box' : 'boxes'} ({percentage}%)
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Progress bar visual */}
-                          <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
-                            <div 
-                              className="bg-blue-600 h-full rounded-full transition-all duration-300"
-                              style={{ width: `${percentage}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 {/* Individual Scanned Records Table */}
                 <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
                   <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -866,7 +799,7 @@ export default function InvoicesWorkspace({
                       <thead>
                         <tr className="bg-slate-100/60 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">
                           <th className="p-3">#</th>
-                          <th className="p-3">BOX BARCODE / ID</th>
+                          <th className="p-3">REFERENCE DESCRIPTION</th>
                           <th className="p-3">REFERENCE</th>
                           <th className="p-3 text-right">EXPECTED</th>
                           <th className="p-3 text-right">SCANNED (PCS)</th>
@@ -877,11 +810,13 @@ export default function InvoicesWorkspace({
                       <tbody className="divide-y divide-slate-100">
                         {selectedInvoice.items?.map((item, idx) => {
                           const diff = item.difference || 0;
+                          const refData = refMap.get(item.reference.toUpperCase());
+                          const refDesc = refData?.description || item.description || "—";
                           return (
                             <tr key={item.id || idx} className="hover:bg-slate-50">
                               <td className="p-3 text-slate-400 font-mono">{idx + 1}</td>
-                              <td className="p-3 font-mono font-medium text-slate-700">
-                                {item.boxBarcode || item.id}
+                              <td className="p-3 font-sans font-medium text-slate-800">
+                                {refDesc}
                               </td>
                               <td className="p-3 font-mono font-bold text-slate-900">
                                 {item.reference}
@@ -912,16 +847,7 @@ export default function InvoicesWorkspace({
                   </div>
                 </div>
 
-                {/* Audit Details */}
-                <div className="p-4 bg-slate-100/70 rounded-lg border border-slate-200 text-xs text-slate-600 space-y-1 font-mono">
-                  <div className="font-bold text-slate-700 uppercase">System Traceability Record</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                    <div><strong>Session ID:</strong> {selectedInvoice.id}</div>
-                    <div><strong>Created At:</strong> {selectedInvoice.createdAt}</div>
-                    <div><strong>Operator:</strong> {selectedInvoice.operator}</div>
-                    <div><strong>Approval:</strong> {selectedInvoice.approvedAt ? `Approved at ${selectedInvoice.approvedAt}` : 'Pending validation'}</div>
-                  </div>
-                </div>
+
 
               </div>
 
