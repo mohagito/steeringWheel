@@ -3,7 +3,8 @@ import { Production, Reference, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Factory, Search, Package, AlertCircle, Plus, Calendar, FileText, 
-  BarChart2, User as UserIcon, CheckCircle, TrendingDown, ArrowUpRight, HelpCircle, Trash2
+  BarChart2, User as UserIcon, CheckCircle, TrendingDown, ArrowUpRight, HelpCircle, 
+  Trash2, Edit2, X, RotateCcw, AlertTriangle, Layers, Clock
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
@@ -14,6 +15,12 @@ interface ProductionWorkspaceProps {
   references: Reference[];
   currentUser: User;
   onSubmitProduction: (productionEntries: { date: string; reference: string; quantity: number; notes?: string }[]) => Promise<void>;
+  onDeleteProduction?: (productionId: string, reason?: string) => Promise<void>;
+  onUpdateProduction?: (
+    productionId: string, 
+    updatedData: { date: string; reference: string; quantity: number; notes?: string }, 
+    reason?: string
+  ) => Promise<void>;
 }
 
 interface ProductionRow {
@@ -25,7 +32,9 @@ export default function ProductionWorkspace({
   productions,
   references,
   currentUser,
-  onSubmitProduction
+  onSubmitProduction,
+  onDeleteProduction,
+  onUpdateProduction
 }: ProductionWorkspaceProps) {
   // Default to today's date in YYYY-MM-DD
   const getTodayString = () => {
@@ -57,6 +66,124 @@ export default function ProductionWorkspace({
   // Search and filter for history logs
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState(""); // empty means no filter
+
+  // Edit record state
+  const [editingProduction, setEditingProduction] = useState<Production | null>(null);
+  const [editDate, setEditDate] = useState("");
+  const [editReference, setEditReference] = useState("");
+  const [editQuantity, setEditQuantity] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  const handleOpenEdit = (p: Production) => {
+    setEditingProduction(p);
+    setEditDate(p.date);
+    setEditReference(p.reference);
+    setEditQuantity(p.quantity.toString());
+    setEditNotes(p.notes || "");
+    setEditReason("");
+    setEditError("");
+  };
+
+  const handleCloseEdit = () => {
+    setEditingProduction(null);
+    setSavingEdit(false);
+    setEditError("");
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduction || !onUpdateProduction) return;
+    setEditError("");
+
+    const qty = parseInt(editQuantity, 10);
+    if (isNaN(qty) || qty <= 0) {
+      setEditError("Please enter a valid quantity greater than 0.");
+      return;
+    }
+
+    if (!editReference) {
+      setEditError("Please select a valid reference.");
+      return;
+    }
+
+    if (!editDate) {
+      setEditError("Please specify a production date.");
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      await onUpdateProduction(
+        editingProduction.id,
+        {
+          date: editDate,
+          reference: editReference,
+          quantity: qty,
+          notes: editNotes.trim() || undefined
+        },
+        editReason.trim() || "Modified production record"
+      );
+
+      Swal.fire({
+        title: "Record Updated",
+        text: `Production record for ${editReference} (${qty} PCS) successfully updated.`,
+        icon: "success",
+        timer: 1800,
+        showConfirmButton: false
+      });
+
+      handleCloseEdit();
+    } catch (err: any) {
+      console.error("Failed to update production:", err);
+      setEditError(err?.message || "Failed to update record.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteRecord = async (p: Production) => {
+    if (!onDeleteProduction) return;
+
+    const result = await Swal.fire({
+      title: "Revert Production Record?",
+      html: `
+        <div class="text-left text-xs font-mono space-y-2 bg-rose-50 p-3.5 border border-rose-200 text-rose-950 rounded-xl mb-3">
+          <p><strong>Reference:</strong> ${p.reference}</p>
+          <p><strong>Quantity:</strong> ${p.quantity.toLocaleString()} PCS</p>
+          <p><strong>Date:</strong> ${p.date}</p>
+          <p><strong>Logged by:</strong> ${p.operatorName}</p>
+        </div>
+        <p class="text-sm font-sans text-slate-700">
+          Reverting will restore <strong>${p.quantity.toLocaleString()} PCS</strong> back to <strong>Stock 2 (WIP)</strong> and deduct <strong>${p.quantity.toLocaleString()} PCS</strong> from <strong>Stock 3 (Finished Goods)</strong>.
+        </p>
+      `,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Revert & Restore Stock",
+      cancelButtonText: "Cancel"
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await onDeleteProduction(p.id, "User deleted production entry");
+        Swal.fire({
+          title: "Production Record Deleted",
+          text: `Successfully reverted ${p.quantity} PCS for ${p.reference} between Stock 2 and Stock 3.`,
+          icon: "success",
+          timer: 1800,
+          showConfirmButton: false
+        });
+      } catch (err: any) {
+        console.error("Failed to delete production:", err);
+        Swal.fire("Error", err?.message || "Failed to delete production record.", "error");
+      }
+    }
+  };
 
   const handleAddRow = () => {
     setRows([...rows, { referenceCode: "", quantity: "" }]);
@@ -237,6 +364,12 @@ export default function ProductionWorkspace({
     const dates = new Set(productions.map((p) => p.date));
     return Array.from(dates).sort((a, b) => b.localeCompare(a));
   }, [productions]);
+
+  // Selected reference object for the edit modal to display live stock preview
+  const editingRefObj = useMemo(() => {
+    if (!editReference) return null;
+    return references.find((r) => r.code === editReference) || null;
+  }, [references, editReference]);
 
   return (
     <div className="space-y-6" id="production-workspace">
@@ -480,11 +613,11 @@ export default function ProductionWorkspace({
 
         {/* Right Column: Daily Production Logs History */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="glass-panel p-5 sm:p-6">
+          <div className="glass-panel p-5 sm:p-6" id="production-history-ledger-card">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Consumption Ledger</h3>
-                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Production output logs</p>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Production output logs &amp; management</p>
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -524,7 +657,10 @@ export default function ProductionWorkspace({
                     <th>Consumed Qty</th>
                     <th>Logged By</th>
                     <th>Notes</th>
-                    <th className="text-right">Timestamp</th>
+                    <th>Timestamp</th>
+                    {(onUpdateProduction || onDeleteProduction) && (
+                      <th className="text-right">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -538,34 +674,70 @@ export default function ProductionWorkspace({
 
                     return (
                       <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="font-mono font-semibold text-slate-800">
+                        <td className="font-mono font-semibold text-slate-800 whitespace-nowrap">
                           <span className="inline-flex items-center gap-1">
                             <Calendar className="w-3 h-3 text-slate-400" />
                             {p.date}
                           </span>
                         </td>
-                        <td className="font-mono font-bold text-blue-700">
-                          {p.reference}
+                        <td className="font-mono font-bold text-blue-700 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span>{p.reference}</span>
+                            {p.status === "edited" && (
+                              <span 
+                                className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-200"
+                                title="This production record was modified"
+                              >
+                                EDITED
+                              </span>
+                            )}
+                          </div>
                         </td>
-                        <td className="font-mono font-bold text-slate-900 text-xs">
+                        <td className="font-mono font-bold text-slate-900 text-xs whitespace-nowrap">
                           {p.quantity.toLocaleString()} pcs
                         </td>
-                        <td className="text-slate-600 font-sans font-medium text-xs">
+                        <td className="text-slate-600 font-sans font-medium text-xs whitespace-nowrap">
                           {p.operatorName}
                         </td>
-                        <td className="text-slate-500 max-w-[160px] truncate" title={p.notes || ""}>
+                        <td className="text-slate-500 max-w-[140px] truncate" title={p.notes || ""}>
                           {p.notes || <span className="text-slate-300 italic">-</span>}
                         </td>
-                        <td className="text-right text-slate-400 font-mono text-[10px]">
+                        <td className="text-slate-400 font-mono text-[10px] whitespace-nowrap">
                           {formattedDate}
                         </td>
+                        {(onUpdateProduction || onDeleteProduction) && (
+                          <td className="text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              {onUpdateProduction && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEdit(p)}
+                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Edit Production Record"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {onDeleteProduction && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRecord(p)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Delete & Revert Stock"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
 
                   {filteredProductions.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400 bg-slate-50/20">
+                      <td colSpan={onUpdateProduction || onDeleteProduction ? 7 : 6} className="py-12 text-center text-slate-400 bg-slate-50/20">
                         <AlertCircle className="w-7 h-7 mx-auto mb-2 opacity-40 text-slate-500" />
                         <p className="text-xs font-semibold">No production records found</p>
                       </td>
@@ -578,6 +750,169 @@ export default function ProductionWorkspace({
         </div>
 
       </div>
+
+      {/* Edit Production Record Modal */}
+      <AnimatePresence>
+        {editingProduction && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white border border-slate-200 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className="p-5 sm:p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shadow-xs">
+                    <Edit2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 font-mono">Edit Production Record</h3>
+                    <p className="text-xs text-slate-500 font-mono mt-0.5">
+                      Adjust output quantity or reference with automatic stock balancing.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseEdit}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 rounded-xl transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Modal Body Form */}
+              <form onSubmit={handleSaveEdit} className="p-5 sm:p-6 space-y-4">
+                {editError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <p className="font-medium">{editError}</p>
+                  </div>
+                )}
+
+                {/* Date */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Production Date
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-semibold text-slate-900"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Reference */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Reference
+                  </label>
+                  <CustomReferenceSelect
+                    references={references}
+                    value={editReference}
+                    onChange={(val) => setEditReference(val)}
+                    placeholder="Select Reference..."
+                    required
+                  />
+                  {editingRefObj && (
+                    <div className="flex items-center gap-3 text-[11px] font-mono mt-1.5 px-2.5 py-1 bg-slate-50 rounded-lg border border-slate-100 text-slate-600">
+                      <span>S2 WIP: <strong className="text-amber-600">{editingRefObj.stock2 || 0}</strong></span>
+                      <span>S3 Finished: <strong className="text-emerald-600">{editingRefObj.stock3 || 0}</strong></span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quantity */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Consumed / Produced Quantity (PCS)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="1"
+                      value={editQuantity}
+                      onChange={(e) => setEditQuantity(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-mono font-bold text-slate-900"
+                      required
+                    />
+                  </div>
+                  {editingProduction && parseInt(editQuantity, 10) !== editingProduction.quantity && !isNaN(parseInt(editQuantity, 10)) && (
+                    <div className="text-[10px] font-mono text-blue-600 mt-1 flex items-center gap-1 font-semibold">
+                      <span>Diff: {parseInt(editQuantity, 10) - editingProduction.quantity > 0 ? "+" : ""}{parseInt(editQuantity, 10) - editingProduction.quantity} PCS</span>
+                      <span className="text-slate-400">(Original: {editingProduction.quantity} PCS)</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Shift Notes
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Shift or line notes..."
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white text-slate-800"
+                  />
+                </div>
+
+                {/* Reason for Edit */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Reason for Modification (Audit Trail)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Corrected count typo / adjusted shift log"
+                    value={editReason}
+                    onChange={(e) => setEditReason(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white text-slate-800"
+                  />
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleCloseEdit}
+                    disabled={savingEdit}
+                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEdit}
+                    className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    {savingEdit ? (
+                      <>
+                        <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>Save Changes</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

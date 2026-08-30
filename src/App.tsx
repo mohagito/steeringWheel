@@ -636,6 +636,168 @@ export default function App() {
     await batch.commit();
   };
 
+  // Action: Delete / Revert a production entry (moves quantity back from Stock 3 Finished Goods to Stock 2 WIP)
+  const handleDeleteProduction = async (productionId: string, reason?: string) => {
+    let prodData = productions.find(p => p.id === productionId);
+    if (!prodData) {
+      const pDoc = await getDoc(doc(db, "productions", productionId));
+      if (!pDoc.exists()) throw new Error("Production record not found.");
+      prodData = pDoc.data() as Production;
+    }
+
+    const batch = writeBatch(db);
+    const refCode = prodData.reference;
+    const qty = prodData.quantity;
+    const timestamp = new Date().toISOString();
+
+    const refDocRef = doc(db, "references", refCode);
+    const refSnap = await getDoc(refDocRef);
+
+    if (refSnap.exists()) {
+      const d = refSnap.data();
+      const s1 = d.stock1 || 0;
+      const s2 = d.stock2 || 0;
+      const s3 = d.stock3 || 0;
+
+      const newStock2 = s2 + qty;
+      const newStock3 = Math.max(0, s3 - qty);
+      const newTotal = s1 + newStock2 + newStock3;
+
+      batch.set(refDocRef, {
+        stock2: newStock2,
+        stock3: newStock3,
+        currentStock: newTotal,
+        lastUpdate: timestamp
+      }, { merge: true });
+    }
+
+    batch.delete(doc(db, "productions", productionId));
+
+    // Audit log
+    const transId = `trans-delprod-${Date.now()}`;
+    batch.set(doc(db, "transactions", transId), {
+      id: transId,
+      reference: refCode,
+      movementType: "STOCK 3 OUT / STOCK 2 IN",
+      stock: "Stock 3 -> Stock 2",
+      quantity: qty,
+      operatorName: currentUser ? `${currentUser.fullName} (Reversal)` : "System",
+      timestamp,
+      notes: `Deleted production entry on ${prodData.date} (${qty} PCS reverted from Stock 3 to Stock 2). ${reason ? `Reason: ${reason}` : ""}`
+    });
+
+    await batch.commit();
+  };
+
+  // Action: Modify an existing production entry
+  const handleUpdateProduction = async (
+    productionId: string,
+    updatedData: { date: string; reference: string; quantity: number; notes?: string },
+    reason?: string
+  ) => {
+    if (!currentUser) throw new Error("No authenticated user session.");
+    const prodDocRef = doc(db, "productions", productionId);
+    const prodSnap = await getDoc(prodDocRef);
+    if (!prodSnap.exists()) throw new Error("Production record not found.");
+
+    const oldData = prodSnap.data() as Production;
+    const oldQty = oldData.quantity || 0;
+    const newQty = updatedData.quantity;
+    const oldRefCode = oldData.reference;
+    const newRefCode = updatedData.reference;
+    const timestamp = new Date().toISOString();
+    const batch = writeBatch(db);
+
+    if (oldRefCode === newRefCode) {
+      const delta = newQty - oldQty;
+      if (delta !== 0) {
+        const refDocRef = doc(db, "references", newRefCode);
+        const refSnap = await getDoc(refDocRef);
+        if (refSnap.exists()) {
+          const d = refSnap.data();
+          const s1 = d.stock1 || 0;
+          const s2 = Math.max(0, (d.stock2 || 0) - delta);
+          const s3 = Math.max(0, (d.stock3 || 0) + delta);
+          const newTotal = s1 + s2 + s3;
+
+          batch.set(refDocRef, {
+            stock2: s2,
+            stock3: s3,
+            currentStock: newTotal,
+            lastUpdate: timestamp
+          }, { merge: true });
+        }
+      }
+    } else {
+      // Revert old reference
+      const oldRefDocRef = doc(db, "references", oldRefCode);
+      const oldRefSnap = await getDoc(oldRefDocRef);
+      if (oldRefSnap.exists()) {
+        const d = oldRefSnap.data();
+        const s1 = d.stock1 || 0;
+        const s2 = (d.stock2 || 0) + oldQty;
+        const s3 = Math.max(0, (d.stock3 || 0) - oldQty);
+        batch.set(oldRefDocRef, {
+          stock2: s2,
+          stock3: s3,
+          currentStock: s1 + s2 + s3,
+          lastUpdate: timestamp
+        }, { merge: true });
+      }
+
+      // Apply new reference
+      const newRefDocRef = doc(db, "references", newRefCode);
+      const newRefSnap = await getDoc(newRefDocRef);
+      if (newRefSnap.exists()) {
+        const d = newRefSnap.data();
+        const s1 = d.stock1 || 0;
+        const s2 = Math.max(0, (d.stock2 || 0) - newQty);
+        const s3 = Math.max(0, (d.stock3 || 0) + newQty);
+        batch.set(newRefDocRef, {
+          stock2: s2,
+          stock3: s3,
+          currentStock: s1 + s2 + s3,
+          lastUpdate: timestamp
+        }, { merge: true });
+      }
+    }
+
+    const historyEntry = {
+      action: "EDIT",
+      oldQty,
+      newQty,
+      delta: newQty - oldQty,
+      modifiedBy: currentUser.fullName,
+      timestamp: Date.now(),
+      reason: reason || "User updated production log"
+    };
+
+    const existingHistory = oldData.changeHistory || [];
+
+    batch.update(prodDocRef, {
+      date: updatedData.date,
+      reference: newRefCode,
+      quantity: newQty,
+      notes: updatedData.notes || "",
+      status: "edited",
+      changeHistory: [...existingHistory, historyEntry]
+    });
+
+    const transId = `trans-editprod-${Date.now()}`;
+    batch.set(doc(db, "transactions", transId), {
+      id: transId,
+      reference: newRefCode,
+      movementType: "STOCK 2 OUT / STOCK 3 IN",
+      stock: "Stock 2 -> Stock 3",
+      quantity: newQty,
+      operatorName: `${currentUser.fullName} (Correction)`,
+      timestamp,
+      notes: `Edited production ${oldRefCode} (${oldQty} PCS) → ${newRefCode} (${newQty} PCS). ${reason ? `Reason: ${reason}` : ""}`
+    });
+
+    await batch.commit();
+  };
+
   // Action: Save or update a pending receiving invoice session in Firestore
   const handleSavePendingInvoice = async (invoice: ReceivingInvoice) => {
     const invoiceRef = doc(db, "invoices", invoice.id);
@@ -2264,6 +2426,8 @@ export default function App() {
                   references={references}
                   currentUser={currentUser}
                   onSubmitProduction={handleSubmitProduction}
+                  onDeleteProduction={handleDeleteProduction}
+                  onUpdateProduction={handleUpdateProduction}
                 />
               )}
 
