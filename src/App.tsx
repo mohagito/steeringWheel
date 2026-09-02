@@ -948,6 +948,104 @@ export default function App() {
     await deleteDoc(invoiceRef);
   };
 
+  // Action: Modify an existing invoice with automatic Stock 1 reconciliation for approved invoices
+  const handleUpdateInvoice = async (updatedInvoice: ReceivingInvoice, previousInvoice?: ReceivingInvoice) => {
+    if (!currentUser) throw new Error("No authenticated user session.");
+    const now = new Date().toISOString();
+
+    const totalBoxes = updatedInvoice.items?.length || 0;
+    const totalQuantity = (updatedInvoice.items || []).reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+
+    const safeInvoice: ReceivingInvoice = {
+      ...updatedInvoice,
+      totalBoxes,
+      totalQuantity,
+      invoiceNumber: updatedInvoice.invoiceNumber.trim().toUpperCase()
+    };
+
+    // If invoice is already approved and previous state exists, reconcile Stock 1 changes
+    if (safeInvoice.status === "approved" && previousInvoice && previousInvoice.status === "approved") {
+      await runTransaction(db, async (transaction) => {
+        const invoiceRef = doc(db, "invoices", safeInvoice.id);
+        const invoiceSnap = await transaction.get(invoiceRef);
+        if (!invoiceSnap.exists()) {
+          throw new Error("Invoice record no longer exists.");
+        }
+
+        // Calculate quantity differences per reference
+        const oldMap: Record<string, number> = {};
+        (previousInvoice.items || []).forEach((it) => {
+          const code = it.reference.trim().toUpperCase();
+          oldMap[code] = (oldMap[code] || 0) + (Number(it.quantity) || 0);
+        });
+
+        const newMap: Record<string, number> = {};
+        (safeInvoice.items || []).forEach((it) => {
+          const code = it.reference.trim().toUpperCase();
+          newMap[code] = (newMap[code] || 0) + (Number(it.quantity) || 0);
+        });
+
+        const allRefs = Array.from(new Set([...Object.keys(oldMap), ...Object.keys(newMap)]));
+
+        // Read all involved references inside atomic transaction
+        const refDocs: { ref: any; data: Reference; code: string; delta: number }[] = [];
+        for (const code of allRefs) {
+          const delta = (newMap[code] || 0) - (oldMap[code] || 0);
+          if (delta !== 0) {
+            const refDocRef = doc(db, "references", code);
+            const refSnap = await transaction.get(refDocRef);
+            if (refSnap.exists()) {
+              refDocs.push({ ref: refDocRef, data: refSnap.data() as Reference, code, delta });
+            }
+          }
+        }
+
+        // Apply Stock 1 adjustments & log inventory transactions
+        for (const { ref, data, code, delta } of refDocs) {
+          const curStock1 = data.stock1 || 0;
+          const newStock1 = Math.max(0, curStock1 + delta);
+          const newTotal = newStock1 + (data.stock2 || 0) + (data.stock3 || 0);
+
+          transaction.update(ref, {
+            stock1: newStock1,
+            currentStock: newTotal,
+            lastUpdate: now
+          });
+
+          const transId = `trans-invmod-${Date.now()}-${code}-${Math.random().toString(36).substring(2, 5)}`;
+          const transDocRef = doc(db, "transactions", transId);
+          transaction.set(transDocRef, cleanUndefined({
+            id: transId,
+            reference: code,
+            movementType: delta > 0 ? "STOCK 1 IN" : "STOCK 1 OUT",
+            stock: "Stock 1",
+            quantity: Math.abs(delta),
+            actualQty: Math.abs(delta),
+            difference: delta,
+            operatorName: currentUser.fullName,
+            timestamp: now,
+            notes: `Invoice ${safeInvoice.invoiceNumber} modified: ${delta > 0 ? `+${delta}` : delta} PCS adjustment on Stock 1`,
+            invoiceNumber: safeInvoice.invoiceNumber
+          }));
+        }
+
+        // Update the invoice document
+        transaction.update(invoiceRef, cleanUndefined({
+          ...safeInvoice,
+          updatedAt: now,
+          updatedBy: currentUser.fullName
+        }));
+      });
+    } else {
+      const invoiceRef = doc(db, "invoices", safeInvoice.id);
+      await updateDoc(invoiceRef, cleanUndefined({
+        ...safeInvoice,
+        updatedAt: now,
+        updatedBy: currentUser.fullName
+      }));
+    }
+  };
+
   // Action: Clear all invoices from the register
   const handleClearAllInvoices = async () => {
     await clearInvoicesCollection();
@@ -2406,6 +2504,7 @@ export default function App() {
                   currentUser={currentUser}
                   onDeleteInvoice={handleDeleteInvoice}
                   onClearAllInvoices={handleClearAllInvoices}
+                  onUpdateInvoice={handleUpdateInvoice}
                 />
               )}
 

@@ -216,6 +216,20 @@ export default function OperatorWorkspace({
     return remotePendingInvoice;
   }, [localPendingInvoice, remotePendingInvoice, invoiceNumber]);
 
+  // Active Invoice Totals grouped by reference
+  const activeInvoiceRefBreakdown = useMemo(() => {
+    if (!activePendingInvoice || !activePendingInvoice.items) return [];
+    const map = new Map<string, { reference: string; quantity: number; boxes: number }>();
+    activePendingInvoice.items.forEach(item => {
+      const ref = item.reference.toUpperCase();
+      const cur = map.get(ref) || { reference: item.reference, quantity: 0, boxes: 0 };
+      cur.quantity += item.quantity;
+      cur.boxes += 1;
+      map.set(ref, cur);
+    });
+    return Array.from(map.values()).sort((a, b) => b.quantity - a.quantity);
+  }, [activePendingInvoice]);
+
   // Sync localPendingInvoice when remote invoice arrives or changes
   useEffect(() => {
     if (remotePendingInvoice) {
@@ -1758,6 +1772,38 @@ export default function OperatorWorkspace({
                 <p className="text-[11px] text-slate-400 font-mono">
                   Scan reference barcode and quantity above to attach boxes to this invoice.
                 </p>
+              </div>
+            )}
+
+            {/* TOTAL BY REFERENCE UNDER SCANNED RECORDS */}
+            {activePendingInvoice && activePendingInvoice.items.length > 0 && activeInvoiceRefBreakdown.length > 0 && (
+              <div className="p-3.5 bg-slate-900 text-slate-100 rounded-xl font-mono text-xs border border-slate-800 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <span className="flex items-center gap-1.5 text-blue-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                    TOTAL BY REFERENCE ({activeInvoiceRefBreakdown.length} {activeInvoiceRefBreakdown.length === 1 ? 'REF' : 'REFS'})
+                  </span>
+                  <span className="text-emerald-400 font-bold">
+                    TOTAL: {activePendingInvoice.totalQuantity} PCS ({activePendingInvoice.totalBoxes} BOXES)
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {activeInvoiceRefBreakdown.map((item) => (
+                    <div 
+                      key={`op-ref-${item.reference}`} 
+                      className="flex items-center justify-between py-1 px-2.5 rounded-lg bg-slate-800/90 border border-slate-700/60"
+                    >
+                      <span className="font-bold text-white text-xs tracking-wider">
+                        {item.reference} <span className="text-emerald-400 font-black">=&gt;</span>
+                      </span>
+                      <span className="font-bold text-amber-300">
+                        {item.quantity.toLocaleString()} pcs
+                        <span className="text-slate-400 text-[10px] ml-2 font-normal">({item.boxes} {item.boxes === 1 ? 'box' : 'boxes'})</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

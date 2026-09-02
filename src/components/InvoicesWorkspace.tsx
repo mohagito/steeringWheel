@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from "react";
-import { ReceivingInvoice, Reference, InventoryTransaction, User } from "../types";
+import { ReceivingInvoice, ScannedInvoiceBox, Reference, InventoryTransaction, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   FileText, Search, Calendar, User as UserIcon, CheckCircle2, 
   Clock, XCircle, Download, Printer, Eye, X, Layers, 
   Boxes, TrendingUp, AlertTriangle, ArrowUpDown, ChevronRight,
   ShieldCheck, RefreshCw, Hash, PackageCheck, Filter, ArrowUpRight,
-  Trash2, AlertCircle
+  Trash2, AlertCircle, Pencil, Plus, Save, RotateCcw
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomSelect } from "./CustomSelect";
@@ -18,6 +18,7 @@ interface InvoicesWorkspaceProps {
   currentUser: User;
   onDeleteInvoice?: (invoiceId: string) => Promise<void>;
   onClearAllInvoices?: () => Promise<void>;
+  onUpdateInvoice?: (updatedInvoice: ReceivingInvoice, previousInvoice?: ReceivingInvoice) => Promise<void>;
 }
 
 export default function InvoicesWorkspace({
@@ -26,7 +27,8 @@ export default function InvoicesWorkspace({
   references,
   currentUser,
   onDeleteInvoice,
-  onClearAllInvoices
+  onClearAllInvoices,
+  onUpdateInvoice
 }: InvoicesWorkspaceProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<"all" | "today" | "week" | "month">("all");
@@ -34,6 +36,11 @@ export default function InvoicesWorkspace({
   const [sortField, setSortField] = useState<"date" | "invoiceNumber" | "totalQuantity" | "totalBoxes">("date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [isClearing, setIsClearing] = useState(false);
+
+  // Edit Invoice States
+  const [editingInvoice, setEditingInvoice] = useState<ReceivingInvoice | null>(null);
+  const [originalInvoiceForEdit, setOriginalInvoiceForEdit] = useState<ReceivingInvoice | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Map references for fast metadata lookup (Customer, Material Type, Description)
   const refMap = useMemo(() => {
@@ -327,6 +334,213 @@ export default function InvoicesWorkspace({
         console.error(err);
         await Swal.fire("Error", err?.message || "Failed to delete invoice.", "error");
       }
+    }
+  };
+
+  // Grouped totals for the invoice currently being edited
+  const editingInvoiceBreakdown = useMemo(() => {
+    if (!editingInvoice || !editingInvoice.items) return [];
+    const map = new Map<string, { reference: string; quantity: number; boxes: number }>();
+    editingInvoice.items.forEach(item => {
+      const ref = (item.reference || "").trim().toUpperCase();
+      if (!ref) return;
+      const cur = map.get(ref) || { reference: item.reference, quantity: 0, boxes: 0 };
+      cur.quantity += (Number(item.quantity) || 0);
+      cur.boxes += 1;
+      map.set(ref, cur);
+    });
+    return Array.from(map.values()).sort((a, b) => b.quantity - a.quantity);
+  }, [editingInvoice]);
+
+  const handleOpenEditModal = (inv: ReceivingInvoice) => {
+    setOriginalInvoiceForEdit(inv);
+    const cloned: ReceivingInvoice = JSON.parse(JSON.stringify(inv));
+    if (!cloned.items) cloned.items = [];
+    setEditingInvoice(cloned);
+  };
+
+  const handleCloseEditModal = () => {
+    setEditingInvoice(null);
+    setOriginalInvoiceForEdit(null);
+  };
+
+  const handleEditItemChange = (index: number, field: keyof ScannedInvoiceBox, value: any) => {
+    if (!editingInvoice) return;
+    const updatedItems = [...editingInvoice.items];
+    const item = { ...updatedItems[index] };
+
+    if (field === "quantity" || field === "expectedQty") {
+      const numVal = Math.max(0, parseInt(value, 10) || 0);
+      item[field] = numVal;
+      item.difference = (item.quantity || 0) - (item.expectedQty || 0);
+    } else if (field === "reference") {
+      const cleanRef = String(value).trim().toUpperCase();
+      item.reference = cleanRef;
+      const refData = refMap.get(cleanRef);
+      if (refData?.materialType) {
+        item.materialType = refData.materialType;
+      }
+    } else {
+      (item as any)[field] = value;
+    }
+
+    updatedItems[index] = item;
+    const totalBoxes = updatedItems.length;
+    const totalQuantity = updatedItems.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+
+    setEditingInvoice({
+      ...editingInvoice,
+      items: updatedItems,
+      totalBoxes,
+      totalQuantity
+    });
+  };
+
+  const handleAddEditItem = () => {
+    if (!editingInvoice) return;
+    const defaultRef = references[0]?.code || "REF-001";
+    const refData = refMap.get(defaultRef.toUpperCase());
+    const newItem: ScannedInvoiceBox = {
+      id: `box-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      boxBarcode: `BOX-${Date.now().toString().slice(-6)}`,
+      reference: defaultRef,
+      expectedQty: 100,
+      quantity: 100,
+      difference: 0,
+      scannedAt: new Date().toISOString(),
+      materialType: refData?.materialType || "Mesh"
+    };
+
+    const updatedItems = [...editingInvoice.items, newItem];
+    const totalBoxes = updatedItems.length;
+    const totalQuantity = updatedItems.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+
+    setEditingInvoice({
+      ...editingInvoice,
+      items: updatedItems,
+      totalBoxes,
+      totalQuantity
+    });
+  };
+
+  const handleRemoveEditItem = (index: number) => {
+    if (!editingInvoice) return;
+    if (editingInvoice.items.length <= 1) {
+      Swal.fire({
+        icon: "warning",
+        title: "Minimum 1 Box Required",
+        text: "An invoice must have at least one scanned box. To remove this entire invoice, use the Delete Invoice action."
+      });
+      return;
+    }
+
+    const updatedItems = editingInvoice.items.filter((_, i) => i !== index);
+    const totalBoxes = updatedItems.length;
+    const totalQuantity = updatedItems.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+
+    setEditingInvoice({
+      ...editingInvoice,
+      items: updatedItems,
+      totalBoxes,
+      totalQuantity
+    });
+  };
+
+  const handleSaveEditInvoice = async () => {
+    if (!editingInvoice || !onUpdateInvoice) return;
+
+    const cleanedInvoiceNumber = editingInvoice.invoiceNumber.trim().toUpperCase();
+    if (!cleanedInvoiceNumber) {
+      Swal.fire({
+        icon: "error",
+        title: "Invoice Number Required",
+        text: "Please enter a valid Invoice or Delivery Note number."
+      });
+      return;
+    }
+
+    if (!editingInvoice.items || editingInvoice.items.length === 0) {
+      Swal.fire({
+        icon: "error",
+        title: "No Scanned Boxes",
+        text: "The invoice must contain at least one box record."
+      });
+      return;
+    }
+
+    for (let i = 0; i < editingInvoice.items.length; i++) {
+      const it = editingInvoice.items[i];
+      if (!it.reference.trim()) {
+        Swal.fire({
+          icon: "error",
+          title: "Missing Reference",
+          text: `Box #${i + 1} has no reference code assigned.`
+        });
+        return;
+      }
+      if (it.quantity <= 0) {
+        Swal.fire({
+          icon: "error",
+          title: "Invalid Quantity",
+          text: `Box #${i + 1} (${it.reference}) must have a quantity greater than zero.`
+        });
+        return;
+      }
+    }
+
+    const isApproved = originalInvoiceForEdit?.status === "approved";
+    const confirmRes = await Swal.fire({
+      title: "Save Invoice Modifications?",
+      html: `
+        <div style="text-align: left; font-size: 13px; color: #334155; line-height: 1.5;">
+          <p><strong>Invoice Number:</strong> <span style="color: #2563eb;">${cleanedInvoiceNumber}</span></p>
+          <p><strong>Total Boxes:</strong> ${editingInvoice.totalBoxes} box(es)</p>
+          <p><strong>Total Quantity:</strong> <strong>${editingInvoice.totalQuantity.toLocaleString()} PCS</strong></p>
+          ${isApproved ? `
+            <div style="margin-top: 12px; padding: 10px; background-color: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; color: #92400e; font-size: 12px;">
+              <strong>Stock 1 Synchronization:</strong><br/>
+              Because this invoice is already <strong>APPROVED</strong>, any changes in quantity will automatically adjust the Stock 1 inventory level for the affected references.
+            </div>
+          ` : ''}
+        </div>
+      `,
+      icon: isApproved ? "warning" : "question",
+      showCancelButton: true,
+      confirmButtonColor: "#2563eb",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Save Modifications"
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
+    try {
+      setIsSavingEdit(true);
+      await onUpdateInvoice(editingInvoice, originalInvoiceForEdit || undefined);
+
+      // If details modal is open for this invoice, keep it synced
+      if (selectedInvoice && selectedInvoice.id === editingInvoice.id) {
+        setSelectedInvoice({
+          ...editingInvoice,
+          invoiceNumber: cleanedInvoiceNumber
+        });
+      }
+
+      handleCloseEditModal();
+      Swal.fire({
+        icon: "success",
+        title: "Invoice Updated",
+        text: `Invoice ${cleanedInvoiceNumber} has been updated successfully.`,
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Save Failed",
+        text: err?.message || "Failed to update invoice."
+      });
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -661,6 +875,19 @@ export default function InvoicesWorkspace({
                             <Eye className="w-3 h-3" />
                             <span>Details</span>
                           </button>
+                          {onUpdateInvoice && (currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditModal(inv);
+                              }}
+                              className="px-2.5 py-1 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 hover:border-amber-300 rounded font-bold text-xs inline-flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                              title="Modify invoice details and items"
+                            >
+                              <Pencil className="w-3 h-3 text-amber-600" />
+                              <span>Edit</span>
+                            </button>
+                          )}
                           {onDeleteInvoice && (currentUser.role === "admin" || currentUser.role === "supervisor") && (
                             <button
                               onClick={(e) => {
@@ -732,6 +959,16 @@ export default function InvoicesWorkspace({
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {onUpdateInvoice && (currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                    <button
+                      onClick={() => handleOpenEditModal(selectedInvoice)}
+                      className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/40 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                      title="Modify this invoice"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Edit Invoice</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => handleExportCSV(selectedInvoice)}
                     className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors cursor-pointer"
@@ -843,11 +1080,74 @@ export default function InvoicesWorkspace({
                           );
                         })}
                       </tbody>
+                      <tfoot>
+                        <tr className="bg-slate-100/90 border-t-2 border-slate-300 text-xs font-bold text-slate-800 font-mono">
+                          <td className="p-3 text-slate-500 font-bold uppercase text-[10px]" colSpan={3}>
+                            TOTAL SCANNED ({selectedInvoice.items?.length || 0} BOXES &bull; {selectedInvoiceBreakdown.length} UNIQUE REFS)
+                          </td>
+                          <td className="p-3 text-right font-mono text-slate-600">
+                            {selectedInvoice.items?.reduce((sum, it) => sum + (it.expectedQty || it.quantity), 0).toLocaleString()}
+                          </td>
+                          <td className="p-3 text-right font-mono font-black text-blue-700 text-sm">
+                            {selectedInvoice.totalQuantity.toLocaleString()}
+                          </td>
+                          <td className="p-3 text-right font-mono">
+                            {(() => {
+                              const totalDiff = selectedInvoice.items?.reduce((sum, it) => sum + (it.difference || 0), 0) || 0;
+                              if (totalDiff === 0) return <span className="text-slate-400">0</span>;
+                              if (totalDiff > 0) return <span className="text-emerald-600 font-bold">+{totalDiff}</span>;
+                              return <span className="text-rose-600 font-bold">{totalDiff}</span>;
+                            })()}
+                          </td>
+                          <td className="p-3 text-slate-400 text-[10px] font-normal">
+                            Complete
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>
 
+                {/* TOTAL SUMMARY BY REFERENCE (Under the Scanned Records) */}
+                <div id="invoice-totals-by-reference" className="space-y-4">
+                  {/* Detailed Cards Breakdown Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {selectedInvoiceBreakdown.map((breakdown) => (
+                      <div 
+                        key={`card-${breakdown.reference}`}
+                        className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 transition-all shadow-2xs flex flex-col justify-between gap-2"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-extrabold text-sm text-slate-900">
+                                {breakdown.reference}
+                              </span>
+                              <span className="text-xs font-mono font-bold text-slate-400">=&gt;</span>
+                              <span className="text-xs font-mono font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                {breakdown.totalQuantity.toLocaleString()} pcs
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-1 font-medium">
+                              {breakdown.description || refMap.get(breakdown.reference.toUpperCase())?.description || "—"}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block">Boxes</span>
+                            <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block mt-0.5">
+                              {breakdown.boxCount}
+                            </span>
+                          </div>
+                        </div>
 
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-mono text-slate-500">
+                          <span>Customer: <strong className="text-slate-700">{breakdown.customer}</strong></span>
+                          <span>Avg/Box: <strong className="text-slate-700">{Math.round(breakdown.totalQuantity / breakdown.boxCount)} pcs</strong></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
               </div>
 
@@ -857,6 +1157,15 @@ export default function InvoicesWorkspace({
                   EPP Inventory Control &bull; Stock 1 Receiving System
                 </div>
                 <div className="flex items-center gap-2">
+                  {onUpdateInvoice && (currentUser.role === "admin" || currentUser.role === "supervisor") && (
+                    <button
+                      onClick={() => handleOpenEditModal(selectedInvoice)}
+                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded transition-colors flex items-center gap-1.5 cursor-pointer border border-amber-300 shadow-2xs"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Edit Invoice</span>
+                    </button>
+                  )}
                   {onDeleteInvoice && (currentUser.role === "admin" || currentUser.role === "supervisor") && (
                     <button
                       onClick={() => handleDeleteSingleInvoice(selectedInvoice)}
@@ -878,6 +1187,295 @@ export default function InvoicesWorkspace({
                     className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded transition-colors cursor-pointer"
                   >
                     Close
+                  </button>
+                </div>
+              </div>
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Invoice Modal */}
+      <AnimatePresence>
+        {editingInvoice && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white w-full max-w-4xl rounded-xl shadow-2xl border border-slate-200 flex flex-col max-h-[92vh] overflow-hidden"
+              id="invoice-edit-modal"
+            >
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center font-bold">
+                    <Pencil className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base sm:text-lg font-bold font-mono text-white">
+                        MODIFY INVOICE
+                      </h2>
+                      {editingInvoice.status === "approved" && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          APPROVED &bull; STOCK 1 SYNC ACTIVE
+                        </span>
+                      )}
+                      {editingInvoice.status === "pending" && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          PENDING
+                        </span>
+                      )}
+                      {editingInvoice.status === "cancelled" && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                          CANCELLED
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleCloseEditModal}
+                  className="p-2 bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                  title="Close edit modal"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-[#f8fafc]">
+                
+                {/* Primary Meta Fields: Invoice # & Operator */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 font-mono">
+                        Invoice / Note Number *
+                      </label>
+                      <div className="relative">
+                        <FileText className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={editingInvoice.invoiceNumber}
+                          onChange={(e) => setEditingInvoice({ ...editingInvoice, invoiceNumber: e.target.value.toUpperCase() })}
+                          placeholder="e.g. INV-2024-001"
+                          className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all uppercase"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 font-mono">
+                        Operator / Receiving Agent *
+                      </label>
+                      <div className="relative">
+                        <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={editingInvoice.operator}
+                          onChange={(e) => setEditingInvoice({ ...editingInvoice, operator: e.target.value })}
+                          placeholder="Operator name"
+                          className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items & Scanned Boxes Table */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                  <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Boxes className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+                        Scanned Boxes ({editingInvoice.items.length})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddEditItem}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Box</span>
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto max-h-72">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-slate-100/70 text-slate-600 font-bold border-b border-slate-200 uppercase font-mono tracking-wider sticky top-0 z-10">
+                        <tr>
+                          <th className="p-2.5 w-12 text-center">#</th>
+                          <th className="p-2.5 min-w-[200px]">Reference Code</th>
+                          <th className="p-2.5 w-28 text-right">Actual Qty (PCS)</th>
+                          <th className="p-2.5 w-28 text-right">Expected Qty</th>
+                          <th className="p-2.5 w-20 text-center">Diff</th>
+                          <th className="p-2.5 w-14 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {editingInvoice.items.map((item, idx) => {
+                          const diff = (item.quantity || 0) - (item.expectedQty || 0);
+                          const refData = refMap.get(item.reference.toUpperCase());
+
+                          return (
+                            <tr key={item.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-2.5 text-center font-mono text-slate-400 font-bold">
+                                {idx + 1}
+                              </td>
+
+                              <td className="p-2.5">
+                                <select
+                                  value={item.reference}
+                                  onChange={(e) => handleEditItemChange(idx, "reference", e.target.value)}
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded font-mono font-bold text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                                >
+                                  {references.map((r) => (
+                                    <option key={r.code} value={r.code}>
+                                      {r.code} - {r.description || r.customer || "Reference"}
+                                    </option>
+                                  ))}
+                                  {!references.some((r) => r.code === item.reference) && (
+                                    <option value={item.reference}>{item.reference}</option>
+                                  )}
+                                </select>
+                                {refData?.customer && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Customer: {refData.customer} &bull; {refData.materialType || "Mesh"}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="p-2.5 text-right">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => handleEditItemChange(idx, "quantity", e.target.value)}
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded font-mono font-bold text-xs text-blue-600 text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                              </td>
+
+                              <td className="p-2.5 text-right">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.expectedQty}
+                                  onChange={(e) => handleEditItemChange(idx, "expectedQty", e.target.value)}
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded font-mono text-xs text-slate-700 text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                              </td>
+
+                              <td className="p-2.5 text-center font-mono">
+                                {diff === 0 ? (
+                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold">
+                                    0
+                                  </span>
+                                ) : diff > 0 ? (
+                                  <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold border border-emerald-200">
+                                    +{diff}
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 bg-rose-50 text-rose-700 rounded text-[10px] font-bold border border-rose-200">
+                                    {diff}
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="p-2.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEditItem(idx)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer border border-transparent hover:border-rose-200"
+                                  title="Remove this box"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Total by Reference Summary (Live Breakdown) */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+                        TOTAL BY REFERENCE
+                      </span>
+                    </div>
+                    <div className="text-xs font-mono text-slate-500">
+                      Total: <strong className="text-blue-600">{editingInvoice.totalQuantity.toLocaleString()} PCS</strong> across <strong className="text-slate-700">{editingInvoice.totalBoxes} boxes</strong>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                    {editingInvoiceBreakdown.map((item) => (
+                      <div
+                        key={item.reference}
+                        className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="font-mono font-bold text-xs text-slate-800">
+                            {item.reference}
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {item.boxes} {item.boxes === 1 ? 'box' : 'boxes'}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono font-bold text-sm text-blue-600">
+                            {item.quantity.toLocaleString()} pcs
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-200 bg-white flex items-center justify-between shrink-0">
+                <div className="text-xs text-slate-500">
+                  Ready to update invoice &bull; Stock 1 Receiving System
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCloseEditModal}
+                    className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded transition-colors cursor-pointer"
+                    disabled={isSavingEdit}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEditInvoice}
+                    disabled={isSavingEdit}
+                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold text-xs rounded transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    {isSavingEdit ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving Changes...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Save Modifications</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
