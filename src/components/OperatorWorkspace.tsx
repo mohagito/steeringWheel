@@ -1069,42 +1069,6 @@ export default function OperatorWorkspace({
         </div>
       </div>
 
-      {/* Low Stock Real-Time Alert Banner for Operators */}
-      {lowStockCount > 0 && (
-        <div 
-          id="operator-low-stock-warning-banner"
-          className="bg-gradient-to-r from-rose-50 via-amber-50 to-rose-50 border border-rose-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-rose-950 shadow-xs"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-rose-100 border border-rose-300 flex items-center justify-center shrink-0 text-rose-600 shadow-2xs">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-bold font-mono uppercase tracking-wide text-rose-800 flex items-center gap-2">
-                <span>LOW STOCK ALERT</span>
-                <span className="px-2 py-0.5 rounded-full bg-rose-200/80 text-rose-900 text-[10px] font-bold">
-                  {lowStockCount} REF{lowStockCount > 1 ? "S" : ""} &lt; 100 PCS
-                </span>
-              </div>
-              <p className="text-xs text-rose-700 mt-0.5">
-                Available factory buffer (Stock 1 + Stock 2) is low for critical references. Check before dispatches.
-              </p>
-            </div>
-          </div>
-          {onOpenLowStockModal && (
-            <button
-              type="button"
-              onClick={onOpenLowStockModal}
-              id="operator-view-low-stock-modal-btn"
-              className="shrink-0 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold font-mono rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 flex items-center justify-center gap-1.5"
-            >
-              <span>VIEW LOW STOCK REFS</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Main Interactive Scan Panel */}
       <div className="glass-panel p-6 sm:p-8 space-y-6" id="operator-scanning-panel">
         

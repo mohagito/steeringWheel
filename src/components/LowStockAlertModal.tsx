@@ -111,9 +111,6 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
                   {lowStockList.length} {lowStockList.length === 1 ? "Reference" : "References"} (Stock 1 + Stock 2 &lt; 100 PCS)
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5 font-mono">
-                Monitoring combined Warehouse (S1) + WIP (S2) inventory safety threshold.
-              </p>
             </div>
           </div>
 
