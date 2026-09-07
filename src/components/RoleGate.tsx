@@ -44,6 +44,36 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
     loadUsers();
   }, []);
 
+  // Colorful, pretty button styling with clean text only (no extra subtext, no icons)
+  const getUserButtonStyle = (user: User) => {
+    const isShiftA = user.username === "shift_a" || user.fullName?.toUpperCase().includes("SHIFT A");
+    const isShiftB = user.username === "shift_b" || user.fullName?.toUpperCase().includes("SHIFT B");
+    const isManager = user.role === "admin" || user.username === "gonzalo" || user.fullName?.toUpperCase().includes("MANAGER") || user.fullName === "GONZALO";
+
+    if (isShiftA) {
+      return {
+        displayName: "SHIFT A",
+        btnClass: "bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 border border-emerald-400/30 shadow-md shadow-emerald-950/40",
+      };
+    }
+    if (isShiftB) {
+      return {
+        displayName: "SHIFT B",
+        btnClass: "bg-gradient-to-b from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 border border-blue-400/30 shadow-md shadow-blue-950/40",
+      };
+    }
+    if (isManager) {
+      return {
+        displayName: "MANAGER",
+        btnClass: "bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border border-amber-400/30 shadow-md shadow-amber-950/40",
+      };
+    }
+    return {
+      displayName: user.fullName || user.username.toUpperCase(),
+      btnClass: "bg-gradient-to-b from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 border border-slate-500/30 shadow-md shadow-slate-950/40",
+    };
+  };
+
   const handleKeyPress = (num: string) => {
     if (success) return;
     setError("");
@@ -176,52 +206,24 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                     <p className="text-slate-400 text-xs">Loading shopfloor team profiles...</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" id="profile-selection-grid">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" id="profile-selection-grid">
                     {users.map((user, idx) => {
-                      const isOperator = user.role === "operator";
-                      const isAdmin = user.role === "admin";
-
-                      // Crisp Siemens/Bosch style borders and text colors
-                      const roleTheme = isOperator
-                        ? {
-                            borderHover: "hover:border-emerald-500",
-                            bgActive: "group-hover:bg-emerald-500/5",
-                            badge: "bg-[#0c2e21] text-emerald-400 border-emerald-800/40",
-                          }
-                        : isAdmin
-                        ? {
-                            borderHover: "hover:border-blue-500",
-                            bgActive: "group-hover:bg-blue-500/5",
-                            badge: "bg-[#092642] text-blue-400 border-blue-800/40",
-                          }
-                        : {
-                            borderHover: "hover:border-amber-500",
-                            bgActive: "group-hover:bg-amber-500/5",
-                            badge: "bg-[#2d210c] text-amber-400 border-amber-800/40",
-                          };
-
+                      const style = getUserButtonStyle(user);
                       const isLastOdd = users.length % 2 !== 0 && idx === users.length - 1;
-                      const isCentered = isLastOdd || user.username === "gonzalo";
+                      const isCentered = isLastOdd || user.username === "gonzalo" || style.displayName === "MANAGER";
 
                       return (
                         <button
                           key={user.id}
                           id={`user-btn-${user.username}`}
                           onClick={() => setSelectedUser(user)}
-                          className={`flex items-center gap-4 p-4 rounded-sm bg-[#0a1322] border border-[#1e293b] transition-all duration-150 group cursor-pointer ${roleTheme.borderHover} ${roleTheme.bgActive} ${
+                          className={`w-full py-4 sm:py-5 px-6 rounded-xl font-display font-black text-base sm:text-lg tracking-wider text-white uppercase transition-all duration-200 cursor-pointer active:scale-[0.98] hover:scale-[1.02] flex items-center justify-center text-center select-none ${style.btnClass} ${
                             isCentered
-                              ? "sm:col-span-2 sm:w-[calc(50%-0.375rem)] sm:mx-auto sm:justify-self-center justify-center text-center"
-                              : "text-left"
+                              ? "sm:col-span-2 sm:w-[calc(50%-0.5rem)] sm:mx-auto"
+                              : ""
                           }`}
                         >
-                          <div className="p-2.5 bg-[#0f1e36] border border-[#1e293b] rounded-sm text-slate-300 group-hover:text-white">
-                            <Shield className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-white group-hover:text-white transition-colors">
-                              {user.username === "gonzalo" || user.fullName === "GONZALO" ? "MANAGER" : user.fullName}
-                            </p>
-                          </div>
+                          {style.displayName}
                         </button>
                       );
                     })}
@@ -242,7 +244,7 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                 <div className="w-full flex items-center justify-between pb-3 border-b border-[#1e293b]">
                   <button 
                     onClick={() => { setSelectedUser(null); setPin(""); setError(""); }}
-                    className="text-slate-400 hover:text-white text-xs font-bold flex items-center gap-1 transition-colors uppercase tracking-wider"
+                    className="text-slate-400 hover:text-white text-xs font-bold flex items-center gap-1 transition-colors uppercase tracking-wider cursor-pointer"
                     id="back-to-profiles-btn"
                   >
                     ← Exit Profile
@@ -253,15 +255,17 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                 </div>
 
                 <div className="text-center">
-                  <div className={`mx-auto w-10 h-10 rounded-sm mb-2 flex items-center justify-center border ${
-                    success ? "bg-emerald-950 border-emerald-500 text-emerald-400" : "bg-[#0a1322] border-[#1e293b] text-slate-400"
+                  <div className={`mx-auto w-12 h-12 rounded-xl mb-3 flex items-center justify-center border shadow-md transition-all ${
+                    success 
+                      ? "bg-emerald-950 border-emerald-500 text-emerald-400" 
+                      : "bg-[#0a1322] border-[#1e293b] text-slate-300"
                   }`}>
-                    {success ? <UserCheck className="w-5 h-5" /> : <Key className="w-5 h-5" />}
+                    {success ? <UserCheck className="w-6 h-6" /> : <Key className="w-6 h-6" />}
                   </div>
-                  <h3 className="font-display text-base font-bold text-white uppercase tracking-wide">
-                    {selectedUser.username === "gonzalo" || selectedUser.fullName === "GONZALO" ? "MANAGER" : selectedUser.fullName}
+                  <h3 className="font-display text-xl font-extrabold text-white uppercase tracking-wide">
+                    {selectedUser ? getUserButtonStyle(selectedUser).displayName : ""}
                   </h3>
-                  <p className="text-slate-400 text-xs mt-0.5">ENTER SECURITY PASS-CODE</p>
+                  <p className="text-slate-400 text-xs mt-1 font-mono">ENTER SECURITY PASS-CODE</p>
                 </div>
 
                 {/* PIN dots visualizer */}

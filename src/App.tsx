@@ -46,13 +46,17 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">(() => {
     try {
-      const savedTab = sessionStorage.getItem("epp_active_tab") as any;
-      if (savedTab) return savedTab;
       const savedUser = sessionStorage.getItem("epp_current_user");
+      const savedTab = sessionStorage.getItem("epp_active_tab") as any;
       if (savedUser) {
         const u: User = JSON.parse(savedUser);
+        if (u.role === "admin" && savedTab === "records") {
+          return "dashboard";
+        }
+        if (savedTab) return savedTab;
         return u.role === "operator" ? "operator" : "dashboard";
       }
+      if (savedTab) return savedTab;
     } catch (e) {}
     return "dashboard";
   });
@@ -69,10 +73,13 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       sessionStorage.setItem("epp_current_user", JSON.stringify(currentUser));
+      if (currentUser.role === "admin" && activeTab === "records") {
+        setActiveTab("dashboard");
+      }
     } else {
       sessionStorage.removeItem("epp_current_user");
     }
-  }, [currentUser]);
+  }, [currentUser, activeTab]);
 
   useEffect(() => {
     if (activeTab) {
@@ -2340,21 +2347,23 @@ export default function App() {
               </button>
             )}
 
-            {/* Records Tab */}
-            <button
-              onClick={() => setActiveTab("records")}
-              id="nav-tab-records"
-              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
-                activeTab === "records"
-                  ? "text-amber-400 font-bold bg-[#0f1e36] border-amber-400"
-                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <History className="w-4 h-4 shrink-0 text-amber-400" />
-                <span>RECORDS</span>
-              </div>
-            </button>
+            {/* Records Tab (Hidden from Manager portal) */}
+            {currentUser.role !== "admin" && (
+              <button
+                onClick={() => setActiveTab("records")}
+                id="nav-tab-records"
+                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                  activeTab === "records"
+                    ? "text-amber-400 font-bold bg-[#0f1e36] border-amber-400"
+                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <History className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>RECORDS</span>
+                </div>
+              </button>
+            )}
 
             {/* Supervisor Tab */}
             {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
@@ -2446,8 +2455,8 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Low Stock Real-Time Alert Indicator for Supervisor & Manager / Admin */}
-            {(currentUser.role === "supervisor" || currentUser.role === "admin") && lowStockReferences.length > 0 && (
+            {/* Low Stock Real-Time Alert Indicator for All Portals (Operator, Supervisor & Manager) */}
+            {lowStockReferences.length > 0 && (
               <button
                 onClick={() => setIsGlobalLowStockModalOpen(true)}
                 id="header-low-stock-alert-btn"
@@ -2579,10 +2588,11 @@ export default function App() {
                   onSavePendingInvoice={handleSavePendingInvoice}
                   onApproveInvoice={handleApproveInvoice}
                   onCancelInvoice={handleCancelInvoice}
+                  onOpenLowStockModal={() => setIsGlobalLowStockModalOpen(true)}
                 />
               )}
 
-              {activeTab === "records" && (
+              {activeTab === "records" && currentUser.role !== "admin" && (
                 <RecordsWorkspace
                   transactions={transactions}
                   invoices={invoices}

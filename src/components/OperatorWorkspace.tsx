@@ -3,7 +3,7 @@ import { Box, Adjustment, User, Reference, ReceivingInvoice, ScannedInvoiceBox, 
 import { doc, getDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { 
-  Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon, Sparkles, ArrowRight, Layers, Box as BoxIcon, RotateCcw, Eraser, Trash2, CheckCircle2, XCircle, Edit3, Save, X, PlusCircle, Search, Barcode
+  Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon, Sparkles, ArrowRight, Layers, Box as BoxIcon, RotateCcw, Eraser, Trash2, CheckCircle2, XCircle, Edit3, Save, X, PlusCircle, Search, Barcode, AlertTriangle
 } from "lucide-react";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import Swal from "sweetalert2";
@@ -18,6 +18,7 @@ interface OperatorWorkspaceProps {
   onSavePendingInvoice?: (invoice: ReceivingInvoice) => Promise<void>;
   onApproveInvoice?: (invoiceId: string) => Promise<void>;
   onCancelInvoice?: (invoiceId: string) => Promise<void>;
+  onOpenLowStockModal?: () => void;
 }
 
 export default function OperatorWorkspace({ 
@@ -29,7 +30,8 @@ export default function OperatorWorkspace({
   onSubmitAdjustment,
   onSavePendingInvoice,
   onApproveInvoice,
-  onCancelInvoice
+  onCancelInvoice,
+  onOpenLowStockModal
 }: OperatorWorkspaceProps) {
   
   // Persisted Invoice Input (Used only for INTAKE mode) - initialized strictly empty
@@ -101,6 +103,15 @@ export default function OperatorWorkspace({
   const invoiceRef = useRef<HTMLInputElement>(null);
   const referenceRef = useRef<HTMLInputElement>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
+
+  // Authoritative Low Stock references calculation (< 100 PCS across Stock 1 + Stock 2)
+  const lowStockReferences = useMemo(() => {
+    return references.filter((r) => {
+      const s1PlusS2 = (r.stock1 || 0) + (r.stock2 || 0);
+      return s1PlusS2 < 100;
+    });
+  }, [references]);
+  const lowStockCount = lowStockReferences.length;
 
   // Sync Invoice to localStorage (or clear if empty)
   useEffect(() => {
@@ -1040,11 +1051,59 @@ export default function OperatorWorkspace({
         </div>
         
         <div className="flex items-center gap-2 self-start sm:self-auto font-mono text-xs">
+          {lowStockCount > 0 && (
+            <button
+              type="button"
+              onClick={onOpenLowStockModal}
+              id="operator-banner-low-stock-btn"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer shadow-2xs animate-pulse active:scale-95"
+              title="Click to view all references with stock below 100 PCS"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <span>LOW STOCK: {lowStockCount} REF{lowStockCount > 1 ? "S" : ""}</span>
+            </button>
+          )}
           <span className="px-3 py-1 bg-slate-100 rounded-lg font-bold text-slate-700 border border-slate-200/80">
             @{currentUser.username}
           </span>
         </div>
       </div>
+
+      {/* Low Stock Real-Time Alert Banner for Operators */}
+      {lowStockCount > 0 && (
+        <div 
+          id="operator-low-stock-warning-banner"
+          className="bg-gradient-to-r from-rose-50 via-amber-50 to-rose-50 border border-rose-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-rose-950 shadow-xs"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-rose-100 border border-rose-300 flex items-center justify-center shrink-0 text-rose-600 shadow-2xs">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold font-mono uppercase tracking-wide text-rose-800 flex items-center gap-2">
+                <span>LOW STOCK ALERT</span>
+                <span className="px-2 py-0.5 rounded-full bg-rose-200/80 text-rose-900 text-[10px] font-bold">
+                  {lowStockCount} REF{lowStockCount > 1 ? "S" : ""} &lt; 100 PCS
+                </span>
+              </div>
+              <p className="text-xs text-rose-700 mt-0.5">
+                Available factory buffer (Stock 1 + Stock 2) is low for critical references. Check before dispatches.
+              </p>
+            </div>
+          </div>
+          {onOpenLowStockModal && (
+            <button
+              type="button"
+              onClick={onOpenLowStockModal}
+              id="operator-view-low-stock-modal-btn"
+              className="shrink-0 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold font-mono rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 flex items-center justify-center gap-1.5"
+            >
+              <span>VIEW LOW STOCK REFS</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Main Interactive Scan Panel */}
       <div className="glass-panel p-6 sm:p-8 space-y-6" id="operator-scanning-panel">
@@ -1245,6 +1304,12 @@ export default function OperatorWorkspace({
                   <span className="text-slate-500 font-sans truncate max-w-[180px]">({matchedReference.description})</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {((matchedReference.stock1 || 0) + (matchedReference.stock2 || 0)) < 100 && (
+                    <span className="px-2 py-0.5 bg-rose-100 border border-rose-300 text-rose-700 rounded-md text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
+                      <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                      LOW STOCK (S1+S2: {(matchedReference.stock1 || 0) + (matchedReference.stock2 || 0)} PCS)
+                    </span>
+                  )}
                   <span className="px-2 py-0.5 bg-slate-200/80 rounded-md text-[9px] font-bold uppercase tracking-wider text-slate-800">
                     S1: {matchedReference.stock1 || 0} pcs
                   </span>
