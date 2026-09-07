@@ -25,7 +25,9 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
         const querySnapshot = await getDocs(collection(db, "users"));
         const userList: User[] = [];
         querySnapshot.forEach((doc) => {
-          userList.push({ id: doc.id, ...doc.data() } as User);
+          const data = doc.data() as User;
+          const fullName = (data.username === "gonzalo" || data.fullName === "GONZALO") ? "MANAGER" : data.fullName;
+          userList.push({ id: doc.id, ...data, fullName });
         });
         
         // Sorting users so operator is first, supervisor second, admin last
@@ -198,23 +200,27 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                             badge: "bg-[#2d210c] text-amber-400 border-amber-800/40",
                           };
 
+                      const isLastOdd = users.length % 2 !== 0 && idx === users.length - 1;
+                      const isCentered = isLastOdd || user.username === "gonzalo";
+
                       return (
                         <button
                           key={user.id}
                           id={`user-btn-${user.username}`}
                           onClick={() => setSelectedUser(user)}
-                          className={`flex items-center gap-4 p-4 rounded-sm bg-[#0a1322] border border-[#1e293b] text-left transition-all duration-150 group cursor-pointer ${roleTheme.borderHover} ${roleTheme.bgActive}`}
+                          className={`flex items-center gap-4 p-4 rounded-sm bg-[#0a1322] border border-[#1e293b] transition-all duration-150 group cursor-pointer ${roleTheme.borderHover} ${roleTheme.bgActive} ${
+                            isCentered
+                              ? "sm:col-span-2 sm:w-[calc(50%-0.375rem)] sm:mx-auto sm:justify-self-center justify-center text-center"
+                              : "text-left"
+                          }`}
                         >
                           <div className="p-2.5 bg-[#0f1e36] border border-[#1e293b] rounded-sm text-slate-300 group-hover:text-white">
                             <Shield className="w-4 h-4" />
                           </div>
                           <div>
                             <p className="text-sm font-bold text-white group-hover:text-white transition-colors">
-                              {user.fullName}
+                              {user.username === "gonzalo" || user.fullName === "GONZALO" ? "MANAGER" : user.fullName}
                             </p>
-                            <span className={`inline-block text-[9px] font-mono font-bold uppercase tracking-widest px-2 py-0.5 mt-1.5 border rounded-sm ${roleTheme.badge}`}>
-                              {user.role === 'admin' ? 'Manager' : user.role === 'supervisor' ? 'Supervisor' : 'Operator'}
-                            </span>
                           </div>
                         </button>
                       );
@@ -252,7 +258,9 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                   }`}>
                     {success ? <UserCheck className="w-5 h-5" /> : <Key className="w-5 h-5" />}
                   </div>
-                  <h3 className="font-display text-base font-bold text-white uppercase tracking-wide">{selectedUser.fullName}</h3>
+                  <h3 className="font-display text-base font-bold text-white uppercase tracking-wide">
+                    {selectedUser.username === "gonzalo" || selectedUser.fullName === "GONZALO" ? "MANAGER" : selectedUser.fullName}
+                  </h3>
                   <p className="text-slate-400 text-xs mt-0.5">ENTER SECURITY PASS-CODE</p>
                 </div>
 

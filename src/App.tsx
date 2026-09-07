@@ -16,12 +16,13 @@ import ProductionWorkspace from "./components/ProductionWorkspace";
 import ScrapWorkspace from "./components/ScrapWorkspace";
 import ManageReferencesWorkspace from "./components/ManageReferencesWorkspace";
 import InvoicesWorkspace from "./components/InvoicesWorkspace";
+import RecordsWorkspace from "./components/RecordsWorkspace";
 import { LowStockAlertModal } from "./components/LowStockAlertModal";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
   RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2, FolderTree, FileText,
-  AlertTriangle
+  AlertTriangle, History
 } from "lucide-react";
 
 export default function App() {
@@ -43,7 +44,7 @@ export default function App() {
   const [invoices, setInvoices] = useState<ReceivingInvoice[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">(() => {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">(() => {
     try {
       const savedTab = sessionStorage.getItem("epp_active_tab") as any;
       if (savedTab) return savedTab;
@@ -2256,58 +2257,52 @@ export default function App() {
 
 
             {/* Deliveries Tab */}
-            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
-              <button
-                onClick={() => setActiveTab("deliveries")}
-                id="nav-tab-deliveries"
-                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
-                  activeTab === "deliveries"
-                    ? "text-white font-bold bg-[#0f1e36] border-brand-500"
-                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Truck className="w-4 h-4 shrink-0" />
-                  <span>Deliveries</span>
-                </div>
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab("deliveries")}
+              id="nav-tab-deliveries"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "deliveries"
+                  ? "text-white font-bold bg-[#0f1e36] border-brand-500"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Truck className="w-4 h-4 shrink-0" />
+                <span>Deliveries</span>
+              </div>
+            </button>
 
             {/* Production Tab */}
-            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
-              <button
-                onClick={() => setActiveTab("production")}
-                id="nav-tab-production"
-                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
-                  activeTab === "production"
-                    ? "text-blue-400 font-bold bg-[#0f1e36] border-blue-400"
-                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Factory className="w-4 h-4 shrink-0" />
-                  <span>Production</span>
-                </div>
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab("production")}
+              id="nav-tab-production"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "production"
+                  ? "text-blue-400 font-bold bg-[#0f1e36] border-blue-400"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Factory className="w-4 h-4 shrink-0" />
+                <span>Production</span>
+              </div>
+            </button>
 
             {/* SCRAP Tab */}
-            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
-              <button
-                onClick={() => setActiveTab("scrap")}
-                id="nav-tab-scrap"
-                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
-                  activeTab === "scrap"
-                    ? "text-rose-400 font-bold bg-[#0f1e36] border-rose-500"
-                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Trash2 className="w-4 h-4 shrink-0" />
-                  <span>SCRAP (NOK)</span>
-                </div>
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab("scrap")}
+              id="nav-tab-scrap"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "scrap"
+                  ? "text-rose-400 font-bold bg-[#0f1e36] border-rose-500"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Trash2 className="w-4 h-4 shrink-0" />
+                <span>SCRAP (NOK)</span>
+              </div>
+            </button>
 
             {/* Manage References Tab (Supervisor & Admin ONLY) */}
             {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
@@ -2344,6 +2339,22 @@ export default function App() {
                 </div>
               </button>
             )}
+
+            {/* Records Tab */}
+            <button
+              onClick={() => setActiveTab("records")}
+              id="nav-tab-records"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "records"
+                  ? "text-amber-400 font-bold bg-[#0f1e36] border-amber-400"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <History className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>RECORDS</span>
+              </div>
+            </button>
 
             {/* Supervisor Tab */}
             {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
@@ -2428,6 +2439,7 @@ export default function App() {
               {activeTab === "scrap" && "SCRAP & NOK Mesh Management"}
               {activeTab === "manage-references" && "Manage References Catalog"}
               {activeTab === "operator" && "Inventory Count Workspace"}
+              {activeTab === "records" && "Operator Movement Records & History"}
               {activeTab === "supervisor" && "Supervisor Validation & Sign-offs"}
               {activeTab === "admin" && "Administrative Control Center"}
             </h1>
@@ -2510,7 +2522,7 @@ export default function App() {
 
 
 
-              {activeTab === "deliveries" && (currentUser.role === "supervisor" || currentUser.role === "admin") && (
+              {activeTab === "deliveries" && (
                 <DeliveriesWorkspace
                   deliveries={deliveries}
                   references={references}
@@ -2519,7 +2531,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === "production" && (currentUser.role === "supervisor" || currentUser.role === "admin") && (
+              {activeTab === "production" && (
                 <ProductionWorkspace
                   productions={productions}
                   references={references}
@@ -2530,7 +2542,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === "scrap" && (currentUser.role === "supervisor" || currentUser.role === "admin") && (
+              {activeTab === "scrap" && (
                 <ScrapWorkspace
                   scraps={scraps}
                   references={references}
@@ -2567,6 +2579,16 @@ export default function App() {
                   onSavePendingInvoice={handleSavePendingInvoice}
                   onApproveInvoice={handleApproveInvoice}
                   onCancelInvoice={handleCancelInvoice}
+                />
+              )}
+
+              {activeTab === "records" && (
+                <RecordsWorkspace
+                  transactions={transactions}
+                  invoices={invoices}
+                  references={references}
+                  currentUser={currentUser}
+                  onNavigateToTab={(tab) => setActiveTab(tab as any)}
                 />
               )}
 

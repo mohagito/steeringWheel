@@ -1,4 +1,4 @@
-import { collection, getDocs, setDoc, doc, writeBatch } from "firebase/firestore";
+import { collection, getDocs, setDoc, doc, writeBatch, updateDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { User, Box, Adjustment, Reference } from "./types";
 
@@ -245,7 +245,7 @@ const DEFAULT_USERS: User[] = [
   {
     id: "user_gonzalo",
     username: "gonzalo",
-    fullName: "GONZALO",
+    fullName: "MANAGER",
     role: "admin",
     pin: "9472"
   },
@@ -292,6 +292,18 @@ export async function seedDatabaseIfNeeded() {
         userBatch.set(doc(db, "users", user.id), user);
       });
       await userBatch.commit();
+    } else {
+      // Migrate any existing GONZALO record to MANAGER
+      for (const d of usersSnapshot.docs) {
+        const u = d.data();
+        if (u.username === "gonzalo" && u.fullName === "GONZALO") {
+          try {
+            await updateDoc(doc(db, "users", d.id), { fullName: "MANAGER" });
+          } catch (e) {
+            console.warn("Could not auto-migrate user fullName:", e);
+          }
+        }
+      }
     }
 
     // 2. Ensure references exist if collection is empty
