@@ -94,12 +94,12 @@ export interface ScrapEntry {
   date: string; // YYYY-MM-DD
   reference: string;
   quantity: number;
-  condition: "CON COLA" | "SIN COLA"; // CON COLA -> Stock 3, SIN COLA -> Stock 2
+  condition?: string; // Optional (legacy traceability)
   invoiceNumber?: string; // Scrap delivery invoice for traceability
   notes?: string;
   supervisorName: string;
   timestamp: string;
-  stockDeductedFrom: "Stock 2" | "Stock 3";
+  stockDeductedFrom: "Stock 1" | "Stock 2" | "Stock 3";
   stockBefore: number;
   stockAfter: number;
   status?: "completed" | "edited" | "deleted";
@@ -128,6 +128,7 @@ export interface InventoryTransaction {
   stock2After?: number;
   stock3Before?: number;
   stock3After?: number;
+  destinationStock?: "Stock 1" | "Stock 3";
 }
 
 export interface ScannedInvoiceBox {
@@ -140,6 +141,7 @@ export interface ScannedInvoiceBox {
   materialType?: string;
   difference?: number;
   palletQuality?: string;
+  destinationStock?: "Stock 1" | "Stock 3";
 }
 
 export interface ScannedTransferItem {

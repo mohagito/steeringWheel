@@ -3,7 +3,8 @@ import { Delivery, Reference, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Truck, Search, AlertCircle, Plus, FileText, 
-  TrendingDown, ArrowUpRight, Trash2, CheckCircle, Building2, Layers
+  TrendingDown, ArrowUpRight, Trash2, CheckCircle, Building2, Layers,
+  Edit2, X
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
@@ -14,6 +15,12 @@ interface DeliveriesWorkspaceProps {
   references: Reference[];
   currentUser: User;
   onSubmitDeliveries: (deliveriesData: Omit<Delivery, "id" | "timestamp" | "operatorName">[]) => Promise<void>;
+  onDeleteDelivery?: (deliveryId: string, reason?: string) => Promise<void>;
+  onUpdateDelivery?: (
+    deliveryId: string, 
+    updatedData: { invoiceNumber: string; reference: string; quantity: number; deliveryType: "PRECOSIDO" | "STEERING WHEELS" }, 
+    reason?: string
+  ) => Promise<void>;
 }
 
 interface DeliveryItemRow {
@@ -25,7 +32,9 @@ export default function DeliveriesWorkspace({
   deliveries,
   references,
   currentUser,
-  onSubmitDeliveries
+  onSubmitDeliveries,
+  onDeleteDelivery,
+  onUpdateDelivery
 }: DeliveriesWorkspaceProps) {
   // Step 1: Invoice / Note # (belongs to the entire delivery)
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -47,7 +56,119 @@ export default function DeliveriesWorkspace({
   const [searchQuery, setSearchQuery] = useState("");
   const [customerFilter, setCustomerFilter] = useState("All");
 
+  // Edit Delivery Modal State
+  const [editingDelivery, setEditingDelivery] = useState<Delivery | null>(null);
+  const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
+  const [editReference, setEditReference] = useState("");
+  const [editQuantity, setEditQuantity] = useState("");
+  const [editDeliveryType, setEditDeliveryType] = useState<"PRECOSIDO" | "STEERING WHEELS">("PRECOSIDO");
+  const [editReason, setEditReason] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
+
   const isPrecosido = deliveryType === "PRECOSIDO";
+
+  const handleOpenEdit = (del: Delivery) => {
+    setEditingDelivery(del);
+    setEditInvoiceNumber(del.invoiceNumber);
+    setEditReference(del.reference);
+    setEditQuantity(del.quantity.toString());
+    setEditDeliveryType(del.deliveryType || "STEERING WHEELS");
+    setEditReason("");
+    setEditError("");
+  };
+
+  const handleCloseEdit = () => {
+    setEditingDelivery(null);
+    setSavingEdit(false);
+    setEditError("");
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDelivery || !onUpdateDelivery) return;
+    setEditError("");
+
+    const newQty = parseInt(editQuantity, 10);
+    if (isNaN(newQty) || newQty <= 0) {
+      setEditError("Please enter a valid quantity greater than 0.");
+      return;
+    }
+
+    const cleanedInv = editInvoiceNumber.trim().toUpperCase();
+    if (!cleanedInv) {
+      setEditError("Please enter an Invoice / Note #.");
+      return;
+    }
+
+    const refObj = references.find((r) => r.code === editReference);
+    if (!refObj) {
+      setEditError("Please select a valid reference.");
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      await onUpdateDelivery(
+        editingDelivery.id,
+        {
+          invoiceNumber: cleanedInv,
+          reference: editReference,
+          quantity: newQty,
+          deliveryType: editDeliveryType
+        },
+        editReason.trim() || "Delivery record updated by operator"
+      );
+
+      await Swal.fire({
+        title: "Record Updated",
+        text: `Delivery record updated successfully.`,
+        icon: "success",
+        timer: 1600,
+        showConfirmButton: false
+      });
+
+      handleCloseEdit();
+    } catch (err: any) {
+      console.error(err);
+      setEditError(err?.message || "Failed to update delivery record.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteClick = async (del: Delivery) => {
+    if (!onDeleteDelivery) return;
+    const isPre = del.deliveryType === "PRECOSIDO";
+    const targetStock = isPre ? "Stock 2" : "Stock 3";
+
+    const result = await Swal.fire({
+      title: "Revert Delivery Record?",
+      text: `Revert delivery #${del.invoiceNumber} for ${del.reference} (-${del.quantity} PCS)? This will restore ${del.quantity} PCS back to ${targetStock}.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Revert & Restore Stock",
+      cancelButtonText: "Cancel"
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await onDeleteDelivery(del.id, "Reverted by operator");
+        await Swal.fire({
+          title: "Delivery Reverted",
+          text: `Successfully restored ${del.quantity} PCS to ${targetStock} for ${del.reference}.`,
+          icon: "success",
+          timer: 1800,
+          showConfirmButton: false
+        });
+      } catch (err: any) {
+        console.error(err);
+        await Swal.fire("Error", err?.message || "Failed to revert delivery record.", "error");
+      }
+    }
+  };
 
   const handleAddRow = () => {
     setRows((prev) => [...prev, { referenceCode: "", quantity: "" }]);
@@ -276,7 +397,6 @@ export default function DeliveriesWorkspace({
                 <ArrowUpRight className="w-5 h-5 text-rose-600" />
                 <div>
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">New Delivery</h3>
-                  <p className="text-[11px] text-slate-400 font-medium">Customer dispatch register</p>
                 </div>
               </div>
 
@@ -311,11 +431,11 @@ export default function DeliveriesWorkspace({
                   />
                 </div>
 
-                {/* STEP 2: Delivery Type (Selected ONCE for the entire invoice) */}
+                {/* STEP 2: Stock (Selected ONCE for the entire invoice) */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-mono">
                     <Layers className="w-3 h-3 text-slate-500" />
-                    <span>Delivery Type</span>
+                    <span>Stock</span>
                   </label>
                   <CustomSelect
                     value={deliveryType}
@@ -323,13 +443,11 @@ export default function DeliveriesWorkspace({
                     options={[
                       { 
                         value: "PRECOSIDO", 
-                        label: "PRECOSIDO (Stock 2)",
-                        description: "Deducts from Production Stock 2"
+                        label: "Stock 2"
                       },
                       { 
                         value: "STEERING WHEELS", 
-                        label: "STEERING WHEELS (Stock 3)",
-                        description: "Deducts from Finished Goods Stock 3"
+                        label: "Stock 3"
                       }
                     ]}
                     size="sm"
@@ -538,7 +656,7 @@ export default function DeliveriesWorkspace({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Dispatches Ledger</h3>
-                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Historical customer shipment records</p>
+                
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -574,12 +692,15 @@ export default function DeliveriesWorkspace({
                 <thead>
                   <tr>
                     <th>Invoice / Note</th>
-                    <th>Delivery Type</th>
+                    <th>Stock</th>
                     <th>Reference</th>
                     <th>Quantity</th>
                     <th>Customer</th>
                     <th>Dispatched By</th>
                     <th className="text-right">Timestamp</th>
+                    {(onUpdateDelivery || onDeleteDelivery) && (
+                      <th className="text-right">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -607,7 +728,7 @@ export default function DeliveriesWorkspace({
                               ? "bg-amber-50 text-amber-800 border-amber-200/80" 
                               : "bg-blue-50 text-blue-800 border-blue-200/80"
                           }`}>
-                            {delivery.deliveryType || "STEERING WHEELS"}
+                            {isItemPrecosido ? "Stock 2" : "Stock 3"}
                           </span>
                         </td>
                         <td className="font-mono font-bold text-slate-900">
@@ -627,13 +748,37 @@ export default function DeliveriesWorkspace({
                         <td className="text-right text-slate-400 font-mono text-[10px]">
                           {formattedDate}
                         </td>
+                        {(onUpdateDelivery || onDeleteDelivery) && (
+                          <td className="text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              {onUpdateDelivery && (
+                                <button
+                                  onClick={() => handleOpenEdit(delivery)}
+                                  title="Modify Delivery Record"
+                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {onDeleteDelivery && (
+                                <button
+                                  onClick={() => handleDeleteClick(delivery)}
+                                  title="Delete & Revert Delivery Record"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
 
                   {filteredDeliveries.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400 bg-slate-50/20">
+                      <td colSpan={(onUpdateDelivery || onDeleteDelivery) ? 8 : 7} className="py-12 text-center text-slate-400 bg-slate-50/20">
                         <AlertCircle className="w-7 h-7 mx-auto mb-2 opacity-40 text-slate-500" />
                         <p className="text-xs font-semibold">No dispatches matching filters</p>
                       </td>
@@ -646,6 +791,134 @@ export default function DeliveriesWorkspace({
         </div>
 
       </div>
+
+      {/* Edit Delivery Modal */}
+      {editingDelivery && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Truck className="w-4 h-4 text-blue-400" />
+                <h3 className="font-mono font-bold text-sm">Modify Delivery Record</h3>
+              </div>
+              <button
+                onClick={handleCloseEdit}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="p-5 space-y-4">
+              {editError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  Invoice / Note #
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editInvoiceNumber}
+                  onChange={(e) => setEditInvoiceNumber(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  Reference
+                </label>
+                <CustomReferenceSelect
+                  value={editReference}
+                  onChange={(val) => setEditReference(val)}
+                  references={references}
+                  placeholder="Select Reference"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  Stock
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditDeliveryType("PRECOSIDO")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      editDeliveryType === "PRECOSIDO"
+                        ? "bg-amber-500 border-amber-600 text-white shadow-xs"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    Stock 2
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditDeliveryType("STEERING WHEELS")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      editDeliveryType === "STEERING WHEELS"
+                        ? "bg-blue-600 border-blue-700 text-white shadow-xs"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    Stock 3
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  Quantity (PCS)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={editQuantity}
+                  onChange={(e) => setEditQuantity(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  Reason for Correction
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Wrong count entered, quantity adjusted"
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCloseEdit}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold font-mono transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold font-mono transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  {savingEdit ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

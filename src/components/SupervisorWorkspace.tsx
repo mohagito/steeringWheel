@@ -51,6 +51,7 @@ export interface UnifiedOperation {
     barcode?: string;
     difference?: number;
     scannedAt?: string;
+    destinationStock?: "Stock 1" | "Stock 3";
   }>;
   rawInvoice?: ReceivingInvoice;
   rawDelivery?: Delivery;
@@ -208,21 +209,30 @@ export default function SupervisorWorkspace({
       const commitTime = inv.approvedAt || inv.createdAt;
       const totalQty = inv.totalQuantity || items.reduce((s, it) => s + (it.quantity || 0), 0);
 
+      const hasS1 = items.some(it => it.destinationStock !== "Stock 3");
+      const hasS3 = items.some(it => it.destinationStock === "Stock 3");
+      const affectedStock = hasS1 && hasS3 
+        ? "Stock 1 & Stock 3" 
+        : hasS3 
+          ? "Stock 3 (Finished Goods)" 
+          : "Stock 1 (Warehouse)";
+      const stockTypeTag = hasS1 && hasS3 ? "S1/S3 IN" : hasS3 ? "S3 IN" : "S1 IN";
+
       list.push({
         id: `inv-${inv.id}`,
         rawId: inv.id,
         timestamp: commitTime,
         type: inv.status === "approved" 
-          ? "S1 IN" 
+          ? stockTypeTag 
           : inv.status === "cancelled" 
-            ? "S1 IN (CANCELLED)" 
-            : "S1 IN (PENDING)",
+            ? `${stockTypeTag} (CANCELLED)` 
+            : `${stockTypeTag} (PENDING)`,
         category: "invoice",
         reference: refDisplay,
         quantity: totalQty,
         operator: inv.approvedBy ? `${inv.operator} (Approved by ${inv.approvedBy})` : inv.operator,
-        affectedStock: "Stock 1 (Warehouse)",
-        details: `Invoice #${inv.invoiceNumber} • ${inv.totalBoxes || items.length} box(es) • ${totalQty} PCS`,
+        affectedStock,
+        details: `Invoice #${inv.invoiceNumber} • ${inv.totalBoxes || items.length} box(es) • ${totalQty} PCS${hasS1 && hasS3 ? ' (Mixed S1+S3)' : ''}`,
         status: inv.status === "approved" ? "approved" : inv.status === "cancelled" ? "deleted" : "pending",
         invoiceNumber: inv.invoiceNumber,
         batchItems: items,
@@ -282,14 +292,14 @@ export default function SupervisorWorkspace({
       });
     });
 
-    // 4. Scrap / NOK Discards (CON COLA / SIN COLA)
+    // 4. Scrap / NOK Discards
     scraps.forEach(scrap => {
       const scrapKey = `scrap-${scrap.id}`;
       if (processedKeys.has(scrapKey)) return;
       processedKeys.add(scrapKey);
 
-      const isConCola = scrap.condition === "CON COLA";
-      const typeLabel = isConCola ? "S3 OUT" : "S2 OUT";
+      const affectedStock = scrap.stockDeductedFrom || (scrap.condition === "CON COLA" ? "Stock 3" : "Stock 2");
+      const typeLabel = affectedStock === "Stock 1" ? "S1 OUT" : (affectedStock === "Stock 3" ? "S3 OUT" : "S2 OUT");
 
       list.push({
         id: `scrap-${scrap.id}`,
@@ -300,8 +310,8 @@ export default function SupervisorWorkspace({
         reference: scrap.reference,
         quantity: scrap.quantity,
         operator: scrap.supervisorName || "Supervisor",
-        affectedStock: scrap.stockDeductedFrom || (isConCola ? "Stock 3" : "Stock 2"),
-        details: `Scrap (${scrap.condition}) • ${scrap.invoiceNumber ? `Inv: ${scrap.invoiceNumber} • ` : ''}${scrap.notes || "Verified by supervisor"}`,
+        affectedStock,
+        details: `Scrap NOK • ${scrap.invoiceNumber ? `Inv: ${scrap.invoiceNumber} • ` : ''}${scrap.notes || "Verified by supervisor"}`,
         status: scrap.status || "approved",
         invoiceNumber: scrap.invoiceNumber,
         rawScrap: scrap,
@@ -327,7 +337,7 @@ export default function SupervisorWorkspace({
       if (tx.movementType?.startsWith("SCRAP") || tx.id.startsWith("trans-del-scrap-") || tx.id.startsWith("trans-edit-scrap-")) {
         return;
       }
-      if (tx.movementType === "STOCK 1 IN" || tx.id.startsWith("trans-s1in-")) {
+      if (tx.movementType === "STOCK 1 IN" || tx.id.startsWith("trans-s1in-") || tx.id.startsWith("trans-s3in-") || (tx.movementType === "STOCK 3 IN" && tx.invoiceNumber)) {
         return;
       }
       if (tx.notes?.includes("Invoice") && Array.from(approvedInvoiceNumbers).some(invNum => invNum && tx.notes?.includes(invNum))) {
@@ -862,6 +872,7 @@ export default function SupervisorWorkspace({
                           <tr>
                             <th className="p-2 w-8 text-center">#</th>
                             <th className="p-2">Reference</th>
+                            <th className="p-2">Destination</th>
                             <th className="p-2">Barcode / ID</th>
                             <th className="p-2 text-right">Quantity</th>
                             <th className="p-2 text-right">Scanned Time</th>
@@ -872,6 +883,17 @@ export default function SupervisorWorkspace({
                             <tr key={item.id || idx} className="hover:bg-slate-50/60">
                               <td className="p-2 text-center text-slate-400 text-[10px]">{idx + 1}</td>
                               <td className="p-2 font-bold text-slate-900">{item.reference}</td>
+                              <td className="p-2">
+                                {item.destinationStock === "Stock 3" ? (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                    STOCK 3
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-blue-50 text-blue-600 border border-blue-200">
+                                    STOCK 1
+                                  </span>
+                                )}
+                              </td>
                               <td className="p-2 text-slate-500 text-[10px] truncate max-w-[140px]" title={item.boxBarcode || item.barcode || "-"}>
                                 {item.boxBarcode || item.barcode || "-"}
                               </td>
@@ -886,7 +908,7 @@ export default function SupervisorWorkspace({
                         </tbody>
                         <tfoot className="bg-slate-50 font-bold border-t border-slate-200">
                           <tr>
-                            <td colSpan={3} className="p-2 text-right text-slate-600 text-[11px]">Total Itemized Quantity:</td>
+                            <td colSpan={4} className="p-2 text-right text-slate-600 text-[11px]">Total Itemized Quantity:</td>
                             <td className="p-2 text-right text-emerald-700 text-[11px]">{detailOp.quantity} PCS</td>
                             <td></td>
                           </tr>

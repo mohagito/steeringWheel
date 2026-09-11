@@ -2,24 +2,36 @@ import React, { useState, useMemo } from "react";
 import { ScrapEntry, Reference, User } from "../types";
 import { 
   Trash2, Calendar, Hash, AlertTriangle, CheckCircle2, 
-  Search, ShieldAlert, Layers, Flame, FileText, RefreshCw, Plus
+  Search, ShieldAlert, FileText, RefreshCw, Plus,
+  Edit2, X, ChevronDown
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
-import { CustomSelect } from "./CustomSelect";
 
 interface ScrapRow {
   referenceCode: string;
+  stock: "Stock 1" | "Stock 2" | "Stock 3";
   quantity: string;
-  condition: "CON COLA" | "SIN COLA";
 }
 
 interface ScrapWorkspaceProps {
   scraps: ScrapEntry[];
   references: Reference[];
   currentUser: User;
-  onSubmitScrap: (scrapData: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter" | "stockDeductedFrom"> | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter" | "stockDeductedFrom">[]) => Promise<void>;
-  onDeleteScrap?: (scrapId: string) => Promise<void>;
+  onSubmitScrap: (scrapData: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter"> | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[]) => Promise<void>;
+  onDeleteScrap?: (scrapId: string, reason?: string) => Promise<void>;
+  onUpdateScrap?: (
+    scrapId: string,
+    updatedData: {
+      reference: string;
+      quantity: number;
+      stockDeductedFrom?: "Stock 1" | "Stock 2" | "Stock 3";
+      condition?: string;
+      invoiceNumber?: string;
+      date?: string;
+    },
+    reason?: string
+  ) => Promise<void>;
 }
 
 export default function ScrapWorkspace({
@@ -27,7 +39,8 @@ export default function ScrapWorkspace({
   references = [],
   currentUser,
   onSubmitScrap,
-  onDeleteScrap
+  onDeleteScrap,
+  onUpdateScrap
 }: ScrapWorkspaceProps) {
   // Get today's date in YYYY-MM-DD
   const todayStr = new Date().toISOString().split('T')[0];
@@ -35,11 +48,10 @@ export default function ScrapWorkspace({
   // Form State
   const [date, setDate] = useState(todayStr);
   const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [defaultCondition, setDefaultCondition] = useState<"CON COLA" | "SIN COLA">("CON COLA");
   
   // Multi-reference rows
   const [rows, setRows] = useState<ScrapRow[]>([
-    { referenceCode: "", quantity: "", condition: "CON COLA" }
+    { referenceCode: "", stock: "Stock 2", quantity: "" }
   ]);
 
   // UX Feedback States
@@ -47,14 +59,89 @@ export default function ScrapWorkspace({
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Search & Filter State for Scrap Table
+  // Search State for Scrap Table
   const [searchTerm, setSearchTerm] = useState("");
-  const [conditionFilter, setConditionFilter] = useState<"ALL" | "CON COLA" | "SIN COLA">("ALL");
+
+  // Edit Scrap Modal State
+  const [editingScrap, setEditingScrap] = useState<ScrapEntry | null>(null);
+  const [editReference, setEditReference] = useState("");
+  const [editStock, setEditStock] = useState<"Stock 1" | "Stock 2" | "Stock 3">("Stock 2");
+  const [editQuantity, setEditQuantity] = useState("");
+  const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  const handleOpenEdit = (s: ScrapEntry) => {
+    setEditingScrap(s);
+    setEditReference(s.reference);
+    setEditStock(s.stockDeductedFrom || "Stock 2");
+    setEditQuantity(s.quantity.toString());
+    setEditInvoiceNumber(s.invoiceNumber || "");
+    setEditDate(s.date || todayStr);
+    setEditReason("");
+    setEditError("");
+  };
+
+  const handleCloseEdit = () => {
+    setEditingScrap(null);
+    setSavingEdit(false);
+    setEditError("");
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingScrap || !onUpdateScrap) return;
+    setEditError("");
+
+    const newQty = parseInt(editQuantity, 10);
+    if (isNaN(newQty) || newQty <= 0) {
+      setEditError("Please enter a valid quantity greater than 0.");
+      return;
+    }
+
+    const refObj = references.find((r) => r.code === editReference);
+    if (!refObj) {
+      setEditError("Please select a valid reference.");
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      await onUpdateScrap(
+        editingScrap.id,
+        {
+          reference: editReference,
+          quantity: newQty,
+          stockDeductedFrom: editStock,
+          invoiceNumber: editInvoiceNumber.trim().toUpperCase() || undefined,
+          date: editDate
+        },
+        editReason.trim() || "Scrap record updated"
+      );
+
+      await Swal.fire({
+        title: "Record Updated",
+        text: "Scrap record updated successfully.",
+        icon: "success",
+        timer: 1600,
+        showConfirmButton: false
+      });
+
+      handleCloseEdit();
+    } catch (err: any) {
+      console.error(err);
+      setEditError(err?.message || "Failed to update scrap record.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const handleAddRow = () => {
     setRows([
       ...rows,
-      { referenceCode: "", quantity: "", condition: defaultCondition }
+      { referenceCode: "", stock: "Stock 2", quantity: "" }
     ]);
   };
 
@@ -103,7 +190,7 @@ export default function ScrapWorkspace({
     }
 
     const cleanedInvoice = invoiceNumber.trim().toUpperCase();
-    const submissions: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter" | "stockDeductedFrom">[] = [];
+    const submissions: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -124,7 +211,7 @@ export default function ScrapWorkspace({
         date,
         reference: cleanRef,
         quantity: qtyVal,
-        condition: row.condition || defaultCondition,
+        stockDeductedFrom: row.stock,
         invoiceNumber: cleanedInvoice,
         notes: ""
       });
@@ -139,7 +226,7 @@ export default function ScrapWorkspace({
       
       // Reset entry inputs (keep date)
       setInvoiceNumber("");
-      setRows([{ referenceCode: "", quantity: "", condition: defaultCondition }]);
+      setRows([{ referenceCode: "", stock: "Stock 2", quantity: "" }]);
 
       Swal.fire({
         title: "Good job!",
@@ -160,8 +247,7 @@ export default function ScrapWorkspace({
 
   // KPI Calculations
   const totalScrappedPcs = useMemo(() => scraps.reduce((acc, s) => acc + s.quantity, 0), [scraps]);
-  const totalConColaPcs = useMemo(() => scraps.filter(s => s.condition === "CON COLA").reduce((acc, s) => acc + s.quantity, 0), [scraps]);
-  const totalSinColaPcs = useMemo(() => scraps.filter(s => s.condition === "SIN COLA").reduce((acc, s) => acc + s.quantity, 0), [scraps]);
+  const uniqueRefsCount = useMemo(() => new Set(scraps.map(s => s.reference)).size, [scraps]);
 
   // Filtered Scraps List
   const filteredScraps = useMemo(() => {
@@ -172,10 +258,9 @@ export default function ScrapWorkspace({
         (s.invoiceNumber && s.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase()));
       
-      const matchesCondition = conditionFilter === "ALL" || s.condition === conditionFilter;
-      return matchesSearch && matchesCondition;
+      return matchesSearch;
     });
-  }, [scraps, searchTerm, conditionFilter]);
+  }, [scraps, searchTerm]);
 
   return (
     <div className="space-y-6">
@@ -187,19 +272,18 @@ export default function ScrapWorkspace({
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-rose-500/20 border border-rose-500/30 text-rose-300 rounded-full text-xs font-mono font-semibold">
               <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-              <span>DEFECTIVE & NOK MESH LOGGING</span>
+              <span>SCRAP</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold font-display tracking-tight text-white">
               SCRAP Management
             </h2>
-
           </div>
 
           <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 flex items-center gap-3 shrink-0">
             <Trash2 className="w-8 h-8 text-rose-400" />
             <div>
               <div className="text-xl font-mono font-black text-rose-300">{totalScrappedPcs} PCS</div>
-              <div className="text-[10px] text-slate-300 uppercase tracking-wider font-semibold">Total NOK Scrapped</div>
+              <div className="text-[10px] text-slate-300 uppercase tracking-wider font-semibold">Total Scrapped</div>
             </div>
           </div>
         </div>
@@ -209,36 +293,38 @@ export default function ScrapWorkspace({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">With Glue (CON COLA)</div>
-            <div className="text-2xl font-black font-mono text-rose-600 mt-1">{totalConColaPcs} PCS</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Deducted from Stock 3 (Final)</div>
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Scrapped</div>
+            <div className="text-2xl font-black font-mono text-rose-600 mt-1">{totalScrappedPcs} PCS</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">All time</div>
           </div>
           <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600">
-            <Flame className="w-6 h-6" />
+            <Trash2 className="w-6 h-6" />
           </div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Without Glue (SIN COLA)</div>
-            <div className="text-2xl font-black font-mono text-amber-600 mt-1">{totalSinColaPcs} PCS</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Deducted from Stock 2 (Pegadas)</div>
-          </div>
-          <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600">
-            <Layers className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Unique References</div>
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">References</div>
             <div className="text-2xl font-black font-mono text-slate-800 mt-1">
-              {new Set(scraps.map(s => s.reference)).size} REFS
+              {uniqueRefsCount}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Affected part codes</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Unique items</div>
           </div>
           <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600">
             <Hash className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Entries</div>
+            <div className="text-2xl font-black font-mono text-blue-600 mt-1">
+              {scraps.length}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Logged records</div>
+          </div>
+          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+            <FileText className="w-6 h-6" />
           </div>
         </div>
       </div>
@@ -251,7 +337,7 @@ export default function ScrapWorkspace({
           <div className="border-b border-slate-100 pb-4">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Trash2 className="w-5 h-5 text-rose-600" />
-              <span>Record NOK Mesh (Scrap)</span>
+              <span>New Scrap</span>
             </h3>
           </div>
 
@@ -272,12 +358,12 @@ export default function ScrapWorkspace({
           <form onSubmit={handleSubmit} className="space-y-4">
             
             {/* Header controls: Date & Scrap Invoice */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
               {/* DATE */}
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
                   <Calendar className="w-3 h-3 text-slate-400" />
-                  <span>1. Date</span>
+                  <span>Date</span>
                 </label>
                 <input
                   type="date"
@@ -289,16 +375,15 @@ export default function ScrapWorkspace({
               </div>
 
               {/* SCRAP INVOICE NUMBER */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span>Invoice / Note #</span>
-                  <span className="text-[9px] text-slate-400 font-normal">Traceability</span>
+              <div className="min-w-0">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Invoice #
                 </label>
                 <div className="relative">
                   <FileText className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="e.g. INV-SCRAP-001"
+                    placeholder="e.g. INV-001"
                     value={invoiceNumber}
                     onChange={(e) => setInvoiceNumber(e.target.value)}
                     className="w-full pl-8 pr-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold uppercase"
@@ -307,126 +392,105 @@ export default function ScrapWorkspace({
               </div>
             </div>
 
-            {/* Default Condition selector for fast adding */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                Default Condition for New Items
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDefaultCondition("CON COLA")}
-                  className={`py-1.5 px-3 rounded-xl border text-xs font-bold transition-all ${
-                    defaultCondition === "CON COLA"
-                      ? "bg-rose-50 border-rose-600 text-rose-800"
-                      : "bg-slate-50 border-slate-200 text-slate-600"
-                  }`}
-                >
-                  CON COLA (Deducts Stock 3)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDefaultCondition("SIN COLA")}
-                  className={`py-1.5 px-3 rounded-xl border text-xs font-bold transition-all ${
-                    defaultCondition === "SIN COLA"
-                      ? "bg-amber-50 border-amber-600 text-amber-800"
-                      : "bg-slate-50 border-slate-200 text-slate-600"
-                  }`}
-                >
-                  SIN COLA (Deducts Stock 2)
-                </button>
-              </div>
-            </div>
-
             {/* DYNAMIC SCRAP REFERENCES LIST */}
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Scrap Items in Shipment / Batch
+                  Items
                 </span>
                 <span className="text-[10px] font-mono text-slate-400">
-                  {rows.length} reference{rows.length > 1 ? "s" : ""}
+                  {rows.length} {rows.length > 1 ? "items" : "item"}
                 </span>
               </div>
 
               <div className="space-y-3.5 overflow-visible">
                 {rows.map((row, index) => {
                   const selectedRefObj = references.find((r) => r.code.toUpperCase() === row.referenceCode.trim().toUpperCase());
-                  const isConCola = row.condition === "CON COLA";
-                  const relevantStock = selectedRefObj 
-                    ? (isConCola ? (selectedRefObj.stock3 || 0) : (selectedRefObj.stock2 || 0))
-                    : 0;
 
                   return (
                     <div key={index} className="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl relative space-y-3 overflow-visible shadow-2xs">
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-mono font-bold bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-md">
-                          Scrap Item #{index + 1}
+                          Item #{index + 1}
                         </span>
                         {rows.length > 1 && (
                           <button
                             type="button"
                             onClick={() => handleRemoveRow(index)}
                             className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Remove reference"
+                            title="Remove item"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>
 
-                      <div className="grid grid-cols-12 gap-3 items-start overflow-visible">
-                        {/* Reference Selector */}
-                        <div className="col-span-12 sm:col-span-6 overflow-visible">
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reference Code</label>
+                      <div className="space-y-3 overflow-visible">
+                        {/* Reference Selector - Full Width */}
+                        <div className="w-full overflow-visible">
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">REFERENCE</label>
                           <CustomReferenceSelect
                             references={references}
                             value={row.referenceCode}
                             onChange={(val) => handleRowChange(index, "referenceCode", val)}
-                            placeholder="Select/Scan code..."
+                            placeholder="Select reference code..."
+                            showStockBadges={false}
                             required
                             size="sm"
                           />
                         </div>
 
-                        {/* Condition per Row */}
-                        <div className="col-span-12 sm:col-span-6 overflow-visible">
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Glue State</label>
-                          <CustomSelect
-                            value={row.condition}
-                            onChange={(val) => handleRowChange(index, "condition", val as any)}
-                            options={[
-                              { value: "CON COLA", label: "CON COLA (Deducts Stock 3)" },
-                              { value: "SIN COLA", label: "SIN COLA (Deducts Stock 2)" }
-                            ]}
-                            size="sm"
-                          />
-                        </div>
+                        {/* Stock & Quantity in clean 2-column grid */}
+                        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 w-full">
+                          {/* Stock Selector */}
+                          <div className="min-w-0">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">STOCK</label>
+                            <div className="relative">
+                              <select
+                                value={row.stock}
+                                onChange={(e) => handleRowChange(index, "stock", e.target.value as "Stock 1" | "Stock 2" | "Stock 3")}
+                                className="w-full min-h-[40px] pl-3 pr-8 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono text-slate-900 font-bold cursor-pointer appearance-none shadow-2xs"
+                                required
+                              >
+                                <option value="Stock 1">Stock 1 {selectedRefObj ? `(${selectedRefObj.stock1 || 0})` : ""}</option>
+                                <option value="Stock 2">Stock 2 {selectedRefObj ? `(${selectedRefObj.stock2 || 0})` : ""}</option>
+                                <option value="Stock 3">Stock 3 {selectedRefObj ? `(${selectedRefObj.stock3 || 0})` : ""}</option>
+                              </select>
+                              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            </div>
+                          </div>
 
-                        {/* Quantity per Row */}
-                        <div className="col-span-12">
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Defective Quantity (NOK PCS)</label>
-                          <input
-                            type="number"
-                            min="1"
-                            placeholder="Enter NOK quantity..."
-                            value={row.quantity}
-                            onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
-                            className="w-full min-h-[42px] px-3.5 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono text-slate-900 font-bold"
-                            required
-                          />
+                          {/* Quantity per Row */}
+                          <div className="min-w-0">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">QUANTITY</label>
+                            <input
+                              type="number"
+                              min="1"
+                              placeholder="Qty..."
+                              value={row.quantity}
+                              onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
+                              className="w-full min-h-[40px] px-3 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono text-slate-900 font-bold shadow-2xs"
+                              required
+                            />
+                          </div>
                         </div>
                       </div>
 
                       {selectedRefObj && (
-                        <div className="flex items-center justify-between text-[10px] font-mono px-0.5 pt-1 border-t border-slate-200/50">
-                          <span className="text-slate-400 truncate max-w-[170px]">{selectedRefObj.description}</span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-400 text-[9px]">
-                              Available {isConCola ? "Stock 3 (CON COLA)" : "Stock 2 (SIN COLA)"}:
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 text-[10px] font-mono px-0.5 pt-2 border-t border-slate-200/60">
+                          <span className="text-slate-400 truncate max-w-[150px] sm:max-w-[200px]" title={selectedRefObj.description}>
+                            {selectedRefObj.description || selectedRefObj.code}
+                          </span>
+                          <div className="flex items-center gap-1.5 text-[10px]">
+                            <span className="text-slate-400 text-[10px]">Stock:</span>
+                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 1" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600 bg-slate-100"}`}>
+                              S1: {selectedRefObj.stock1 || 0}
                             </span>
-                            <span className={`font-bold ${relevantStock > 0 ? "text-emerald-600" : "text-rose-500"}`}>
-                              {relevantStock} pcs
+                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 2" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600"}`}>
+                              S2: {selectedRefObj.stock2 || 0}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 3" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600"}`}>
+                              S3: {selectedRefObj.stock3 || 0}
                             </span>
                           </div>
                         </div>
@@ -441,7 +505,7 @@ export default function ScrapWorkspace({
                   className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-700 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add Another Reference to Scrap</span>
+                  <span>Add Item</span>
                 </button>
               </div>
             </div>
@@ -456,12 +520,12 @@ export default function ScrapWorkspace({
                 {submitting ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Processing Scrap Batch...</span>
+                    <span>Saving...</span>
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4" />
-                    <span>RECORD SCRAP ENTRY ({rows.length} ITEM{rows.length > 1 ? "S" : ""})</span>
+                    <span>CONFIRM SCRAP ({rows.length})</span>
                   </>
                 )}
               </button>
@@ -477,7 +541,7 @@ export default function ScrapWorkspace({
             <div>
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-slate-700" />
-                <span>Scrap History & Logs</span>
+                <span>Scrap History</span>
               </h3>
             </div>
 
@@ -488,45 +552,16 @@ export default function ScrapWorkspace({
             </div>
           </div>
 
-          {/* Search & Filter Toolbar */}
-          <div className="flex flex-col sm:flex-row items-center gap-3">
-            <div className="relative flex-1 w-full">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search reference, supervisor, notes..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 rounded-xl text-xs focus:outline-none transition-all"
-              />
-            </div>
-
-            <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0">
-              <button
-                onClick={() => setConditionFilter("ALL")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  conditionFilter === "ALL" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-              >
-                ALL
-              </button>
-              <button
-                onClick={() => setConditionFilter("CON COLA")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  conditionFilter === "CON COLA" ? "bg-rose-600 text-white" : "bg-rose-50 text-rose-700 hover:bg-rose-100"
-                }`}
-              >
-                CON COLA
-              </button>
-              <button
-                onClick={() => setConditionFilter("SIN COLA")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  conditionFilter === "SIN COLA" ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-700 hover:bg-amber-100"
-                }`}
-              >
-                SIN COLA
-              </button>
-            </div>
+          {/* Search Toolbar */}
+          <div className="relative w-full">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 rounded-xl text-xs focus:outline-none transition-all"
+            />
           </div>
 
           {/* Table Area */}
@@ -534,9 +569,9 @@ export default function ScrapWorkspace({
             {filteredScraps.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-2">
                 <Trash2 className="w-10 h-10 text-slate-300" />
-                <div className="text-sm font-semibold text-slate-600">No scrap records found</div>
+                <div className="text-sm font-semibold text-slate-600">No scrap records</div>
                 <div className="text-xs max-w-xs">
-                  {searchTerm ? "No matching records for your search." : "Recorded NOK mesh scraps will appear here."}
+                  {searchTerm ? "No results matching search." : "Recorded scrap will appear here."}
                 </div>
               </div>
             ) : (
@@ -545,12 +580,11 @@ export default function ScrapWorkspace({
                   <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="py-3 px-3">Date</th>
                     <th className="py-3 px-3">Reference</th>
-                    <th className="py-3 px-3">Condition</th>
-                    <th className="py-3 px-3 text-right">Qty (NOK)</th>
-                    <th className="py-3 px-3">Scrap Invoice #</th>
-                    <th className="py-3 px-3">Stock Deducted</th>
-                    <th className="py-3 px-3">Supervisor</th>
-                    {onDeleteScrap && <th className="py-3 px-3 text-right">Action</th>}
+                    <th className="py-3 px-3 text-right">Qty</th>
+                    <th className="py-3 px-3">Invoice #</th>
+                    <th className="py-3 px-3">Stock</th>
+                    <th className="py-3 px-3">Operator</th>
+                    {(onDeleteScrap || onUpdateScrap) && <th className="py-3 px-3 text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
@@ -561,15 +595,6 @@ export default function ScrapWorkspace({
                       </td>
                       <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                         {s.reference}
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          s.condition === "CON COLA"
-                            ? "bg-rose-100 text-rose-800 border border-rose-200"
-                            : "bg-amber-100 text-amber-800 border border-amber-200"
-                        }`}>
-                          {s.condition === "CON COLA" ? "CON COLA" : "SIN COLA"}
-                        </span>
                       </td>
                       <td className="py-3 px-3 font-mono font-black text-rose-600 text-right text-sm whitespace-nowrap">
                         -{s.quantity} PCS
@@ -591,42 +616,55 @@ export default function ScrapWorkspace({
                       <td className="py-3 px-3 text-slate-700 font-medium whitespace-nowrap">
                         {s.supervisorName}
                       </td>
-                      {onDeleteScrap && (
+                      {(onDeleteScrap || onUpdateScrap) && (
                         <td className="py-3 px-3 text-right whitespace-nowrap">
-                          <button
-                            onClick={async () => {
-                              const result = await Swal.fire({
-                                title: "Revert Scrap Entry?",
-                                text: `Revert scrap entry for ${s.reference} (-${s.quantity} PCS)? This will restore ${s.quantity} PCS back to ${s.stockDeductedFrom}.`,
-                                icon: "warning",
-                                showCancelButton: true,
-                                confirmButtonColor: "#dc2626",
-                                cancelButtonColor: "#64748b",
-                                confirmButtonText: "Yes, Revert & Restore Stock",
-                                cancelButtonText: "Cancel"
-                              });
-
-                              if (result.isConfirmed) {
-                                try {
-                                  await onDeleteScrap(s.id);
-                                  await Swal.fire({
-                                    title: "Scrap Entry Reverted",
-                                    text: `Successfully restored ${s.quantity} PCS to ${s.stockDeductedFrom} for ${s.reference}.`,
-                                    icon: "success",
-                                    timer: 1800,
-                                    showConfirmButton: false
+                          <div className="flex items-center justify-end gap-1">
+                            {onUpdateScrap && (
+                              <button
+                                onClick={() => handleOpenEdit(s)}
+                                title="Modify scrap entry"
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {onDeleteScrap && (
+                              <button
+                                onClick={async () => {
+                                  const result = await Swal.fire({
+                                    title: "Revert Scrap Entry?",
+                                    text: `Revert scrap entry for ${s.reference} (-${s.quantity} PCS)? This will restore ${s.quantity} PCS back to ${s.stockDeductedFrom}.`,
+                                    icon: "warning",
+                                    showCancelButton: true,
+                                    confirmButtonColor: "#dc2626",
+                                    cancelButtonColor: "#64748b",
+                                    confirmButtonText: "Yes, Revert & Restore Stock",
+                                    cancelButtonText: "Cancel"
                                   });
-                                } catch (err: any) {
-                                  console.error(err);
-                                  await Swal.fire("Error", err?.message || "Failed to revert scrap entry.", "error");
-                                }
-                              }
-                            }}
-                            title="Delete and restore stock"
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+
+                                  if (result.isConfirmed) {
+                                    try {
+                                      await onDeleteScrap(s.id, "Reverted by operator");
+                                      await Swal.fire({
+                                        title: "Scrap Entry Reverted",
+                                        text: `Successfully restored ${s.quantity} PCS to ${s.stockDeductedFrom} for ${s.reference}.`,
+                                        icon: "success",
+                                        timer: 1800,
+                                        showConfirmButton: false
+                                      });
+                                    } catch (err: any) {
+                                      console.error(err);
+                                      await Swal.fire("Error", err?.message || "Failed to revert scrap entry.", "error");
+                                    }
+                                  }
+                                }}
+                                title="Delete and restore stock"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -639,6 +677,134 @@ export default function ScrapWorkspace({
         </div>
 
       </div>
+
+      {/* Edit Scrap Modal */}
+      {editingScrap && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                <h3 className="font-mono font-bold text-sm">Edit Scrap</h3>
+              </div>
+              <button
+                onClick={handleCloseEdit}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="p-5 space-y-4">
+              {editError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  REFERENCE
+                </label>
+                <CustomReferenceSelect
+                  value={editReference}
+                  onChange={(val) => setEditReference(val)}
+                  references={references}
+                  placeholder="Select Reference"
+                  showStockBadges={false}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                    STOCK
+                  </label>
+                  <select
+                    value={editStock}
+                    onChange={(e) => setEditStock(e.target.value as "Stock 1" | "Stock 2" | "Stock 3")}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all cursor-pointer"
+                  >
+                    <option value="Stock 1">Stock 1</option>
+                    <option value="Stock 2">Stock 2</option>
+                    <option value="Stock 3">Stock 3</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                    QUANTITY
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={editQuantity}
+                    onChange={(e) => setEditQuantity(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                    INVOICE #
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Optional"
+                    value={editInvoiceNumber}
+                    onChange={(e) => setEditInvoiceNumber(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                    DATE
+                  </label>
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  REASON
+                </label>
+                <input
+                  type="text"
+                  placeholder="Reason..."
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-rose-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCloseEdit}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold font-mono transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold font-mono transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  {savingEdit ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

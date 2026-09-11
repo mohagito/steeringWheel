@@ -5,8 +5,9 @@ import {
   Layers, CheckCircle2, Clock, Calendar, Download, Eye, 
   X, Printer, Shield, ArrowUpRight, ArrowDownLeft, AlertCircle,
   Factory, Trash2, Box as BoxIcon, ChevronRight, User as UserIcon,
-  Sparkles, RefreshCw, BarChart2
+  Sparkles, RefreshCw, BarChart2, Edit2
 } from "lucide-react";
+import Swal from "sweetalert2";
 
 interface RecordsWorkspaceProps {
   transactions: InventoryTransaction[];
@@ -14,6 +15,8 @@ interface RecordsWorkspaceProps {
   references: Reference[];
   currentUser: User;
   onNavigateToTab?: (tab: string) => void;
+  onEditOperation?: (opId: string, category: string, newQty: number, reason: string) => Promise<void>;
+  onDeleteOperation?: (opId: string, category: string, reason: string) => Promise<void>;
 }
 
 type MovementCategoryFilter = "all" | "truck" | "pegadas" | "return" | "delivery" | "production_scrap";
@@ -25,7 +28,9 @@ export default function RecordsWorkspace({
   invoices = [],
   references = [],
   currentUser,
-  onNavigateToTab
+  onNavigateToTab,
+  onEditOperation,
+  onDeleteOperation
 }: RecordsWorkspaceProps) {
   // Filters
   const [categoryFilter, setCategoryFilter] = useState<MovementCategoryFilter>("all");
@@ -36,6 +41,100 @@ export default function RecordsWorkspace({
 
   // Selected movement for detailed inspection modal
   const [selectedTx, setSelectedTx] = useState<InventoryTransaction | null>(null);
+
+  const handleEditTx = async (tx: InventoryTransaction) => {
+    if (!onEditOperation) return;
+    const cat = getMovementCategory(tx);
+    const { value: formValues } = await Swal.fire({
+      title: "Modify Record",
+      html: `
+        <div class="text-left text-xs font-sans space-y-3">
+          <p class="text-slate-600">Modify recorded quantity for <strong>${tx.reference}</strong> (${tx.movementType})</p>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">New Quantity (PCS):</label>
+            <input id="swal-edit-qty" type="number" min="1" class="swal2-input !m-0 !w-full !text-sm" value="${tx.quantity}">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Reason for Modification:</label>
+            <input id="swal-edit-reason" type="text" class="swal2-input !m-0 !w-full !text-sm" placeholder="e.g., Typo correction, physical recount">
+          </div>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: "Save Changes",
+      confirmButtonColor: "#2563eb",
+      cancelButtonText: "Cancel",
+      preConfirm: () => {
+        const qtyEl = document.getElementById("swal-edit-qty") as HTMLInputElement;
+        const reasonEl = document.getElementById("swal-edit-reason") as HTMLInputElement;
+        const q = parseInt(qtyEl?.value || "0", 10);
+        if (isNaN(q) || q <= 0) {
+          Swal.showValidationMessage("Please enter a valid quantity greater than 0");
+          return false;
+        }
+        return {
+          newQty: q,
+          reason: reasonEl?.value?.trim() || "Operator correction"
+        };
+      }
+    });
+
+    if (formValues) {
+      try {
+        const operationCategory = cat === "delivery" ? "delivery" : cat === "production_scrap" ? "production" : cat === "pegadas" ? "transfer" : cat === "return" ? "return" : "transaction";
+        await onEditOperation(tx.id, operationCategory, formValues.newQty, formValues.reason);
+        await Swal.fire({
+          title: "Record Updated",
+          text: `Updated quantity to ${formValues.newQty} PCS.`,
+          icon: "success",
+          timer: 1600,
+          showConfirmButton: false
+        });
+        if (selectedTx?.id === tx.id) {
+          setSelectedTx(null);
+        }
+      } catch (err: any) {
+        console.error(err);
+        await Swal.fire("Error", err?.message || "Failed to modify record.", "error");
+      }
+    }
+  };
+
+  const handleDeleteTx = async (tx: InventoryTransaction) => {
+    if (!onDeleteOperation) return;
+    const cat = getMovementCategory(tx);
+    const result = await Swal.fire({
+      title: "Delete & Revert Record?",
+      text: `Are you sure you want to delete this record (${tx.reference} - ${tx.quantity} PCS)? Stock movements associated with this record will be safely reversed.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Delete & Revert",
+      cancelButtonText: "Cancel"
+    });
+
+    if (result.isConfirmed) {
+      try {
+        const operationCategory = cat === "delivery" ? "delivery" : cat === "production_scrap" ? "production" : cat === "pegadas" ? "transfer" : cat === "return" ? "return" : "transaction";
+        await onDeleteOperation(tx.id, operationCategory, "Reverted by operator");
+        await Swal.fire({
+          title: "Record Deleted",
+          text: "Record has been deleted and stock adjusted.",
+          icon: "success",
+          timer: 1600,
+          showConfirmButton: false
+        });
+        if (selectedTx?.id === tx.id) {
+          setSelectedTx(null);
+        }
+      } catch (err: any) {
+        console.error(err);
+        await Swal.fire("Error", err?.message || "Failed to delete record.", "error");
+      }
+    }
+  };
 
   // Reference lookup map for instant metadata retrieval (description, materialType, customer, stock)
   const refMap = useMemo(() => {
@@ -659,7 +758,7 @@ export default function RecordsWorkspace({
                   <th className="py-3 px-4 text-right">Quantity</th>
                   <th className="py-3 px-4">Operator</th>
                   <th className="py-3 px-4">Invoice / Audit</th>
-                  <th className="py-3 px-4 text-center">Inspect</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -725,15 +824,35 @@ export default function RecordsWorkspace({
                         )}
                       </td>
 
-                      {/* Inspect Button */}
-                      <td className="py-3 px-4 text-center whitespace-nowrap">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedTx(tx); }}
-                          className="p-1 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-100 transition-colors"
-                          title="Inspect Details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
+                      {/* Actions */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedTx(tx); }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-100 transition-colors"
+                            title="Inspect Details"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          {onEditOperation && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleEditTx(tx); }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                              title="Modify Record"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {onDeleteOperation && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteTx(tx); }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Delete & Revert Record"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -883,16 +1002,36 @@ export default function RecordsWorkspace({
                   </div>
 
                   {/* Modal Footer */}
-                  <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between">
+                  <div className="p-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-[10px] text-slate-400 font-mono">
                       ID: {selectedTx.id}
                     </span>
-                    <button
-                      onClick={() => setSelectedTx(null)}
-                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold font-mono transition-colors cursor-pointer"
-                    >
-                      Close Details
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {onDeleteOperation && (
+                        <button
+                          onClick={() => handleDeleteTx(selectedTx)}
+                          className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold font-mono transition-colors cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      )}
+                      {onEditOperation && (
+                        <button
+                          onClick={() => handleEditTx(selectedTx)}
+                          className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold font-mono transition-colors cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          Modify
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedTx(null)}
+                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold font-mono transition-colors cursor-pointer"
+                      >
+                        Close Details
+                      </button>
+                    </div>
                   </div>
                 </>
               );

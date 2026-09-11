@@ -617,7 +617,6 @@ export default function ProductionWorkspace({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Consumption Ledger</h3>
-                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Production output logs &amp; management</p>
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">

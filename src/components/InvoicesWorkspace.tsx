@@ -199,6 +199,7 @@ export default function InvoicesWorkspace({
       "Operator",
       "Reference Description",
       "Reference Code",
+      "Destination Stock",
       "Customer",
       "Material Type",
       "Expected Qty",
@@ -221,6 +222,7 @@ export default function InvoicesWorkspace({
             `"${i.operator}"`,
             `"${refData?.description || ''}"`,
             `"${it.reference}"`,
+            `"${it.destinationStock || 'Stock 1'}"`,
             `"${refData?.customer || 'Standard'}"`,
             `"${refData?.materialType || it.materialType || 'Mesh'}"`,
             `${it.expectedQty || it.quantity}`,
@@ -238,6 +240,7 @@ export default function InvoicesWorkspace({
           `"${i.operator}"`,
           `"-"`,
           `"-"`,
+          `"Stock 1"`,
           `"-"`,
           `"-"`,
           `0`,
@@ -408,7 +411,8 @@ export default function InvoicesWorkspace({
       quantity: 100,
       difference: 0,
       scannedAt: new Date().toISOString(),
-      materialType: refData?.materialType || "Mesh"
+      materialType: refData?.materialType || "Mesh",
+      destinationStock: "Stock 1"
     };
 
     const updatedItems = [...editingInvoice.items, newItem];
@@ -1015,7 +1019,7 @@ export default function InvoicesWorkspace({
                     <div className="text-[10px] font-bold text-slate-500 uppercase font-mono">TRACEABILITY</div>
                     <div className="text-xs font-semibold text-emerald-600 mt-1 flex items-center gap-1">
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Stock 1 Verified</span>
+                      <span>{selectedInvoice.items?.some(it => it.destinationStock === "Stock 3") ? "Multi-Stock Verified" : "Stock 1 Verified"}</span>
                     </div>
                   </div>
                 </div>
@@ -1038,6 +1042,7 @@ export default function InvoicesWorkspace({
                           <th className="p-3">#</th>
                           <th className="p-3">REFERENCE DESCRIPTION</th>
                           <th className="p-3">REFERENCE</th>
+                          <th className="p-3">DESTINATION</th>
                           <th className="p-3 text-right">EXPECTED</th>
                           <th className="p-3 text-right">SCANNED (PCS)</th>
                           <th className="p-3 text-right">DIFFERENCE</th>
@@ -1057,6 +1062,17 @@ export default function InvoicesWorkspace({
                               </td>
                               <td className="p-3 font-mono font-bold text-slate-900">
                                 {item.reference}
+                              </td>
+                              <td className="p-3">
+                                {item.destinationStock === "Stock 3" ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                    STOCK 3
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase bg-blue-50 text-blue-600 border border-blue-200">
+                                    STOCK 1
+                                  </span>
+                                )}
                               </td>
                               <td className="p-3 text-right font-mono text-slate-600">
                                 {item.expectedQty || item.quantity}
@@ -1082,7 +1098,7 @@ export default function InvoicesWorkspace({
                       </tbody>
                       <tfoot>
                         <tr className="bg-slate-100/90 border-t-2 border-slate-300 text-xs font-bold text-slate-800 font-mono">
-                          <td className="p-3 text-slate-500 font-bold uppercase text-[10px]" colSpan={3}>
+                          <td className="p-3 text-slate-500 font-bold uppercase text-[10px]" colSpan={4}>
                             TOTAL SCANNED ({selectedInvoice.items?.length || 0} BOXES &bull; {selectedInvoiceBreakdown.length} UNIQUE REFS)
                           </td>
                           <td className="p-3 text-right font-mono text-slate-600">
@@ -1311,10 +1327,11 @@ export default function InvoicesWorkspace({
                       <thead className="bg-slate-100/70 text-slate-600 font-bold border-b border-slate-200 uppercase font-mono tracking-wider sticky top-0 z-10">
                         <tr>
                           <th className="p-2.5 w-12 text-center">#</th>
-                          <th className="p-2.5 min-w-[200px]">Reference Code</th>
-                          <th className="p-2.5 w-28 text-right">Actual Qty (PCS)</th>
-                          <th className="p-2.5 w-28 text-right">Expected Qty</th>
-                          <th className="p-2.5 w-20 text-center">Diff</th>
+                          <th className="p-2.5 min-w-[180px]">Reference Code</th>
+                          <th className="p-2.5 w-36">Destination</th>
+                          <th className="p-2.5 w-24 text-right">Actual (PCS)</th>
+                          <th className="p-2.5 w-24 text-right">Expected</th>
+                          <th className="p-2.5 w-16 text-center">Diff</th>
                           <th className="p-2.5 w-14 text-center">Action</th>
                         </tr>
                       </thead>
@@ -1349,6 +1366,17 @@ export default function InvoicesWorkspace({
                                     Customer: {refData.customer} &bull; {refData.materialType || "Mesh"}
                                   </div>
                                 )}
+                              </td>
+
+                              <td className="p-2.5">
+                                <select
+                                  value={item.destinationStock || "Stock 1"}
+                                  onChange={(e) => handleEditItemChange(idx, "destinationStock", e.target.value)}
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded font-mono font-bold text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                                >
+                                  <option value="Stock 1">STOCK 1</option>
+                                  <option value="Stock 3">STOCK 3</option>
+                                </select>
                               </td>
 
                               <td className="p-2.5 text-right">

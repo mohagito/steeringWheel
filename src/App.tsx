@@ -516,7 +516,7 @@ export default function App() {
 
   // Action: Supervisor logs NOK / Scrap Mesh entry (Single or Batch)
   const handleSubmitScrap = async (
-    scrapInput: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter" | "stockDeductedFrom"> | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter" | "stockDeductedFrom">[]
+    scrapInput: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter"> | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[]
   ) => {
     if (!currentUser) return;
     const entries = Array.isArray(scrapInput) ? scrapInput : [scrapInput];
@@ -532,7 +532,6 @@ export default function App() {
       const entry = entries[index];
       const refCode = entry.reference;
       const qty = entry.quantity;
-      const isConCola = entry.condition === "CON COLA";
 
       if (!localStockMap[refCode]) {
         const refDocRef = doc(db, "references", refCode);
@@ -550,17 +549,22 @@ export default function App() {
       }
 
       const current = localStockMap[refCode];
-      const stockBefore = isConCola ? current.s3 : current.s2;
-      const stockAfter = stockBefore - qty;
-      const stockDeductedFrom: "Stock 2" | "Stock 3" = isConCola ? "Stock 3" : "Stock 2";
+      // Scrap deduction: support user-selected Stock 1, Stock 2, or Stock 3
+      const isLegacyConCola = entry.condition === "CON COLA";
+      const stockDeductedFrom: "Stock 1" | "Stock 2" | "Stock 3" = (entry.stockDeductedFrom as any) || (isLegacyConCola 
+        ? "Stock 3" 
+        : (current.s2 >= qty ? "Stock 2" : (current.s3 >= qty ? "Stock 3" : "Stock 1")));
+      const stockBefore = stockDeductedFrom === "Stock 1" ? current.s1 : (stockDeductedFrom === "Stock 3" ? current.s3 : current.s2);
+      const stockAfter = Math.max(0, stockBefore - qty);
 
-      const newStock2 = isConCola ? current.s2 : stockAfter;
-      const newStock3 = isConCola ? stockAfter : current.s3;
-      const newTotal = current.s1 + newStock2 + newStock3;
+      const newStock1 = stockDeductedFrom === "Stock 1" ? stockAfter : current.s1;
+      const newStock2 = stockDeductedFrom === "Stock 2" ? stockAfter : current.s2;
+      const newStock3 = stockDeductedFrom === "Stock 3" ? stockAfter : current.s3;
+      const newTotal = newStock1 + newStock2 + newStock3;
 
       // Update local cache for subsequent items in same batch
       localStockMap[refCode] = {
-        s1: current.s1,
+        s1: newStock1,
         s2: newStock2,
         s3: newStock3
       };
@@ -582,6 +586,7 @@ export default function App() {
       // 2. Update reference stock
       const refDocRef = doc(db, "references", refCode);
       batch.set(refDocRef, {
+        stock1: newStock1,
         stock2: newStock2,
         stock3: newStock3,
         currentStock: newTotal,
@@ -593,12 +598,14 @@ export default function App() {
       batch.set(doc(db, "transactions", transId), {
         id: transId,
         reference: refCode,
-        movementType: isConCola ? "SCRAP (CON COLA)" : "SCRAP (SIN COLA)",
+        movementType: "SCRAP",
         stock: stockDeductedFrom,
         quantity: qty,
         operatorName: currentUser.fullName,
         timestamp,
-        notes: `NOK Scrap (${entry.condition}): Date ${entry.date}${entry.invoiceNumber ? ` | Scrap Invoice: ${entry.invoiceNumber}` : ""}`,
+        notes: `NOK Scrap (${stockDeductedFrom}): Date ${entry.date}${entry.invoiceNumber ? ` | Scrap Invoice: ${entry.invoiceNumber}` : ""}`,
+        stock1Before: current.s1,
+        stock1After: newStock1,
         stock2Before: current.s2,
         stock2After: newStock2,
         stock3Before: current.s3,
@@ -609,8 +616,8 @@ export default function App() {
     await batch.commit();
   };
 
-  // Action: Supervisor deletes / reverts a scrap entry
-  const handleDeleteScrap = async (scrapId: string) => {
+  // Action: Supervisor/Operator deletes / reverts a scrap entry
+  const handleDeleteScrap = async (scrapId: string, reason?: string) => {
     const scrapToDel = scraps.find(s => s.id === scrapId);
     if (!scrapToDel) return;
 
@@ -618,6 +625,7 @@ export default function App() {
     const refCode = scrapToDel.reference;
     const qty = scrapToDel.quantity;
     const isConCola = scrapToDel.condition === "CON COLA";
+    const stockToRestore: "Stock 1" | "Stock 2" | "Stock 3" = scrapToDel.stockDeductedFrom || (isConCola ? "Stock 3" : "Stock 2");
 
     const refDocRef = doc(db, "references", refCode);
     const refSnap = await getDoc(refDocRef);
@@ -628,11 +636,13 @@ export default function App() {
       const s2 = d.stock2 || 0;
       const s3 = d.stock3 || 0;
 
-      const newStock2 = isConCola ? s2 : s2 + qty;
-      const newStock3 = isConCola ? s3 + qty : s3;
-      const newTotal = s1 + newStock2 + newStock3;
+      const newStock1 = stockToRestore === "Stock 1" ? s1 + qty : s1;
+      const newStock2 = stockToRestore === "Stock 2" ? s2 + qty : s2;
+      const newStock3 = stockToRestore === "Stock 3" ? s3 + qty : s3;
+      const newTotal = newStock1 + newStock2 + newStock3;
 
       batch.set(refDocRef, {
+        stock1: newStock1,
         stock2: newStock2,
         stock3: newStock3,
         currentStock: newTotal,
@@ -641,6 +651,163 @@ export default function App() {
     }
 
     batch.delete(doc(db, "scraps", scrapId));
+
+    // Audit log
+    const transId = `trans-delscrap-${Date.now()}`;
+    batch.set(doc(db, "transactions", transId), {
+      id: transId,
+      reference: refCode,
+      movementType: `${stockToRestore.toUpperCase()} IN`,
+      stock: stockToRestore,
+      quantity: qty,
+      operatorName: currentUser ? `${currentUser.fullName} (Reversal)` : "System",
+      timestamp: new Date().toISOString(),
+      notes: `Reverted scrap entry (${qty} PCS restored to ${stockToRestore}). ${reason ? `Reason: ${reason}` : ""}`
+    });
+
+    await batch.commit();
+  };
+
+  // Action: Modify an existing scrap entry
+  const handleUpdateScrap = async (
+    scrapId: string,
+    updatedData: {
+      reference: string;
+      quantity: number;
+      stockDeductedFrom?: "Stock 1" | "Stock 2" | "Stock 3";
+      condition?: string;
+      invoiceNumber?: string;
+      date?: string;
+    },
+    reason?: string
+  ) => {
+    if (!currentUser) throw new Error("No authenticated user session.");
+    const scrapDocRef = doc(db, "scraps", scrapId);
+    const scrapSnap = await getDoc(scrapDocRef);
+    if (!scrapSnap.exists()) throw new Error("Scrap record not found.");
+
+    const oldData = scrapSnap.data() as ScrapEntry;
+    const oldQty = oldData.quantity || 0;
+    const newQty = updatedData.quantity;
+    const oldRefCode = oldData.reference;
+    const newRefCode = updatedData.reference;
+    const oldStock: "Stock 1" | "Stock 2" | "Stock 3" = oldData.stockDeductedFrom || (oldData.condition === "CON COLA" ? "Stock 3" : "Stock 2");
+    const newStock: "Stock 1" | "Stock 2" | "Stock 3" = updatedData.stockDeductedFrom || (updatedData.condition === "CON COLA" ? "Stock 3" : (updatedData.condition === "SIN COLA" ? "Stock 2" : oldStock));
+    const timestamp = new Date().toISOString();
+    const batch = writeBatch(db);
+
+    // If reference and stock source are the same, just adjust delta
+    if (oldRefCode === newRefCode && oldStock === newStock) {
+      const delta = newQty - oldQty; // positive means more scrapped (deduct from stock)
+      if (delta !== 0) {
+        const refDocRef = doc(db, "references", newRefCode);
+        const refSnap = await getDoc(refDocRef);
+        if (refSnap.exists()) {
+          const d = refSnap.data();
+          let s1 = d.stock1 || 0;
+          let s2 = d.stock2 || 0;
+          let s3 = d.stock3 || 0;
+          if (newStock === "Stock 1") {
+            s1 = Math.max(0, s1 - delta);
+          } else if (newStock === "Stock 2") {
+            s2 = Math.max(0, s2 - delta);
+          } else {
+            s3 = Math.max(0, s3 - delta);
+          }
+          batch.set(refDocRef, {
+            stock1: s1,
+            stock2: s2,
+            stock3: s3,
+            currentStock: s1 + s2 + s3,
+            lastUpdate: timestamp
+          }, { merge: true });
+        }
+      }
+    } else {
+      // Restore old reference and stock
+      const oldRefDocRef = doc(db, "references", oldRefCode);
+      const oldRefSnap = await getDoc(oldRefDocRef);
+      if (oldRefSnap.exists()) {
+        const d = oldRefSnap.data();
+        let s1 = d.stock1 || 0;
+        let s2 = d.stock2 || 0;
+        let s3 = d.stock3 || 0;
+        if (oldStock === "Stock 1") {
+          s1 += oldQty;
+        } else if (oldStock === "Stock 2") {
+          s2 += oldQty;
+        } else {
+          s3 += oldQty;
+        }
+        batch.set(oldRefDocRef, {
+          stock1: s1,
+          stock2: s2,
+          stock3: s3,
+          currentStock: s1 + s2 + s3,
+          lastUpdate: timestamp
+        }, { merge: true });
+      }
+
+      // Deduct from new reference and stock
+      const newRefDocRef = doc(db, "references", newRefCode);
+      const newRefSnap = await getDoc(newRefDocRef);
+      if (newRefSnap.exists()) {
+        const d = newRefSnap.data();
+        let s1 = d.stock1 || 0;
+        let s2 = d.stock2 || 0;
+        let s3 = d.stock3 || 0;
+        if (newStock === "Stock 1") {
+          s1 = Math.max(0, s1 - newQty);
+        } else if (newStock === "Stock 2") {
+          s2 = Math.max(0, s2 - newQty);
+        } else {
+          s3 = Math.max(0, s3 - newQty);
+        }
+        batch.set(newRefDocRef, {
+          stock1: s1,
+          stock2: s2,
+          stock3: s3,
+          currentStock: s1 + s2 + s3,
+          lastUpdate: timestamp
+        }, { merge: true });
+      }
+    }
+
+    const historyEntry = {
+      action: "EDIT",
+      oldQty,
+      newQty,
+      delta: newQty - oldQty,
+      modifiedBy: currentUser.fullName,
+      timestamp: Date.now(),
+      reason: reason || "Operator modified scrap entry"
+    };
+
+    const existingHistory = oldData.changeHistory || [];
+
+    batch.update(scrapDocRef, {
+      reference: newRefCode,
+      quantity: newQty,
+      condition: updatedData.condition || oldData.condition || "",
+      invoiceNumber: updatedData.invoiceNumber || "",
+      date: updatedData.date || oldData.date,
+      stockDeductedFrom: newStock,
+      status: "edited",
+      changeHistory: [...existingHistory, historyEntry]
+    });
+
+    const transId = `trans-editscrap-${Date.now()}`;
+    batch.set(doc(db, "transactions", transId), {
+      id: transId,
+      reference: newRefCode,
+      movementType: "SCRAP",
+      stock: newStock,
+      quantity: newQty,
+      operatorName: `${currentUser.fullName} (Correction)`,
+      timestamp,
+      notes: `Edited scrap entry ${oldRefCode} (${oldQty} PCS) → ${newRefCode} (${newQty} PCS). ${reason ? `Reason: ${reason}` : ""}`
+    });
+
     await batch.commit();
   };
 
@@ -806,6 +973,181 @@ export default function App() {
     await batch.commit();
   };
 
+  // Action: Delete / Revert a delivery entry
+  const handleDeleteDelivery = async (deliveryId: string, reason?: string) => {
+    let delData = deliveries.find(d => d.id === deliveryId);
+    if (!delData) {
+      const dDoc = await getDoc(doc(db, "deliveries", deliveryId));
+      if (!dDoc.exists()) throw new Error("Delivery record not found.");
+      delData = dDoc.data() as Delivery;
+    }
+
+    const batch = writeBatch(db);
+    const refCode = delData.reference;
+    const qty = delData.quantity;
+    const isPrecosido = delData.deliveryType === "PRECOSIDO";
+    const timestamp = new Date().toISOString();
+
+    const refDocRef = doc(db, "references", refCode);
+    const refSnap = await getDoc(refDocRef);
+
+    if (refSnap.exists()) {
+      const d = refSnap.data();
+      const s1 = d.stock1 || 0;
+      const s2 = isPrecosido ? (d.stock2 || 0) + qty : (d.stock2 || 0);
+      const s3 = isPrecosido ? (d.stock3 || 0) : (d.stock3 || 0) + qty;
+      const newTotal = s1 + s2 + s3;
+
+      batch.set(refDocRef, {
+        stock2: s2,
+        stock3: s3,
+        currentStock: newTotal,
+        lastUpdate: timestamp
+      }, { merge: true });
+    }
+
+    batch.delete(doc(db, "deliveries", deliveryId));
+
+    // Audit log
+    const transId = `trans-deldel-${Date.now()}`;
+    batch.set(doc(db, "transactions", transId), {
+      id: transId,
+      reference: refCode,
+      movementType: isPrecosido ? "STOCK 2 IN" : "STOCK 3 IN",
+      stock: isPrecosido ? "Stock 2" : "Stock 3",
+      quantity: qty,
+      operatorName: currentUser ? `${currentUser.fullName} (Reversal)` : "System",
+      timestamp,
+      notes: `Deleted delivery entry (${qty} PCS restored to ${isPrecosido ? "Stock 2" : "Stock 3"}). ${reason ? `Reason: ${reason}` : ""}`
+    });
+
+    await batch.commit();
+  };
+
+  // Action: Modify an existing delivery entry
+  const handleUpdateDelivery = async (
+    deliveryId: string,
+    updatedData: { invoiceNumber: string; reference: string; quantity: number; deliveryType: "PRECOSIDO" | "STEERING WHEELS" },
+    reason?: string
+  ) => {
+    if (!currentUser) throw new Error("No authenticated user session.");
+    const delDocRef = doc(db, "deliveries", deliveryId);
+    const delSnap = await getDoc(delDocRef);
+    if (!delSnap.exists()) throw new Error("Delivery record not found.");
+
+    const oldData = delSnap.data() as Delivery;
+    const oldQty = oldData.quantity || 0;
+    const newQty = updatedData.quantity;
+    const oldRefCode = oldData.reference;
+    const newRefCode = updatedData.reference;
+    const oldIsPrecosido = oldData.deliveryType === "PRECOSIDO";
+    const newIsPrecosido = updatedData.deliveryType === "PRECOSIDO";
+    const timestamp = new Date().toISOString();
+    const batch = writeBatch(db);
+
+    if (oldRefCode === newRefCode && oldIsPrecosido === newIsPrecosido) {
+      const delta = newQty - oldQty; // positive means more delivered (more deducted from stock)
+      if (delta !== 0) {
+        const refDocRef = doc(db, "references", newRefCode);
+        const refSnap = await getDoc(refDocRef);
+        if (refSnap.exists()) {
+          const d = refSnap.data();
+          const s1 = d.stock1 || 0;
+          let s2 = d.stock2 || 0;
+          let s3 = d.stock3 || 0;
+          if (newIsPrecosido) {
+            s2 = Math.max(0, s2 - delta);
+          } else {
+            s3 = Math.max(0, s3 - delta);
+          }
+          batch.set(refDocRef, {
+            stock2: s2,
+            stock3: s3,
+            currentStock: s1 + s2 + s3,
+            lastUpdate: timestamp
+          }, { merge: true });
+        }
+      }
+    } else {
+      // Revert old reference stock
+      const oldRefDocRef = doc(db, "references", oldRefCode);
+      const oldRefSnap = await getDoc(oldRefDocRef);
+      if (oldRefSnap.exists()) {
+        const d = oldRefSnap.data();
+        const s1 = d.stock1 || 0;
+        let s2 = d.stock2 || 0;
+        let s3 = d.stock3 || 0;
+        if (oldIsPrecosido) {
+          s2 += oldQty;
+        } else {
+          s3 += oldQty;
+        }
+        batch.set(oldRefDocRef, {
+          stock2: s2,
+          stock3: s3,
+          currentStock: s1 + s2 + s3,
+          lastUpdate: timestamp
+        }, { merge: true });
+      }
+
+      // Deduct from new reference stock
+      const newRefDocRef = doc(db, "references", newRefCode);
+      const newRefSnap = await getDoc(newRefDocRef);
+      if (newRefSnap.exists()) {
+        const d = newRefSnap.data();
+        const s1 = d.stock1 || 0;
+        let s2 = d.stock2 || 0;
+        let s3 = d.stock3 || 0;
+        if (newIsPrecosido) {
+          s2 = Math.max(0, s2 - newQty);
+        } else {
+          s3 = Math.max(0, s3 - newQty);
+        }
+        batch.set(newRefDocRef, {
+          stock2: s2,
+          stock3: s3,
+          currentStock: s1 + s2 + s3,
+          lastUpdate: timestamp
+        }, { merge: true });
+      }
+    }
+
+    const historyEntry = {
+      action: "EDIT",
+      oldQty,
+      newQty,
+      delta: newQty - oldQty,
+      modifiedBy: currentUser.fullName,
+      timestamp: Date.now(),
+      reason: reason || "User updated delivery record"
+    };
+
+    const existingHistory = oldData.changeHistory || [];
+
+    batch.update(delDocRef, {
+      invoiceNumber: updatedData.invoiceNumber,
+      reference: newRefCode,
+      quantity: newQty,
+      deliveryType: updatedData.deliveryType,
+      status: "edited",
+      changeHistory: [...existingHistory, historyEntry]
+    });
+
+    const transId = `trans-editdel-${Date.now()}`;
+    batch.set(doc(db, "transactions", transId), {
+      id: transId,
+      reference: newRefCode,
+      movementType: newIsPrecosido ? "STOCK 2 OUT" : "STOCK 3 OUT",
+      stock: newIsPrecosido ? "Stock 2" : "Stock 3",
+      quantity: newQty,
+      operatorName: `${currentUser.fullName} (Correction)`,
+      timestamp,
+      notes: `Edited delivery ${oldRefCode} (${oldQty} PCS) → ${newRefCode} (${newQty} PCS). ${reason ? `Reason: ${reason}` : ""}`
+    });
+
+    await batch.commit();
+  };
+
   // Action: Save or update a pending receiving invoice session in Firestore
   const handleSavePendingInvoice = async (invoice: ReceivingInvoice) => {
     const invoiceRef = doc(db, "invoices", invoice.id);
@@ -840,14 +1182,21 @@ export default function App() {
 
       const now = new Date().toISOString();
 
-      // Aggregate quantities per reference to handle multiple boxes of same or different references under same invoice
-      const refQtyMap: Record<string, number> = {};
+      // Aggregate quantities per reference and destination stock (Stock 1 vs Stock 3)
+      const refStockMap: Record<string, { s1: number; s3: number }> = {};
       invoiceData.items.forEach(item => {
         const code = item.reference;
-        refQtyMap[code] = (refQtyMap[code] || 0) + item.quantity;
+        if (!refStockMap[code]) {
+          refStockMap[code] = { s1: 0, s3: 0 };
+        }
+        if (item.destinationStock === "Stock 3") {
+          refStockMap[code].s3 += item.quantity;
+        } else {
+          refStockMap[code].s1 += item.quantity;
+        }
       });
 
-      const uniqueRefCodes = Object.keys(refQtyMap);
+      const uniqueRefCodes = Object.keys(refStockMap);
 
       // Read all reference documents inside the atomic transaction
       const refDocs: { ref: any; data: Reference; code: string }[] = [];
@@ -860,18 +1209,20 @@ export default function App() {
         refDocs.push({ ref: refDocRef, data: refSnap.data() as Reference, code });
       }
 
-      // 1. Update references with new Stock 1 quantities
+      // 1. Update references with new Stock 1 and Stock 3 quantities
       for (const { ref, data, code } of refDocs) {
-        const addedQty = refQtyMap[code] || 0;
+        const { s1: addedS1, s3: addedS3 } = refStockMap[code] || { s1: 0, s3: 0 };
         const currentStock1 = data.stock1 || 0;
         const currentStock2 = data.stock2 || 0;
         const currentStock3 = data.stock3 || 0;
 
-        const newStock1 = currentStock1 + addedQty;
-        const newTotal = newStock1 + currentStock2 + currentStock3;
+        const newStock1 = currentStock1 + addedS1;
+        const newStock3 = currentStock3 + addedS3;
+        const newTotal = newStock1 + currentStock2 + newStock3;
 
         transaction.update(ref, {
           stock1: newStock1,
+          stock3: newStock3,
           currentStock: newTotal,
           lastUpdate: now
         });
@@ -880,6 +1231,10 @@ export default function App() {
       // 2. Create box records and transaction logs for each individual scanned box
       for (let i = 0; i < invoiceData.items.length; i++) {
         const item = invoiceData.items[i];
+        const isStock3 = item.destinationStock === "Stock 3";
+        const targetStock: "Stock 1" | "Stock 3" = isStock3 ? "Stock 3" : "Stock 1";
+        const moveType: "STOCK 1 IN" | "STOCK 3 IN" = isStock3 ? "STOCK 3 IN" : "STOCK 1 IN";
+        const targetLabel = isStock3 ? "Stock 3 (Steering Wheels)" : "Stock 1 (Mallas Not Touched)";
         const diff = item.quantity - item.expectedQty;
         const discNote = diff !== 0 
           ? `Discrepancy: Label=${item.expectedQty}, Real=${item.quantity} (${diff > 0 ? '+' : ''}${diff} PCS)` 
@@ -893,22 +1248,24 @@ export default function App() {
           reference: item.reference,
           expectedQty: item.expectedQty,
           actualQty: item.quantity,
-          location: "Warehouse Storeroom",
+          location: isStock3 ? "Finished Goods" : "Warehouse Storeroom",
           createdAt: item.scannedAt || now,
           updatedAt: now,
-          materialType: item.materialType || "Mesh",
+          materialType: item.materialType || (isStock3 ? "Steering Wheel" : "Mesh"),
           invoiceNumber: invoiceData.invoiceNumber,
-          palletQuality: discNote
+          palletQuality: discNote,
+          destinationStock: targetStock
         }));
 
-        const transId = `trans-s1in-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 5)}`;
+        const prefix = isStock3 ? "s3in" : "s1in";
+        const transId = `trans-${prefix}-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 5)}`;
         const transDocRef = doc(db, "transactions", transId);
         transaction.set(transDocRef, cleanUndefined({
           id: transId,
           barcode: item.boxBarcode,
           reference: item.reference,
-          movementType: "STOCK 1 IN",
-          stock: "Stock 1",
+          movementType: moveType,
+          stock: targetStock,
           quantity: item.quantity,
           expectedQty: item.expectedQty,
           actualQty: item.quantity,
@@ -916,10 +1273,11 @@ export default function App() {
           operatorName: currentUser.fullName,
           timestamp: now,
           notes: diff !== 0
-            ? `Received via Invoice ${invoiceData.invoiceNumber} (Label: ${item.expectedQty} | Count: ${item.quantity} | Diff: ${diff > 0 ? '+' : ''}${diff} PCS)`
-            : `Received via Invoice ${invoiceData.invoiceNumber}`,
+            ? `Received via Invoice ${invoiceData.invoiceNumber} -> ${targetLabel} (Label: ${item.expectedQty} | Count: ${item.quantity} | Diff: ${diff > 0 ? '+' : ''}${diff} PCS)`
+            : `Received via Invoice ${invoiceData.invoiceNumber} -> ${targetLabel}`,
           invoiceNumber: invoiceData.invoiceNumber,
-          palletQuality: discNote
+          palletQuality: discNote,
+          destinationStock: targetStock
         }));
       }
 
@@ -971,7 +1329,7 @@ export default function App() {
       invoiceNumber: updatedInvoice.invoiceNumber.trim().toUpperCase()
     };
 
-    // If invoice is already approved and previous state exists, reconcile Stock 1 changes
+    // If invoice is already approved and previous state exists, reconcile Stock 1 and Stock 3 changes
     if (safeInvoice.status === "approved" && previousInvoice && previousInvoice.status === "approved") {
       await runTransaction(db, async (transaction) => {
         const invoiceRef = doc(db, "invoices", safeInvoice.id);
@@ -980,61 +1338,99 @@ export default function App() {
           throw new Error("Invoice record no longer exists.");
         }
 
-        // Calculate quantity differences per reference
-        const oldMap: Record<string, number> = {};
+        // Calculate quantity differences per reference for both Stock 1 and Stock 3
+        const oldMap: Record<string, { s1: number; s3: number }> = {};
         (previousInvoice.items || []).forEach((it) => {
           const code = it.reference.trim().toUpperCase();
-          oldMap[code] = (oldMap[code] || 0) + (Number(it.quantity) || 0);
+          if (!oldMap[code]) oldMap[code] = { s1: 0, s3: 0 };
+          if (it.destinationStock === "Stock 3") {
+            oldMap[code].s3 += (Number(it.quantity) || 0);
+          } else {
+            oldMap[code].s1 += (Number(it.quantity) || 0);
+          }
         });
 
-        const newMap: Record<string, number> = {};
+        const newMap: Record<string, { s1: number; s3: number }> = {};
         (safeInvoice.items || []).forEach((it) => {
           const code = it.reference.trim().toUpperCase();
-          newMap[code] = (newMap[code] || 0) + (Number(it.quantity) || 0);
+          if (!newMap[code]) newMap[code] = { s1: 0, s3: 0 };
+          if (it.destinationStock === "Stock 3") {
+            newMap[code].s3 += (Number(it.quantity) || 0);
+          } else {
+            newMap[code].s1 += (Number(it.quantity) || 0);
+          }
         });
 
         const allRefs = Array.from(new Set([...Object.keys(oldMap), ...Object.keys(newMap)]));
 
         // Read all involved references inside atomic transaction
-        const refDocs: { ref: any; data: Reference; code: string; delta: number }[] = [];
+        const refDocs: { ref: any; data: Reference; code: string; deltaS1: number; deltaS3: number }[] = [];
         for (const code of allRefs) {
-          const delta = (newMap[code] || 0) - (oldMap[code] || 0);
-          if (delta !== 0) {
+          const deltaS1 = (newMap[code]?.s1 || 0) - (oldMap[code]?.s1 || 0);
+          const deltaS3 = (newMap[code]?.s3 || 0) - (oldMap[code]?.s3 || 0);
+          if (deltaS1 !== 0 || deltaS3 !== 0) {
             const refDocRef = doc(db, "references", code);
             const refSnap = await transaction.get(refDocRef);
             if (refSnap.exists()) {
-              refDocs.push({ ref: refDocRef, data: refSnap.data() as Reference, code, delta });
+              refDocs.push({ ref: refDocRef, data: refSnap.data() as Reference, code, deltaS1, deltaS3 });
             }
           }
         }
 
-        // Apply Stock 1 adjustments & log inventory transactions
-        for (const { ref, data, code, delta } of refDocs) {
+        // Apply Stock adjustments & log inventory transactions
+        for (const { ref, data, code, deltaS1, deltaS3 } of refDocs) {
           const curStock1 = data.stock1 || 0;
-          const newStock1 = Math.max(0, curStock1 + delta);
-          const newTotal = newStock1 + (data.stock2 || 0) + (data.stock3 || 0);
+          const curStock2 = data.stock2 || 0;
+          const curStock3 = data.stock3 || 0;
+
+          const newStock1 = Math.max(0, curStock1 + deltaS1);
+          const newStock3 = Math.max(0, curStock3 + deltaS3);
+          const newTotal = newStock1 + curStock2 + newStock3;
 
           transaction.update(ref, {
             stock1: newStock1,
+            stock3: newStock3,
             currentStock: newTotal,
             lastUpdate: now
           });
 
-          const transId = `trans-invmod-${Date.now()}-${code}-${Math.random().toString(36).substring(2, 5)}`;
-          const transDocRef = doc(db, "transactions", transId);
-          transaction.set(transDocRef, cleanUndefined({
-            id: transId,
-            reference: code,
-            movementType: delta > 0 ? "STOCK 1 IN" : "STOCK 1 OUT",
-            stock: "Stock 1",
-            quantity: Math.abs(delta),
-            actualQty: Math.abs(delta),
-            difference: delta,
-            operatorName: currentUser.fullName,
-            timestamp: now,
-            notes: `Invoice ${safeInvoice.invoiceNumber} modified: ${delta > 0 ? `+${delta}` : delta} PCS adjustment on Stock 1`,
-            invoiceNumber: safeInvoice.invoiceNumber
-          }));
+          if (deltaS1 !== 0) {
+            const transId = `trans-invmod-s1-${Date.now()}-${code}-${Math.random().toString(36).substring(2, 5)}`;
+            const transDocRef = doc(db, "transactions", transId);
+            transaction.set(transDocRef, cleanUndefined({
+              id: transId,
+              reference: code,
+              movementType: deltaS1 > 0 ? "STOCK 1 IN" : "STOCK 1 OUT",
+              stock: "Stock 1",
+              quantity: Math.abs(deltaS1),
+              actualQty: Math.abs(deltaS1),
+              difference: deltaS1,
+              operatorName: currentUser.fullName,
+              timestamp: now,
+              notes: `Invoice ${safeInvoice.invoiceNumber} modified: ${deltaS1 > 0 ? `+${deltaS1}` : deltaS1} PCS adjustment on Stock 1`,
+              invoiceNumber: safeInvoice.invoiceNumber,
+              destinationStock: "Stock 1"
+            }));
+          }
+
+          if (deltaS3 !== 0) {
+            const transId = `trans-invmod-s3-${Date.now()}-${code}-${Math.random().toString(36).substring(2, 5)}`;
+            const transDocRef = doc(db, "transactions", transId);
+            transaction.set(transDocRef, cleanUndefined({
+              id: transId,
+              reference: code,
+              movementType: deltaS3 > 0 ? "STOCK 3 IN" : "STOCK 3 OUT",
+              stock: "Stock 3",
+              quantity: Math.abs(deltaS3),
+              actualQty: Math.abs(deltaS3),
+              difference: deltaS3,
+              operatorName: currentUser.fullName,
+              timestamp: now,
+              notes: `Invoice ${safeInvoice.invoiceNumber} modified: ${deltaS3 > 0 ? `+${deltaS3}` : deltaS3} PCS adjustment on Stock 3`,
+              invoiceNumber: safeInvoice.invoiceNumber,
+              destinationStock: "Stock 3"
+            }));
+          }
         }
 
         // Update the invoice document
@@ -1452,11 +1848,11 @@ export default function App() {
     await batch.commit();
   };
 
-  // Supervisor/Manager Action: Delete / Reverse operation and safely adjust stock
+  // Supervisor/Manager/Operator Action: Delete / Reverse operation and safely adjust stock
   const handleDeleteOrReverseOperation = async (opId: string, category: string, reason: string) => {
     if (!currentUser) return;
-    if (currentUser.role !== "supervisor" && currentUser.role !== "admin") {
-      throw new Error("Unauthorized: Only Supervisors and Admins can delete or reverse operations.");
+    if (currentUser.role !== "supervisor" && currentUser.role !== "admin" && currentUser.role !== "operator") {
+      throw new Error("Unauthorized: Insufficient permissions to delete or reverse operations.");
     }
     if (!reason || reason.trim() === "") {
       throw new Error("A reason for deletion is required.");
@@ -2537,6 +2933,8 @@ export default function App() {
                   references={references}
                   currentUser={currentUser}
                   onSubmitDeliveries={handleSubmitDeliveries}
+                  onUpdateDelivery={handleUpdateDelivery}
+                  onDeleteDelivery={handleDeleteDelivery}
                 />
               )}
 
@@ -2558,6 +2956,7 @@ export default function App() {
                   currentUser={currentUser}
                   onSubmitScrap={handleSubmitScrap}
                   onDeleteScrap={handleDeleteScrap}
+                  onUpdateScrap={handleUpdateScrap}
                 />
               )}
 
@@ -2599,6 +2998,8 @@ export default function App() {
                   references={references}
                   currentUser={currentUser}
                   onNavigateToTab={(tab) => setActiveTab(tab as any)}
+                  onEditOperation={handleEditOperation}
+                  onDeleteOperation={handleDeleteOrReverseOperation}
                 />
               )}
 

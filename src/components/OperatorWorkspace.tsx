@@ -92,6 +92,10 @@ export default function OperatorWorkspace({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editQty, setEditQty] = useState("");
   const [editRef, setEditRef] = useState("");
+  const [editDestinationStock, setEditDestinationStock] = useState<"Stock 1" | "Stock 3">("Stock 1");
+
+  // Destination Stock Selection for New Truck Intake: "Stock 1" (Mallas Not Touched) vs "Stock 3" (Steering Wheels)
+  const [destinationStock, setDestinationStock] = useState<"Stock 1" | "Stock 3">("Stock 1");
 
   // Edit Scanned Record States (PEGADAS mode)
   const [isPegadasEditMode, setIsPegadasEditMode] = useState(false);
@@ -230,12 +234,17 @@ export default function OperatorWorkspace({
   // Active Invoice Totals grouped by reference
   const activeInvoiceRefBreakdown = useMemo(() => {
     if (!activePendingInvoice || !activePendingInvoice.items) return [];
-    const map = new Map<string, { reference: string; quantity: number; boxes: number }>();
+    const map = new Map<string, { reference: string; quantity: number; boxes: number; s1Qty: number; s3Qty: number }>();
     activePendingInvoice.items.forEach(item => {
       const ref = item.reference.toUpperCase();
-      const cur = map.get(ref) || { reference: item.reference, quantity: 0, boxes: 0 };
+      const cur = map.get(ref) || { reference: item.reference, quantity: 0, boxes: 0, s1Qty: 0, s3Qty: 0 };
       cur.quantity += item.quantity;
       cur.boxes += 1;
+      if (item.destinationStock === "Stock 3") {
+        cur.s3Qty += item.quantity;
+      } else {
+        cur.s1Qty += item.quantity;
+      }
       map.set(ref, cur);
     });
     return Array.from(map.values()).sort((a, b) => b.quantity - a.quantity);
@@ -397,6 +406,12 @@ export default function OperatorWorkspace({
       return;
     }
 
+    if (opMode === "INTAKE" && !destinationStock) {
+      setErrorMsg("Please select the destination stock (Stock 1 or Stock 3).");
+      playErrorBeep();
+      return;
+    }
+
     const rawRef = referenceCode.trim();
     const expectedQtyVal = parseInt(quantity);
     const actualQtyVal = (opMode === "TRANSFER" || opMode === "RETURN")
@@ -508,6 +523,7 @@ export default function OperatorWorkspace({
         const diff = actualQtyVal - expectedQtyVal;
         const safeInvoiceSlug = cleanInvoice.replace(/[\/\\]/g, "-").replace(/\s+/g, "_");
         const boxBarcode = `BOX-${finalCode}-${safeInvoiceSlug}-${Date.now().toString().slice(-4)}`;
+        const chosenDest: "Stock 1" | "Stock 3" = destinationStock === "Stock 3" ? "Stock 3" : "Stock 1";
 
         const newBoxItem: ScannedInvoiceBox = {
           id: `box-${finalCode}-${safeInvoiceSlug}-${Date.now().toString().slice(-6)}`,
@@ -516,8 +532,9 @@ export default function OperatorWorkspace({
           expectedQty: expectedQtyVal,
           quantity: actualQtyVal,
           scannedAt: timestamp,
-          materialType: refData.materialType || "Mesh",
-          difference: diff
+          materialType: refData.materialType || (chosenDest === "Stock 3" ? "Steering Wheel" : "Mesh"),
+          difference: diff,
+          destinationStock: chosenDest
         };
 
         const existingItems = activePendingInvoice ? activePendingInvoice.items : [];
@@ -545,7 +562,8 @@ export default function OperatorWorkspace({
 
         playScanBeep();
         const diffText = diff !== 0 ? ` (Diff: ${diff > 0 ? '+' : ''}${diff} PCS)` : "";
-        setSuccessMsg(`SCANNED: Added ${finalCode} (${actualQtyVal} PCS${diffText}) to Invoice ${cleanInvoice}. Total: ${totalBoxes} boxes.`);
+        const destLabel = chosenDest === "Stock 3" ? "STOCK 3 [Steering Wheels]" : "STOCK 1 [Mallas Not Touched]";
+        setSuccessMsg(`SCANNED: Added ${finalCode} (${actualQtyVal} PCS ➔ ${destLabel}${diffText}) to Invoice ${cleanInvoice}. Total: ${totalBoxes} boxes.`);
       }
       
       // Clear scanned item fields
@@ -603,6 +621,7 @@ export default function OperatorWorkspace({
     setEditingItemId(item.id);
     setEditQty(item.quantity.toString());
     setEditRef(item.reference);
+    setEditDestinationStock(item.destinationStock === "Stock 3" ? "Stock 3" : "Stock 1");
   };
 
   const handleSaveItemEdit = async (itemId: string) => {
@@ -631,7 +650,8 @@ export default function OperatorWorkspace({
             reference: res.match.code,
             quantity: newQty,
             difference: diff,
-            materialType: res.match.materialType || item.materialType
+            materialType: res.match.materialType || item.materialType,
+            destinationStock: editDestinationStock
           };
         }
         return item;
@@ -654,7 +674,8 @@ export default function OperatorWorkspace({
       }
       setEditingItemId(null);
       playScanBeep();
-      setSuccessMsg(`Updated scanned box: ${res.match.code} (${newQty} PCS).`);
+      const destLabel = editDestinationStock === "Stock 3" ? "Stock 3 (Steering Wheels)" : "Stock 1 (Mallas Not Touched)";
+      setSuccessMsg(`Updated scanned box: ${res.match.code} (${newQty} PCS ➔ ${destLabel}).`);
     } catch (err: any) {
       console.error(err);
       setErrorMsg(`Failed to update item: ${err.message || err}`);
@@ -679,6 +700,11 @@ export default function OperatorWorkspace({
       }
       playSuccessBeep();
 
+      const s1Items = activePendingInvoice.items.filter(it => it.destinationStock !== "Stock 3");
+      const s3Items = activePendingInvoice.items.filter(it => it.destinationStock === "Stock 3");
+      const s1Qty = s1Items.reduce((acc, it) => acc + it.quantity, 0);
+      const s3Qty = s3Items.reduce((acc, it) => acc + it.quantity, 0);
+
       await Swal.fire({
         icon: "success",
         title: "INVOICE VALIDATED & COMMITTED",
@@ -686,10 +712,12 @@ export default function OperatorWorkspace({
           <div style="font-family: monospace; font-size: 13px; text-align: left; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; line-height: 1.6;">
             <p><strong>Invoice Number:</strong> <span style="color: #2563eb;">${activePendingInvoice.invoiceNumber}</span></p>
             <p><strong>Total Boxes:</strong> ${activePendingInvoice.totalBoxes} boxes</p>
-            <p><strong>Total Stock 1 Added:</strong> <strong style="color: #059669;">${activePendingInvoice.totalQuantity} PCS</strong></p>
-            <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2px 6px; border-radius: 4px;">APPROVED &bull; IN STOCK 1</span></p>
+            ${s1Qty > 0 ? `<p><strong>Stock 1 (Mallas Not Touched):</strong> <strong style="color: #059669;">+${s1Qty.toLocaleString()} PCS</strong></p>` : ''}
+            ${s3Qty > 0 ? `<p><strong>Stock 3 (Steering Wheels):</strong> <strong style="color: #d97706;">+${s3Qty.toLocaleString()} PCS</strong></p>` : ''}
+            <p><strong>Total Added:</strong> <strong style="color: #0f172a;">${activePendingInvoice.totalQuantity.toLocaleString()} PCS</strong></p>
+            <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2px 6px; border-radius: 4px;">APPROVED &bull; COMMITTED</span></p>
           </div>
-          <p style="margin-top: 12px; font-size: 12px; color: #64748b;">All scanned records have been committed to Stock 1 inventory in real-time.</p>
+          <p style="margin-top: 12px; font-size: 12px; color: #64748b;">All scanned records have been committed to their respective stocks in real-time.</p>
         `,
         confirmButtonColor: "#059669",
         confirmButtonText: "Done &bull; Next Invoice"
@@ -703,7 +731,7 @@ export default function OperatorWorkspace({
       setActualQuantity("");
       setIsEditMode(false);
       setEditingItemId(null);
-      setSuccessMsg(`Invoice ${activePendingInvoice.invoiceNumber} validated (${activePendingInvoice.totalQuantity} PCS added to Stock 1). Ready for next invoice.`);
+      setSuccessMsg(`Invoice ${activePendingInvoice.invoiceNumber} validated (${activePendingInvoice.totalQuantity} PCS committed: ${s1Qty} PCS ➔ Stock 1, ${s3Qty} PCS ➔ Stock 3). Ready for next invoice.`);
       setTimeout(() => invoiceRef.current?.focus(), 50);
 
     } catch (err: any) {
@@ -1209,12 +1237,55 @@ export default function OperatorWorkspace({
             </div>
           )}
 
+          {/* 2. CHOOSE DESTINATION STOCK (INTAKE MODE ONLY) */}
+          {opMode === "INTAKE" && (
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
+                2. Destination Stock
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDestinationStock("Stock 1");
+                    setErrorMsg("");
+                  }}
+                  className={`py-2.5 px-4 rounded-xl border text-center font-mono font-bold text-xs tracking-wider transition-all cursor-pointer ${
+                    destinationStock === "Stock 1"
+                      ? "bg-blue-50 text-blue-600 border-blue-300 ring-2 ring-blue-500/20 shadow-xs"
+                      : "bg-white hover:bg-slate-50 text-slate-600 border-slate-200"
+                  }`}
+                  id="op-destination-stock-1"
+                >
+                  STOCK 1
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDestinationStock("Stock 3");
+                    setErrorMsg("");
+                  }}
+                  className={`py-2.5 px-4 rounded-xl border text-center font-mono font-bold text-xs tracking-wider transition-all cursor-pointer ${
+                    destinationStock === "Stock 3"
+                      ? "bg-emerald-50 text-emerald-600 border-emerald-300 ring-2 ring-emerald-500/20 shadow-xs"
+                      : "bg-white hover:bg-slate-50 text-slate-600 border-slate-200"
+                  }`}
+                  id="op-destination-stock-3"
+                >
+                  STOCK 3
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* REFERENCE SELECTION & BARCODE SCANNING */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 font-mono">
                 <Barcode className="w-3.5 h-3.5 text-blue-600" />
-                <span>{opMode === "INTAKE" ? "2. Reference (Select or Scan Barcode)" : "1. Reference (Select or Scan Barcode)"}</span>
+                <span>{opMode === "INTAKE" ? "3. Reference (Select or Scan Barcode)" : "1. Reference (Select or Scan Barcode)"}</span>
               </label>
               <span className="text-[10px] text-blue-600 font-semibold font-mono bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                 Select or Scan Active
@@ -1354,7 +1425,7 @@ export default function OperatorWorkspace({
           ) : (
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>3. Quantity (PCS)</span>
+                <span>4. Quantity (PCS)</span>
                 <span className="text-[10px] text-slate-400 font-normal">Incoming Box Count</span>
               </label>
               <input
@@ -1702,13 +1773,13 @@ export default function OperatorWorkspace({
                         </span>
 
                         {isEditingThis ? (
-                          <div className="flex items-center gap-2 flex-1">
+                          <div className="flex items-center gap-2 flex-1 flex-wrap">
                             <input
                               type="text"
                               value={editRef}
                               onChange={(e) => setEditRef(e.target.value.toUpperCase())}
                               placeholder="REF CODE"
-                              className="px-2.5 py-1 bg-white border border-blue-400 rounded-md text-xs font-bold text-slate-900 uppercase w-32 focus:outline-none"
+                              className="px-2.5 py-1 bg-white border border-blue-400 rounded-md text-xs font-bold text-slate-900 uppercase w-28 focus:outline-none"
                             />
                             <input
                               type="number"
@@ -1716,8 +1787,16 @@ export default function OperatorWorkspace({
                               onChange={(e) => setEditQty(e.target.value)}
                               placeholder="QTY"
                               min="1"
-                              className="px-2.5 py-1 bg-white border border-blue-400 rounded-md text-xs font-bold text-slate-900 w-24 focus:outline-none"
+                              className="px-2.5 py-1 bg-white border border-blue-400 rounded-md text-xs font-bold text-slate-900 w-20 focus:outline-none"
                             />
+                            <select
+                              value={editDestinationStock}
+                              onChange={(e) => setEditDestinationStock(e.target.value as "Stock 1" | "Stock 3")}
+                              className="px-2 py-1 bg-white border border-blue-400 rounded-md text-[11px] font-bold text-slate-900 font-mono focus:outline-none"
+                            >
+                              <option value="Stock 1">STOCK 1</option>
+                              <option value="Stock 3">STOCK 3</option>
+                            </select>
                             <button
                               type="button"
                               onClick={() => handleSaveItemEdit(item.id)}
@@ -1738,13 +1817,22 @@ export default function OperatorWorkspace({
                           </div>
                         ) : (
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-slate-900 text-xs truncate">{item.reference}</span>
                               <span className="text-[10px] text-slate-500 font-sans truncate">
                                 ({references.find(r => r.code === item.reference)?.description || item.materialType || "Mesh"})
                               </span>
+                              {item.destinationStock === "Stock 3" ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-200 font-mono">
+                                  STOCK 3
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-600 border border-blue-200 font-mono">
+                                  STOCK 1
+                                </span>
+                              )}
                             </div>
-                            <span className="text-[10px] text-slate-400 block truncate font-mono">
+                            <span className="text-[10px] text-slate-400 block truncate font-mono mt-0.5">
                               Barcode: {item.boxBarcode} &bull; Scanned: {item.scannedAt ? new Date(item.scannedAt).toLocaleTimeString() : "Just now"}
                             </span>
                           </div>
@@ -1821,11 +1909,23 @@ export default function OperatorWorkspace({
                   {activeInvoiceRefBreakdown.map((item) => (
                     <div 
                       key={`op-ref-${item.reference}`} 
-                      className="flex items-center justify-between py-1 px-2.5 rounded-lg bg-slate-800/90 border border-slate-700/60"
+                      className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-slate-800/90 border border-slate-700/60"
                     >
-                      <span className="font-bold text-white text-xs tracking-wider">
-                        {item.reference} <span className="text-emerald-400 font-black">=&gt;</span>
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-xs tracking-wider">
+                          {item.reference}
+                        </span>
+                        {item.s1Qty > 0 && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/80">
+                            S1: {item.s1Qty} pcs
+                          </span>
+                        )}
+                        {item.s3Qty > 0 && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/80">
+                            S3: {item.s3Qty} pcs
+                          </span>
+                        )}
+                      </div>
                       <span className="font-bold text-amber-300">
                         {item.quantity.toLocaleString()} pcs
                         <span className="text-slate-400 text-[10px] ml-2 font-normal">({item.boxes} {item.boxes === 1 ? 'box' : 'boxes'})</span>

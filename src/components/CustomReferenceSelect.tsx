@@ -20,7 +20,7 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
   value,
   onChange,
   placeholder = "Select reference...",
-  showStockBadges = true,
+  showStockBadges = false,
   className = "",
   disabled = false,
   required = false,
@@ -112,13 +112,13 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
             <Package className="w-4 h-4" />
           </div>
           {selectedRef ? (
-            <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-              <div className="min-w-0 flex-1 flex items-center gap-2">
+            <div className="min-w-0 flex-1 flex items-center justify-between gap-2 overflow-hidden">
+              <div className="min-w-0 flex items-center gap-1.5 overflow-hidden">
                 <span className="font-mono font-black text-slate-900 tracking-tight text-xs sm:text-sm truncate">
                   {selectedRef.code}
                 </span>
                 {selectedRef.customer && (
-                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-900 text-[10px] font-bold rounded-md uppercase shrink-0">
+                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-900 text-[10px] font-bold rounded-md uppercase shrink-0 truncate max-w-[90px]">
                     {selectedRef.customer}
                   </span>
                 )}
@@ -130,7 +130,7 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
               </div>
 
               {showStockBadges && (
-                <div className="flex items-center gap-1 shrink-0 text-[10px] font-mono">
+                <div className="hidden md:flex items-center gap-1 shrink-0 text-[10px] font-mono">
                   <span className="px-1.5 py-0.5 bg-blue-100/80 text-blue-900 rounded-md font-bold" title="Stock 1 Raw">
                     S1: {selectedRef.stock1 || 0}
                   </span>
@@ -171,7 +171,7 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
 
       {/* Dropdown Popover */}
       {isOpen && (
-        <div className="absolute left-0 top-full mt-1.5 w-full min-w-[320px] sm:min-w-[380px] max-w-[94vw] bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-[999] overflow-hidden flex flex-col max-h-80 animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute left-0 top-full mt-1.5 w-full min-w-[280px] sm:min-w-[340px] max-w-[calc(100vw-2rem)] bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-[999] overflow-hidden flex flex-col max-h-80 animate-in fade-in slide-in-from-top-2 duration-150">
           {/* Search Header */}
           <div className="p-3 bg-slate-50/90 border-b border-slate-100 flex items-center gap-2">
             <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
