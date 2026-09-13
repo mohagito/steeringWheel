@@ -6,8 +6,31 @@ import {
 } from "recharts";
 import { 
   Package, ArrowRight, Truck, AlertTriangle, Search, 
-  Warehouse, Factory, X, Layers, Disc, Send, ArrowLeftRight, ShieldAlert, Eye
+  Warehouse, Factory, X, Layers, Send, ArrowLeftRight, ShieldAlert, Eye
 } from "lucide-react";
+
+// Lucide-styled 3-spoke automotive Steering Wheel Icon
+export function SteeringWheelIcon({ className = "w-6 h-6", size }: { className?: string; size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size || undefined}
+      height={size || undefined}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="2.5" />
+      <line x1="3" y1="12" x2="9.5" y2="12" />
+      <line x1="14.5" y1="12" x2="21" y2="12" />
+      <line x1="12" y1="14.5" x2="12" y2="21" />
+    </svg>
+  );
+}
 import { doc, writeBatch, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
@@ -359,7 +382,7 @@ export default function DashboardOverview({
         
         {/* Card 1: Stock 1 */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 shadow-inner">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50/90 border border-blue-100/80 text-blue-600 flex items-center justify-center shrink-0 shadow-xs">
             <Warehouse className="w-6 h-6" />
           </div>
           <div>
@@ -370,7 +393,7 @@ export default function DashboardOverview({
 
         {/* Card 2: Stock 2 */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 shadow-inner">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50/90 border border-amber-100/80 text-amber-600 flex items-center justify-center shrink-0 shadow-xs">
             <Factory className="w-6 h-6" />
           </div>
           <div>
@@ -381,8 +404,8 @@ export default function DashboardOverview({
 
         {/* Card 3: Stock 3 */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 shadow-inner">
-            <Disc className="w-6 h-6" />
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50/90 border border-emerald-100/80 text-emerald-600 flex items-center justify-center shrink-0 shadow-xs">
+            <SteeringWheelIcon className="w-6 h-6" />
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 3</p>
@@ -524,7 +547,7 @@ export default function DashboardOverview({
                 <span className="text-xs font-bold font-mono uppercase text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full">
                   Stock 3
                 </span>
-                <Disc className="w-5 h-5 text-emerald-600" />
+                <SteeringWheelIcon className="w-5 h-5 text-emerald-600" />
               </div>
               <h4 className="text-sm font-bold text-slate-900 mt-3">
                 Steering Wheels
