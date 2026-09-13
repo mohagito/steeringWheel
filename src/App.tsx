@@ -2555,11 +2555,11 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a1322] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#070e18] flex flex-col items-center justify-center p-4">
         <img 
           src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
-          alt="Loading" 
-          className="h-12 sm:h-16 object-contain filter brightness-110"
+          alt="Loading EPP Natur" 
+          className="h-12 sm:h-14 object-contain animate-pulse filter brightness-110"
           referrerPolicy="no-referrer"
         />
       </div>
