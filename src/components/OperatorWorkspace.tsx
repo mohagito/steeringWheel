@@ -1629,9 +1629,7 @@ export default function OperatorWorkspace({
                 <p className="text-xs font-semibold text-slate-600">
                   No scanned records yet for Pegadas transfer
                 </p>
-                <p className="text-[11px] text-slate-400 font-mono">
-                  Scan reference barcode and quantity above to build your Pegadas transfer batch.
-                </p>
+               
               </div>
             )}
 

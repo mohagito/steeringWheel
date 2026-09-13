@@ -691,18 +691,18 @@ export default function DeliveriesWorkspace({
 
             {/* Dispatches List Table */}
             <div className="overflow-x-auto rounded-xl border border-slate-200/80">
-              <table className="industrial-table">
+              <table className="industrial-table min-w-full">
                 <thead>
                   <tr>
-                    <th>Invoice / Note</th>
-                    <th>Stock</th>
-                    <th>Reference</th>
-                    <th>Quantity</th>
-                    <th>Customer</th>
-                    <th>Dispatched By</th>
-                    <th className="text-right">Timestamp</th>
+                    <th className="whitespace-nowrap">Invoice / Note</th>
+                    <th className="whitespace-nowrap min-w-[72px]">Stock</th>
+                    <th className="whitespace-nowrap">Reference</th>
+                    <th className="whitespace-nowrap">Quantity</th>
+                    <th className="whitespace-nowrap">Customer</th>
+                    <th className="whitespace-nowrap">Dispatched By</th>
+                    <th className="text-right whitespace-nowrap">Timestamp</th>
                     {(onUpdateDelivery || onDeleteDelivery) && (
-                      <th className="text-right">Actions</th>
+                      <th className="text-right whitespace-nowrap">Actions</th>
                     )}
                   </tr>
                 </thead>
@@ -719,14 +719,14 @@ export default function DeliveriesWorkspace({
 
                     return (
                       <tr key={delivery.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td>
-                          <span className="inline-flex items-center gap-1 font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded text-[10px]">
-                            <FileText className="w-3 h-3" />
+                        <td className="whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded text-[10px] whitespace-nowrap">
+                            <FileText className="w-3 h-3 shrink-0" />
                             {delivery.invoiceNumber}
                           </span>
                         </td>
-                        <td>
-                          <span className={`px-2 py-0.5 rounded font-mono text-[9px] font-bold uppercase border ${
+                        <td className="whitespace-nowrap">
+                          <span className={`inline-flex items-center justify-center whitespace-nowrap px-2 py-0.5 rounded font-mono text-[9px] font-bold uppercase border shrink-0 ${
                             isItemPrecosido 
                               ? "bg-amber-50 text-amber-800 border-amber-200/80" 
                               : "bg-blue-50 text-blue-800 border-blue-200/80"
@@ -734,21 +734,21 @@ export default function DeliveriesWorkspace({
                             {isItemPrecosido ? "Stock 2" : "Stock 3"}
                           </span>
                         </td>
-                        <td className="font-mono font-bold text-slate-900">
+                        <td className="font-mono font-bold text-slate-900 whitespace-nowrap">
                           {delivery.reference}
                         </td>
-                        <td className="font-mono font-bold text-rose-700 text-xs">
+                        <td className="font-mono font-bold text-rose-700 text-xs whitespace-nowrap">
                           -{delivery.quantity} pcs
                         </td>
-                        <td>
-                          <span className="px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200/80 rounded font-mono text-[9px] font-bold uppercase">
+                        <td className="whitespace-nowrap">
+                          <span className="inline-flex items-center px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200/80 rounded font-mono text-[9px] font-bold uppercase whitespace-nowrap">
                             {delivery.customer || "GENERAL"}
                           </span>
                         </td>
-                        <td className="text-slate-600 font-sans font-medium text-xs">
+                        <td className="text-slate-600 font-sans font-medium text-xs whitespace-nowrap">
                           {delivery.operatorName}
                         </td>
-                        <td className="text-right text-slate-400 font-mono text-[10px]">
+                        <td className="text-right text-slate-400 font-mono text-[10px] whitespace-nowrap">
                           {formattedDate}
                         </td>
                         {(onUpdateDelivery || onDeleteDelivery) && (
