@@ -425,14 +425,14 @@ export default function ProductionWorkspace({
             <div className="flex items-center gap-2.5 mb-5 pb-3 border-b border-slate-100">
               <Factory className="w-5 h-5 text-blue-600" />
               <div>
-                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Log Daily Consumption</h3>
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Production Log</h3>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5" id="production-consumption-form">
               <div className="space-y-2">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  Production / Work Date
+                  Date
                 </label>
                 
                 <div className="flex items-center gap-2">
@@ -468,7 +468,7 @@ export default function ProductionWorkspace({
               <div className="space-y-3.5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-                    Parts Consumed
+                    Items
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
                     {rows.length} reference{rows.length > 1 ? "s" : ""}
@@ -500,13 +500,13 @@ export default function ProductionWorkspace({
                           {/* Reference Selector */}
                           <div className="col-span-12 sm:col-span-8 overflow-visible">
                             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                              Reference Code
+                              Reference
                             </label>
                             <CustomReferenceSelect
                               references={references}
                               value={row.referenceCode}
                               onChange={(val) => handleRowChange(index, "referenceCode", val)}
-                              placeholder="Select Reference..."
+                              placeholder="Select reference..."
                               required
                               size="sm"
                             />
@@ -515,12 +515,12 @@ export default function ProductionWorkspace({
                           {/* Quantity */}
                           <div className="col-span-12 sm:col-span-4">
                             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                              Consumed Qty
+                              Quantity (PCS)
                             </label>
                             <input
                               type="number"
                               min="1"
-                              placeholder="Qty Out"
+                              placeholder="Qty..."
                               value={row.quantity}
                               onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
                               className="w-full min-h-[38px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 text-slate-900 font-mono font-bold"
@@ -533,8 +533,8 @@ export default function ProductionWorkspace({
                           <div className="flex flex-wrap items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-200/50 gap-2">
                             <span className="text-slate-500 font-sans truncate max-w-[200px]">{selectedRefObj.description}</span>
                             <div className="flex gap-2">
-                              <span className="text-slate-500">S2 WIP: <strong className="text-amber-600 font-bold">{selectedRefObj.stock2 || 0}</strong></span>
-                              <span className="text-slate-500">S3 Fin: <strong className="text-emerald-600 font-bold">{selectedRefObj.stock3 || 0}</strong></span>
+                              <span className="text-slate-500">S2: <strong className="text-amber-600 font-bold">{selectedRefObj.stock2 || 0}</strong></span>
+                              <span className="text-slate-500">S3: <strong className="text-emerald-600 font-bold">{selectedRefObj.stock3 || 0}</strong></span>
                             </div>
                           </div>
                         )}
@@ -546,20 +546,20 @@ export default function ProductionWorkspace({
                 <button
                   type="button"
                   onClick={handleAddRow}
-                  className="w-full py-2 bg-slate-50 hover:bg-slate-100/80 border border-dashed border-slate-200/80 rounded-xl text-xs font-bold text-slate-600 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  className="w-full py-2 bg-slate-50 hover:bg-slate-100/80 border border-dashed border-slate-200/80 rounded-xl text-xs font-bold text-slate-600 flex items-center justify-center gap-1.5 transition-all cursor-pointer font-mono"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add Another Reference</span>
+                  <span>+ Add Reference</span>
                 </button>
               </div>
 
               {/* Comments */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Line Notes / Shift Comments
+                  Notes
                 </label>
                 <textarea
-                  placeholder="Shift notes..."
+                  placeholder="Notes..."
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -598,14 +598,14 @@ export default function ProductionWorkspace({
               <button
                 type="submit"
                 disabled={submitting}
-                className={`w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer uppercase tracking-wider ${
+                className={`w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer uppercase tracking-wider font-mono ${
                   submitting
                     ? "bg-slate-400 cursor-not-allowed"
                     : "bg-blue-600 hover:bg-blue-700 active:scale-98"
                 }`}
               >
                 <Factory className="w-4 h-4" />
-                <span>{submitting ? "Saving Log..." : "Save Production Log"}</span>
+                <span>{submitting ? "Saving..." : "Save Log"}</span>
               </button>
             </form>
           </div>

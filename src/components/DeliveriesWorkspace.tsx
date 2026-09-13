@@ -415,11 +415,11 @@ export default function DeliveriesWorkspace({
               {/* Top Controls: Step 1 (Invoice #) & Step 2 (Delivery Type) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl">
                 
-                {/* STEP 1: Invoice / Note # */}
+                {/* Invoice # */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-mono">
                     <FileText className="w-3 h-3 text-slate-500" />
-                    <span>Invoice / Note #</span>
+                    <span>Invoice #</span>
                   </label>
                   <input
                     type="text"
@@ -431,31 +431,40 @@ export default function DeliveriesWorkspace({
                   />
                 </div>
 
-                {/* STEP 2: Stock (Selected ONCE for the entire invoice) */}
+                {/* Stock (Stock 2 or Stock 3) */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-mono">
                     <Layers className="w-3 h-3 text-slate-500" />
                     <span>Stock</span>
                   </label>
-                  <CustomSelect
-                    value={deliveryType}
-                    onChange={(val) => setDeliveryType(val as "PRECOSIDO" | "STEERING WHEELS")}
-                    options={[
-                      { 
-                        value: "PRECOSIDO", 
-                        label: "Stock 2"
-                      },
-                      { 
-                        value: "STEERING WHEELS", 
-                        label: "Stock 3"
-                      }
-                    ]}
-                    size="sm"
-                  />
+                  <div className="grid grid-cols-2 gap-1.5 p-1 bg-white border border-slate-200 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryType("PRECOSIDO")}
+                      className={`py-1.5 px-3 rounded-lg text-xs font-mono font-bold tracking-wider transition-all cursor-pointer text-center ${
+                        deliveryType === "PRECOSIDO"
+                          ? "bg-amber-600 text-white shadow-xs"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                      }`}
+                    >
+                      Stock 2
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryType("STEERING WHEELS")}
+                      className={`py-1.5 px-3 rounded-lg text-xs font-mono font-bold tracking-wider transition-all cursor-pointer text-center ${
+                        deliveryType === "STEERING WHEELS"
+                          ? "bg-blue-600 text-white shadow-xs"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                      }`}
+                    >
+                      Stock 3
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* STEP 3, 4, 5: Delivery Items */}
+              {/* Delivery Items */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono flex items-center gap-1.5">
@@ -463,7 +472,7 @@ export default function DeliveriesWorkspace({
                     <span className="text-slate-400">({rows.length})</span>
                   </span>
                   <span className="text-[10px] font-mono text-slate-500">
-                    Source: <span className="font-bold text-slate-700">{isPrecosido ? "Stock 2 (WIP)" : "Stock 3 (Finished)"}</span>
+                    Source: <span className="font-bold text-slate-700">{isPrecosido ? "Stock 2" : "Stock 3"}</span>
                   </span>
                 </div>
 
@@ -511,10 +520,10 @@ export default function DeliveriesWorkspace({
 
                         {/* Item Fields Layout: Responsive & Clean */}
                         <div className="space-y-3">
-                          {/* STEP 3: Select Reference (Full width for clear, un-cramped display) */}
+                          {/* Select Reference */}
                           <div className="overflow-visible">
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
-                              Reference Code
+                              Reference
                             </label>
                             <CustomReferenceSelect
                               references={references}
@@ -527,26 +536,20 @@ export default function DeliveriesWorkspace({
                             />
                           </div>
 
-                          {/* STEP 4 & 5: Customer (Auto) and Quantity side-by-side */}
+                          {/* Customer and Quantity */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
-                            {/* STEP 4: Customer (Auto-determined from Reference) */}
                             <div>
                               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
-                                Customer (Auto)
+                                Customer
                               </label>
                               <div className="w-full min-h-[38px] px-3 py-2 text-xs bg-slate-100/90 border border-slate-200/90 rounded-xl text-slate-800 font-mono font-bold uppercase flex items-center justify-between select-none">
                                 <span className="truncate">
                                   {autoCustomer || (row.referenceCode ? "GENERAL" : "—")}
                                 </span>
-                                {autoCustomer && (
-                                  <span className="text-[9px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-normal font-sans shrink-0">
-                                    Auto
-                                  </span>
-                                )}
                               </div>
                             </div>
 
-                            {/* STEP 5: Quantity */}
+                            {/* Quantity */}
                             <div>
                               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
                                 Quantity (PCS)
@@ -554,7 +557,7 @@ export default function DeliveriesWorkspace({
                               <input
                                 type="number"
                                 min="1"
-                                placeholder="Enter PCS..."
+                                placeholder="Quantity..."
                                 value={row.quantity}
                                 onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
                                 className={`w-full min-h-[38px] px-3 py-2 text-xs bg-white border rounded-xl focus:outline-none focus:ring-2 transition-all font-mono font-bold ${
@@ -568,7 +571,7 @@ export default function DeliveriesWorkspace({
                           </div>
                         </div>
 
-                        {/* Real-time stock status bar for this reference & tier */}
+                        {/* Stock status for this reference & tier */}
                         {selectedRefObj && (
                           <div className="flex items-center justify-between text-[10px] font-mono px-1 pt-1.5 border-t border-slate-200/60">
                             <span className="text-slate-500 truncate max-w-[200px]" title={selectedRefObj.description}>
@@ -602,7 +605,7 @@ export default function DeliveriesWorkspace({
                   className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs font-mono"
                 >
                   <Plus className="w-3.5 h-3.5 text-slate-500" />
-                  <span>+ Add Another Reference</span>
+                  <span>+ Add Reference</span>
                 </button>
               </div>
 

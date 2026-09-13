@@ -333,8 +333,8 @@ export default function AdminWorkspace({
             AD
           </div>
           <div>
-            <span className="text-[10px] font-mono font-bold text-slate-400 block tracking-widest uppercase">SYSTEM MANAGEMENT</span>
-            <h3 className="font-bold text-slate-900 text-sm tracking-tight mt-0.5">Administrator Terminal</h3>
+            <span className="text-[10px] font-mono font-bold text-slate-400 block tracking-widest uppercase">ADMIN</span>
+            <h3 className="font-bold text-slate-900 text-sm tracking-tight mt-0.5">User Management</h3>
           </div>
         </div>
       </div>
@@ -345,17 +345,17 @@ export default function AdminWorkspace({
         <div className="lg:col-span-5 glass-panel p-5 sm:p-6">
           <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
             <Users className="w-4 h-4 text-blue-600" />
-            <h4 className="font-mono font-bold text-slate-900 text-xs uppercase">Create User Profile</h4>
+            <h4 className="font-mono font-bold text-slate-900 text-xs uppercase">New User</h4>
           </div>
 
           <form onSubmit={handleUserSubmit} className="space-y-4 text-xs">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                Username / Identifier
+                Username
               </label>
               <input
                 type="text"
-                placeholder="e.g. op_pablo"
+                placeholder="Username..."
                 value={newUsername}
                 id="admin-user-username-input"
                 onChange={(e) => setNewUsername(e.target.value)}
@@ -369,7 +369,7 @@ export default function AdminWorkspace({
               </label>
               <input
                 type="text"
-                placeholder="e.g. Pablo Ramírez"
+                placeholder="Full Name..."
                 value={newFullName}
                 id="admin-user-fullname-input"
                 onChange={(e) => setNewFullName(e.target.value)}
@@ -380,7 +380,7 @@ export default function AdminWorkspace({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  User Role
+                  Role
                 </label>
                 <CustomSelect
                   value={newRole}
@@ -395,12 +395,12 @@ export default function AdminWorkspace({
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  4-Digit Access PIN
+                  PIN (4-Digit)
                 </label>
                 <input
                   type="password"
                   maxLength={4}
-                  placeholder="e.g. 1234"
+                  placeholder="PIN..."
                   value={newPin}
                   id="admin-user-pin-input"
                   onChange={(e) => setNewPin(e.target.value)}
@@ -419,7 +419,7 @@ export default function AdminWorkspace({
             {userSuccess && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
                 <Check className="w-4 h-4 flex-shrink-0 text-emerald-600" />
-                <span>User registered successfully!</span>
+                <span>Saved successfully!</span>
               </div>
             )}
 
@@ -427,17 +427,17 @@ export default function AdminWorkspace({
               type="submit"
               disabled={userSubmitLoading}
               id="admin-add-user-btn"
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 uppercase tracking-wider shadow-xs"
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 uppercase tracking-wider shadow-xs font-mono"
             >
               {userSubmitLoading ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Registering Profile...</span>
+                  <span>Saving...</span>
                 </>
               ) : (
                 <>
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Create Profile</span>
+                  <span>Add User</span>
                 </>
               )}
             </button>
@@ -446,7 +446,7 @@ export default function AdminWorkspace({
 
         {/* User Account List */}
         <div className="lg:col-span-7 glass-panel p-5 sm:p-6">
-          <h4 className="font-mono font-bold text-slate-900 text-xs uppercase mb-4 pb-3 border-b border-slate-100">Configured Shopfloor Team Profiles</h4>
+          <h4 className="font-mono font-bold text-slate-900 text-xs uppercase mb-4 pb-3 border-b border-slate-100">Users ({users.length})</h4>
 
           <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1" id="admin-users-list">
             {users.map((u) => {
@@ -632,7 +632,7 @@ export default function AdminWorkspace({
       <div className="glass-panel p-5 mt-4 border-rose-200/80 bg-rose-50/20 space-y-4">
         <div className="flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          <h4 className="font-mono font-bold text-rose-800 text-xs uppercase">Danger Zone & Reset Tools</h4>
+          <h4 className="font-mono font-bold text-rose-800 text-xs uppercase">System Reset</h4>
         </div>
         
         <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3 pt-2 border-t border-rose-100">
@@ -643,7 +643,7 @@ export default function AdminWorkspace({
             className="px-4 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 text-xs font-mono shadow-2xs"
           >
             <Trash2 className={`w-3.5 h-3.5 ${isClearingInvoices ? 'animate-spin' : ''}`} />
-            <span>{isClearingInvoices ? "CLEARING..." : "CLEAR INVOICES REGISTER"}</span>
+            <span>{isClearingInvoices ? "CLEARING..." : "CLEAR INVOICES"}</span>
           </button>
         </div>
 
@@ -655,7 +655,7 @@ export default function AdminWorkspace({
             className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 uppercase text-xs tracking-wider font-mono shadow-xs"
           >
             <RefreshCw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
-            <span>RESET DATABASE TO 0</span>
+            <span>RESET DATABASE</span>
           </button>
         </div>
       </div>

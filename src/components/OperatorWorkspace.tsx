@@ -1065,7 +1065,7 @@ export default function OperatorWorkspace({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-400 block">
-                HANDS-FREE SCAN TERMINAL
+                OPERATOR TERMINAL
               </span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -1073,7 +1073,7 @@ export default function OperatorWorkspace({
               </span>
             </div>
             <h2 className="text-sm font-bold text-slate-900 tracking-tight mt-0.5">
-              Operator: {currentUser.fullName}
+              {currentUser.fullName}
             </h2>
           </div>
         </div>
@@ -1085,10 +1085,10 @@ export default function OperatorWorkspace({
               onClick={onOpenLowStockModal}
               id="operator-banner-low-stock-btn"
               className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer shadow-2xs animate-pulse active:scale-95"
-              title="Click to view all references with stock below 100 PCS"
+              title="View low stock references"
             >
               <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-              <span>LOW STOCK: {lowStockCount} REF{lowStockCount > 1 ? "S" : ""}</span>
+              <span>LOW STOCK: {lowStockCount}</span>
             </button>
           )}
           <span className="px-3 py-1 bg-slate-100 rounded-lg font-bold text-slate-700 border border-slate-200/80">
@@ -1107,14 +1107,14 @@ export default function OperatorWorkspace({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                {opMode === "INTAKE" ? "1. Incoming Truck Intake (Stock 1)" : opMode === "TRANSFER" ? "2. Send Mesh to Pegadas (Stock 1 → Stock 2)" : "3. Return from Stock 2 to Stock 1 (Not Touched)"}
+                {opMode === "INTAKE" ? "Truck Intake (Stock 1)" : opMode === "TRANSFER" ? "Transfer to Pegadas (Stock 1 → Stock 2)" : "Return to Stock 1"}
               </h3>
             </div>
           </div>
           <button
             type="button"
             onClick={handleClearInputs}
-            title="Clear fields to start scanning from zero (Shortcut: ESC)"
+            title="Reset fields (ESC)"
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-200/80"
           >
             <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
@@ -1141,7 +1141,7 @@ export default function OperatorWorkspace({
             }`}
           >
             <span>🚛</span>
-            <span>1. New Truck</span>
+            <span>Truck Intake</span>
           </button>
           <button
             type="button"
@@ -1159,7 +1159,7 @@ export default function OperatorWorkspace({
             }`}
           >
             <span>🔵</span>
-            <span>2. Pegadas</span>
+            <span>Pegadas</span>
           </button>
           <button
             type="button"
@@ -1177,7 +1177,7 @@ export default function OperatorWorkspace({
             }`}
           >
             <span>↩️</span>
-            <span>3. Return</span>
+            <span>Return</span>
           </button>
         </div>
 
@@ -1210,12 +1210,12 @@ export default function OperatorWorkspace({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  1. Invoice / Delivery Note Number
+                  Invoice Number
                 </label>
                 {activePendingInvoice && (
                   <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                    SESSION ACTIVE ({activePendingInvoice.totalBoxes} boxes / {activePendingInvoice.totalQuantity} PCS)
+                    ACTIVE ({activePendingInvoice.totalBoxes} boxes / {activePendingInvoice.totalQuantity} PCS)
                   </span>
                 )}
               </div>
@@ -1225,7 +1225,7 @@ export default function OperatorWorkspace({
                   ref={invoiceRef}
                   type="text"
                   required
-                  placeholder="Type or scan invoice number..."
+                  placeholder="Invoice number..."
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                   onKeyDown={handleInvoiceKeyDown}
@@ -1241,7 +1241,7 @@ export default function OperatorWorkspace({
           {opMode === "INTAKE" && (
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
-                2. Destination Stock
+                Destination Stock
               </label>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1285,49 +1285,36 @@ export default function OperatorWorkspace({
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 font-mono">
                 <Barcode className="w-3.5 h-3.5 text-blue-600" />
-                <span>{opMode === "INTAKE" ? "3. Reference (Select or Scan Barcode)" : "1. Reference (Select or Scan Barcode)"}</span>
+                <span>Reference</span>
               </label>
-              <span className="text-[10px] text-blue-600 font-semibold font-mono bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                Select or Scan Active
-              </span>
             </div>
 
-            {/* Searchable Reference Select Dropdown (Identical to Deliveries & Production) */}
+            {/* Searchable Reference Select Dropdown */}
             <div className="space-y-1">
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono flex items-center gap-1">
-                <Search className="w-3 h-3 text-slate-400" />
-                <span>Choose Reference (Searchable Dropdown)</span>
-              </div>
               <CustomReferenceSelect
                 references={references}
                 value={referenceCode}
                 onChange={handleSelectReference}
-                placeholder="Click to search & select reference..."
+                placeholder="Search reference..."
                 showStockBadges={true}
                 size="md"
               />
             </div>
 
             {/* Direct Barcode Scanner Input */}
-            <div className="space-y-1 pt-1">
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono flex items-center gap-1">
-                <Scan className="w-3 h-3 text-slate-400" />
-                <span>Or Scan Barcode Directly</span>
-              </div>
-              <div className="relative">
-                <Barcode className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  ref={referenceRef}
-                  type="text"
-                  placeholder="Scan barcode with scanner or type code..."
-                  value={referenceCode}
-                  onChange={handleReferenceChange}
-                  onKeyDown={handleReferenceKeyDown}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-all text-slate-900 shadow-2xs"
-                  id="op-reference-field"
-                  autoComplete="off"
-                />
-              </div>
+            <div className="relative pt-1">
+              <Barcode className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 mt-0.5" />
+              <input
+                ref={referenceRef}
+                type="text"
+                placeholder="Scan barcode or enter code..."
+                value={referenceCode}
+                onChange={handleReferenceChange}
+                onKeyDown={handleReferenceKeyDown}
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-all text-slate-900 shadow-2xs"
+                id="op-reference-field"
+                autoComplete="off"
+              />
             </div>
             
             {/* Live Master Data visual confirmation feedback */}
@@ -1342,7 +1329,7 @@ export default function OperatorWorkspace({
                   {((matchedReference.stock1 || 0) + (matchedReference.stock2 || 0)) < 100 && (
                     <span className="px-2 py-0.5 bg-rose-100 border border-rose-300 text-rose-700 rounded-md text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
                       <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
-                      LOW STOCK (S1+S2: {(matchedReference.stock1 || 0) + (matchedReference.stock2 || 0)} PCS)
+                      LOW ({(matchedReference.stock1 || 0) + (matchedReference.stock2 || 0)} PCS)
                     </span>
                   )}
                   <span className="px-2 py-0.5 bg-slate-200/80 rounded-md text-[9px] font-bold uppercase tracking-wider text-slate-800">
@@ -1370,10 +1357,10 @@ export default function OperatorWorkspace({
                         playScanBeep();
                       }}
                       className="px-2.5 py-1 bg-amber-200/90 hover:bg-amber-300 border border-amber-300 text-amber-950 rounded-lg text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer select-none"
-                      title="Remove 1st scanner prefix character"
+                      title="Remove prefix"
                     >
                       <Eraser className="w-3 h-3" />
-                      <span>Remove Prefix ({referenceCode.slice(0, 1)})</span>
+                      <span>Remove ({referenceCode.slice(0, 1)})</span>
                     </button>
                   )}
                 </div>
@@ -1385,7 +1372,7 @@ export default function OperatorWorkspace({
           {opMode === "TRANSFER" ? (
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>2. Quantity (Transfer to Pegadas PCS)</span>
+                <span>Quantity (PCS)</span>
                 <span className="text-[10px] text-amber-600 font-semibold font-mono">Stock 1 ➔ Stock 2</span>
               </label>
               <input
@@ -1393,7 +1380,7 @@ export default function OperatorWorkspace({
                 type="number"
                 required
                 min="1"
-                placeholder="Enter quantity to send to Pegadas..."
+                placeholder="Quantity..."
                 value={quantity}
                 onChange={handleQuantityChange}
                 onKeyDown={handleQuantityKeyDown}
@@ -1405,15 +1392,15 @@ export default function OperatorWorkspace({
           ) : opMode === "RETURN" ? (
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>2. Quantity (Return to Stock 1 PCS)</span>
-                <span className="text-[10px] text-amber-600 font-semibold font-mono">Stock 2 ➔ Stock 1 (Not Touched)</span>
+                <span>Quantity (PCS)</span>
+                <span className="text-[10px] text-amber-600 font-semibold font-mono">Stock 2 ➔ Stock 1</span>
               </label>
               <input
                 ref={quantityRef}
                 type="number"
                 required
                 min="1"
-                placeholder="Enter quantity to return to Stock 1..."
+                placeholder="Quantity..."
                 value={quantity}
                 onChange={handleQuantityChange}
                 onKeyDown={handleQuantityKeyDown}
@@ -1424,16 +1411,15 @@ export default function OperatorWorkspace({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>4. Quantity (PCS)</span>
-                <span className="text-[10px] text-slate-400 font-normal">Incoming Box Count</span>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Quantity (PCS)
               </label>
               <input
                 ref={quantityRef}
                 type="number"
                 required
                 min="1"
-                placeholder="Enter PCS quantity..."
+                placeholder="Quantity..."
                 value={quantity}
                 onChange={handleQuantityChange}
                 onKeyDown={handleQuantityKeyDown}
@@ -1449,7 +1435,7 @@ export default function OperatorWorkspace({
             <button
               type="button"
               onClick={handleClearInputs}
-              title="Reset scan fields to zero (Shortcut: ESC)"
+              title="Reset fields (ESC)"
               className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200/80"
             >
               <RotateCcw className="w-4 h-4 text-slate-500" />
@@ -1458,11 +1444,11 @@ export default function OperatorWorkspace({
             <button
               type="button"
               onClick={handleResetAll}
-              title="Clear all inputs"
+              title="Clear all"
               className="px-3.5 py-2.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200/80"
             >
               <Eraser className="w-4 h-4 text-slate-400 group-hover:text-rose-600" />
-              <span>Clear All</span>
+              <span>Clear</span>
             </button>
             <button
               type="submit"
@@ -1479,12 +1465,12 @@ export default function OperatorWorkspace({
               {submitting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  ADDING RECORD...
+                  ADDING...
                 </>
               ) : (
                 <>
                   <Check className="w-4 h-4" />
-                  {opMode === "INTAKE" ? "ADD BOX TO INVOICE" : opMode === "TRANSFER" ? "ADD TO PEGADAS BATCH" : "CONFIRM & SAVE RETURN"}
+                  {opMode === "INTAKE" ? "ADD BOX" : opMode === "TRANSFER" ? "ADD TO BATCH" : "CONFIRM RETURN"}
                 </>
               )}
             </button>
@@ -1506,16 +1492,13 @@ export default function OperatorWorkspace({
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                      SCANNED RECORDS FOR PEGADAS (TRANSFER S1 ➔ S2):
+                      SCANNED RECORDS:
                     </h4>
-                    <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-xs">
-                      PEGADAS BATCH (NO INVOICE)
-                    </span>
                   </div>
                   <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                     {pegadasBatch.length > 0 
-                      ? `${pegadasBatch.length} Scanned Item(s) • Total: ${totalPegadasQty} PCS` 
-                      : "0 Scanned Records"}
+                      ? `${pegadasBatch.length} Items • ${totalPegadasQty} PCS` 
+                      : "0 Records"}
                   </p>
                 </div>
               </div>
@@ -1532,7 +1515,7 @@ export default function OperatorWorkspace({
                     }`}
                   >
                     <Edit3 className="w-3.5 h-3.5" />
-                    <span>{isPegadasEditMode ? "DONE EDITING" : "EDIT RECORDS"}</span>
+                    <span>{isPegadasEditMode ? "DONE" : "EDIT"}</span>
                   </button>
                 </div>
               )}
@@ -1725,16 +1708,16 @@ export default function OperatorWorkspace({
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                      SCANNED RECORDS AFFIXED TO INVOICE:
+                      SCANNED RECORDS:
                     </h4>
                     <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-xs">
-                      {invoiceNumber.trim() ? invoiceNumber.trim().toUpperCase() : "NO INVOICE ENTERED"}
+                      {invoiceNumber.trim() ? invoiceNumber.trim().toUpperCase() : "NO INVOICE"}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                     {activePendingInvoice && activePendingInvoice.items.length > 0 
-                      ? `${activePendingInvoice.totalBoxes} Scanned Box(es) • Total: ${activePendingInvoice.totalQuantity} PCS` 
-                      : "0 Scanned Boxes"}
+                      ? `${activePendingInvoice.totalBoxes} Boxes • ${activePendingInvoice.totalQuantity} PCS` 
+                      : "0 Boxes"}
                   </p>
                 </div>
               </div>
@@ -1751,7 +1734,7 @@ export default function OperatorWorkspace({
                     }`}
                   >
                     <Edit3 className="w-3.5 h-3.5" />
-                    <span>{isEditMode ? "DONE EDITING" : "EDIT RECORDS"}</span>
+                    <span>{isEditMode ? "DONE" : "EDIT"}</span>
                   </button>
                 </div>
               )}
@@ -1886,9 +1869,7 @@ export default function OperatorWorkspace({
                     ? `No scanned boxes yet for Invoice ${invoiceNumber.trim().toUpperCase()}` 
                     : "No invoice entered yet"}
                 </p>
-                <p className="text-[11px] text-slate-400 font-mono">
-                  Scan reference barcode and quantity above to attach boxes to this invoice.
-                </p>
+               
               </div>
             )}
 
@@ -1953,7 +1934,7 @@ export default function OperatorWorkspace({
                     id="op-toggle-edit-mode-btn"
                   >
                     <Edit3 className="w-4 h-4" />
-                    <span>{isEditMode ? "DONE EDITING" : "EDIT RECORDS"}</span>
+                    <span>{isEditMode ? "DONE" : "EDIT"}</span>
                   </button>
 
                   <button
@@ -1961,7 +1942,7 @@ export default function OperatorWorkspace({
                     onClick={handleCancelCurrentInvoice}
                     disabled={cancellingInvoice || approvingInvoice}
                     className="p-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-50"
-                    title="Cancel whole invoice (zero stock impact)"
+                    title="Cancel invoice"
                   >
                     <XCircle className="w-4 h-4" />
                   </button>
@@ -1978,7 +1959,7 @@ export default function OperatorWorkspace({
                   {approvingInvoice ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      VALIDATING &amp; SAVING STOCK 1...
+                      VALIDATING...
                     </>
                   ) : (
                     <>

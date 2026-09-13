@@ -266,24 +266,20 @@ export default function ScrapWorkspace({
     <div className="space-y-6">
       
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-rose-900 via-slate-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-rose-500/10 blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-rose-500/20 border border-rose-500/30 text-rose-300 rounded-full text-xs font-mono font-semibold">
-              <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-              <span>SCRAP</span>
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold font-display tracking-tight text-white">
-              SCRAP Management
+      <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-mono font-bold text-rose-400 block tracking-widest uppercase">DEFECTS & REJECTS</span>
+            <h2 className="text-xl font-extrabold font-mono tracking-tight text-white mt-0.5">
+              Scrap Register
             </h2>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 flex items-center gap-3 shrink-0">
-            <Trash2 className="w-8 h-8 text-rose-400" />
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 px-4 border border-white/10 flex items-center gap-3 shrink-0">
+            <Trash2 className="w-5 h-5 text-rose-400" />
             <div>
-              <div className="text-xl font-mono font-black text-rose-300">{totalScrappedPcs} PCS</div>
-              <div className="text-[10px] text-slate-300 uppercase tracking-wider font-semibold">Total Scrapped</div>
+              <div className="text-lg font-mono font-black text-rose-300">{totalScrappedPcs} PCS</div>
+              <div className="text-[10px] text-slate-300 uppercase font-mono">Total Scrapped</div>
             </div>
           </div>
         </div>
@@ -291,40 +287,37 @@ export default function ScrapWorkspace({
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Scrapped</div>
-            <div className="text-2xl font-black font-mono text-rose-600 mt-1">{totalScrappedPcs} PCS</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">All time</div>
+            <div className="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-wider">Total Scrapped</div>
+            <div className="text-xl font-black font-mono text-rose-600 mt-0.5">{totalScrappedPcs} PCS</div>
           </div>
-          <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600">
-            <Trash2 className="w-6 h-6" />
+          <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600">
+            <Trash2 className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">References</div>
-            <div className="text-2xl font-black font-mono text-slate-800 mt-1">
+            <div className="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-wider">References</div>
+            <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
               {uniqueRefsCount}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Unique items</div>
           </div>
-          <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600">
-            <Hash className="w-6 h-6" />
+          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600">
+            <Hash className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Entries</div>
-            <div className="text-2xl font-black font-mono text-blue-600 mt-1">
+            <div className="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-wider">Records</div>
+            <div className="text-xl font-black font-mono text-blue-600 mt-0.5">
               {scraps.length}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Logged records</div>
           </div>
-          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
-            <FileText className="w-6 h-6" />
+          <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+            <FileText className="w-5 h-5" />
           </div>
         </div>
       </div>
@@ -334,10 +327,10 @@ export default function ScrapWorkspace({
         
         {/* NEW SCRAP ENTRY FORM */}
         <div className="lg:col-span-5 bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-sm space-y-5">
-          <div className="border-b border-slate-100 pb-4">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-rose-600" />
-              <span>New Scrap</span>
+          <div className="border-b border-slate-100 pb-3">
+            <h3 className="text-sm font-bold font-mono uppercase text-slate-900 flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-rose-600" />
+              <span>Log Scrap</span>
             </h3>
           </div>
 

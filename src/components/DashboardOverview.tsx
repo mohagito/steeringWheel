@@ -436,10 +436,10 @@ export default function DashboardOverview({
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
           <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <Layers className="w-5 h-5 text-blue-600" />
-            3-Stage Material Pipeline
+            Pipeline
           </h3>
           <span className="text-xs font-medium text-slate-400 font-mono">
-            {references.length} Active Master References
+            {references.length} References
           </span>
         </div>
 
@@ -470,7 +470,7 @@ export default function DashboardOverview({
           {/* CONNECTOR 1 -> 2 */}
           <div className="md:col-span-1 flex flex-col items-center justify-center py-2 md:py-0">
             <div className="hidden md:flex flex-col items-center text-slate-400">
-              <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Gluing</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase mb-1 font-mono tracking-wider">GLUING</span>
               <div className="p-2 bg-slate-100 rounded-full border border-slate-200 shadow-xs">
                 <ArrowRight className="w-4 h-4 text-slate-600" />
               </div>
@@ -506,7 +506,7 @@ export default function DashboardOverview({
           {/* CONNECTOR 2 -> 3 */}
           <div className="md:col-span-1 flex flex-col items-center justify-center py-2 md:py-0">
             <div className="hidden md:flex flex-col items-center text-slate-400">
-              <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Montaje</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase mb-1 font-mono tracking-wider">MONTAJE</span>
               <div className="p-2 bg-amber-100 rounded-full border border-amber-200 shadow-xs">
                 <ArrowRight className="w-4 h-4 text-amber-700" />
               </div>
@@ -546,14 +546,14 @@ export default function DashboardOverview({
       <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-xl shadow-slate-200/40">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
           <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-            Quick Stock Operations
+            Quick Actions
           </h3>
         </div>
 
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => openModal("incoming")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-blue-100"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-blue-100 font-mono"
           >
             <Truck className="w-4 h-4 text-blue-600" />
             <span>+ Incoming</span>
@@ -561,15 +561,15 @@ export default function DashboardOverview({
 
           <button
             onClick={() => openModal("mallas")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-amber-200/60"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-amber-200/60 font-mono"
           >
             <ArrowLeftRight className="w-4 h-4 text-amber-600" />
-            <span>+ Mallas Pegadas</span>
+            <span>+ Stock 2</span>
           </button>
 
           <button
             onClick={() => openModal("production")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-emerald-200/60"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-emerald-200/60 font-mono"
           >
             <Factory className="w-4 h-4 text-emerald-600" />
             <span>+ Production</span>
@@ -577,7 +577,7 @@ export default function DashboardOverview({
 
           <button
             onClick={() => openModal("precosido")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-rose-200/60"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-rose-200/60 font-mono"
           >
             <Package className="w-4 h-4 text-rose-600" />
             <span>+ Precosido</span>
@@ -585,18 +585,18 @@ export default function DashboardOverview({
 
           <button
             onClick={() => openModal("villanova")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-purple-200/60"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-purple-200/60 font-mono"
           >
             <Send className="w-4 h-4 text-purple-600" />
-            <span>+ SW Delivery</span>
+            <span>+ Delivery</span>
           </button>
 
           <button
             onClick={() => openModal("remove")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-300/80"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-300/80 font-mono"
           >
             <X className="w-4 h-4 text-slate-700" />
-            <span>－ Remove Stock</span>
+            <span>－ Remove</span>
           </button>
         </div>
       </div>
@@ -609,7 +609,7 @@ export default function DashboardOverview({
           <div>
             <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
               <Layers className="w-5 h-5 text-slate-800" />
-              Material Master Inventory
+              Inventory
             </h3>
           </div>
 
@@ -811,12 +811,12 @@ export default function DashboardOverview({
                   {activeModal === "remove" && "🗑️"}
                 </span>
                 <h3 className="text-sm font-extrabold text-slate-900">
-                  {activeModal === "incoming" && "Incoming Truck (Stock 1 IN)"}
-                  {activeModal === "mallas" && "Mallas Pegadas (Stock 1 → 2)"}
-                  {activeModal === "production" && "Daily Production (Stock 2 → 3)"}
-                  {activeModal === "precosido" && "Precosido Invoice (Stock 2 OUT)"}
-                  {activeModal === "villanova" && "Villanova Delivery (Stock 3 OUT)"}
-                  {activeModal === "remove" && "Remove / Deduct Stock"}
+                  {activeModal === "incoming" && "Incoming (Stock 1 IN)"}
+                  {activeModal === "mallas" && "Transfer (Stock 1 → 2)"}
+                  {activeModal === "production" && "Production (Stock 2 → 3)"}
+                  {activeModal === "precosido" && "Precosido (Stock 2 OUT)"}
+                  {activeModal === "villanova" && "Delivery (Stock 3 OUT)"}
+                  {activeModal === "remove" && "Remove Stock"}
                 </h3>
               </div>
               <button
@@ -840,13 +840,13 @@ export default function DashboardOverview({
             <form onSubmit={handleExecuteQuickAction} className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-700 font-bold mb-1">
-                  Reference Code
+                  Reference
                 </label>
                 <CustomReferenceSelect
                   references={references}
                   value={modalRef}
                   onChange={(code) => setModalRef(code)}
-                  placeholder="Search and select reference..."
+                  placeholder="Select reference..."
                   required
                 />
               </div>
@@ -854,15 +854,15 @@ export default function DashboardOverview({
               {activeModal === "remove" && (
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">
-                    Deduct From Stock Stage
+                    Stock Stage
                   </label>
                   <CustomSelect
                     value={removeStockStage}
                     onChange={(val: any) => setRemoveStockStage(val)}
                     options={[
-                      { value: "stock1", label: "Stock 1 — Warehouse Raw Material", description: "Direct raw mesh / material" },
-                      { value: "stock2", label: "Stock 2 — Production Gluing WIP", description: "Glued mesh / Mallas Pegadas" },
-                      { value: "stock3", label: "Stock 3 — Finished Goods Wheels", description: "Completed steering wheel assemblies" }
+                      { value: "stock1", label: "Stock 1" },
+                      { value: "stock2", label: "Stock 2" },
+                      { value: "stock3", label: "Stock 3" }
                     ]}
                     required
                   />
@@ -876,7 +876,7 @@ export default function DashboardOverview({
                 <input
                   type="number"
                   min="1"
-                  placeholder="e.g. 100"
+                  placeholder="Qty..."
                   value={modalQty}
                   onChange={(e) => setModalQty(e.target.value)}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-900"
@@ -886,11 +886,11 @@ export default function DashboardOverview({
 
               <div>
                 <label className="block text-slate-700 font-bold mb-1">
-                  Notes / Invoice Ref
+                  Notes
                 </label>
                 <input
                   type="text"
-                  placeholder="Optional reference note or invoice #"
+                  placeholder="Notes..."
                   value={modalNote}
                   onChange={(e) => setModalNote(e.target.value)}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500"
@@ -901,16 +901,16 @@ export default function DashboardOverview({
                 <button
                   type="button"
                   onClick={() => setActiveModal(null)}
-                  className="px-4 py-2.5 border border-slate-200 rounded-2xl text-slate-600 hover:bg-slate-50 font-bold cursor-pointer"
+                  className="px-4 py-2.5 border border-slate-200 rounded-2xl text-slate-600 hover:bg-slate-50 font-bold cursor-pointer font-mono"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={modalSubmitting}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold cursor-pointer transition-all disabled:opacity-50 shadow-md shadow-blue-500/20"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold cursor-pointer transition-all disabled:opacity-50 shadow-md shadow-blue-500/20 font-mono"
                 >
-                  {modalSubmitting ? "Executing..." : "Confirm Operation"}
+                  {modalSubmitting ? "Processing..." : "Confirm"}
                 </button>
               </div>
             </form>

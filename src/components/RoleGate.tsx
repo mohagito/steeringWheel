@@ -168,22 +168,18 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
             <img 
               src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
               alt="EPP NATUR" 
-              className="h-10 object-contain mb-8 filter brightness-110"
+              className="h-9 object-contain mb-4 filter brightness-110"
               referrerPolicy="no-referrer"
               id="brand-logo-gate"
             />
-            <h1 className="font-display text-xl font-bold tracking-tight text-white mb-2 uppercase border-b-2 border-brand-500 pb-1.5">
-              Stock Control System
-            </h1>
-          </div>
-
-          <div className="mt-8 md:mt-0 text-center md:text-left text-[10px] text-slate-500 font-mono">
-            TERMINAL: TRM-01
+            <div className="text-[9px] text-slate-400 uppercase tracking-[0.2em] font-mono font-bold">
+              STEERING WHEEL STOCK
+            </div>
           </div>
         </div>
 
         {/* Right column: Action (User selector / PIN Pad) */}
-        <div className="md:col-span-7 p-8 flex flex-col justify-center min-h-[500px]">
+        <div className="md:col-span-7 p-8 flex flex-col justify-center min-h-[460px]">
           <AnimatePresence mode="wait">
             {!selectedUser ? (
               // Step 1: Select Profile
@@ -196,14 +192,13 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                 className="space-y-6"
               >
                 <div className="text-center md:text-left border-b border-[#1e293b] pb-3">
-                  <h2 className="font-display text-lg font-bold text-white uppercase tracking-wider">User Authentication</h2>
-                  <p className="text-slate-400 text-xs mt-1">Select your profile to sign in</p>
+                  <h2 className="font-display text-base font-bold text-white uppercase tracking-wider">Select Profile</h2>
                 </div>
 
                 {loading ? (
                   <div className="flex flex-col items-center justify-center py-12 space-y-3">
                     <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
-                    <p className="text-slate-400 text-xs">Loading shopfloor team profiles...</p>
+                    <p className="text-slate-400 text-xs font-mono">Loading...</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" id="profile-selection-grid">
@@ -247,11 +242,8 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                     className="text-slate-400 hover:text-white text-xs font-bold flex items-center gap-1 transition-colors uppercase tracking-wider cursor-pointer"
                     id="back-to-profiles-btn"
                   >
-                    ← Exit Profile
+                    ← Back
                   </button>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">
-                    SECURE SIGN-ON
-                  </span>
                 </div>
 
                 <div className="text-center">
@@ -265,7 +257,7 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                   <h3 className="font-display text-xl font-extrabold text-white uppercase tracking-wide">
                     {selectedUser ? getUserButtonStyle(selectedUser).displayName : ""}
                   </h3>
-                  <p className="text-slate-400 text-xs mt-1 font-mono">ENTER SECURITY PASS-CODE</p>
+                  <p className="text-slate-400 text-xs mt-1 font-mono">Enter PIN</p>
                 </div>
 
                 {/* PIN dots visualizer */}
@@ -291,7 +283,7 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                   )}
                   {success && (
                     <p className="text-emerald-400 text-xs font-bold uppercase tracking-wider">
-                      ACCESS PERMITTED - LOADING TERMINAL...
+                      Authenticated
                     </p>
                   )}
                 </div>
@@ -311,7 +303,7 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
                     onClick={handleClear}
                     className="h-12 rounded-sm bg-[#0a1322]/40 hover:bg-[#1e293b] text-slate-400 text-xs font-bold transition-colors flex items-center justify-center cursor-pointer"
                   >
-                    RESET
+                    C
                   </button>
                   <button
                     onClick={() => handleKeyPress("0")}

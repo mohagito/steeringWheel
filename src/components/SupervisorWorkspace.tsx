@@ -580,7 +580,7 @@ export default function SupervisorWorkspace({
             </div>
             <div>
               <h4 className="text-sm font-extrabold text-rose-900 font-mono flex items-center gap-2">
-                <span>SUPERVISOR ATTENTION: STOCK LOW-LEVEL ALERT</span>
+                <span>STOCK LOW-LEVEL ALERT</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-200 text-rose-900 font-bold">
                   {lowStockReferences.length} CRITICAL
                 </span>

@@ -555,37 +555,31 @@ export default function InvoicesWorkspace({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" id="invoices-kpi-grid">
         
         {/* Total Invoices */}
-        <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex items-center justify-between" id="kpi-total-invoices">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between" id="kpi-total-invoices">
           <div>
-            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider font-mono">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">
               TOTAL INVOICES
             </div>
             <div className="text-2xl font-extrabold text-slate-800 mt-1 font-mono">
               {stats.totalCount}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
-              Incoming delivery operations
-            </div>
           </div>
-          <div className="w-11 h-11 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
             <FileText className="w-5 h-5" />
           </div>
         </div>
 
         {/* Total Approved & Stock 1 PCS */}
-        <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex items-center justify-between" id="kpi-approved-invoices">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between" id="kpi-approved-invoices">
           <div>
-            <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider font-mono">
+            <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider font-mono">
               VALIDATED STOCK 1
             </div>
             <div className="text-2xl font-extrabold text-emerald-700 mt-1 font-mono">
               {stats.totalApprovedQty.toLocaleString()} <span className="text-xs font-semibold text-emerald-600">PCS</span>
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
-              {stats.approvedCount} approved invoices ({stats.totalBoxesReceived} boxes)
-            </div>
           </div>
-          <div className="w-11 h-11 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center shrink-0">
             <PackageCheck className="w-5 h-5" />
           </div>
         </div>
@@ -603,7 +597,7 @@ export default function InvoicesWorkspace({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by invoice #, reference code, operator..."
+              placeholder="Search invoices..."
               className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
               id="invoices-search-input"
             />

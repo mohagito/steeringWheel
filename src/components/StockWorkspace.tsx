@@ -508,7 +508,7 @@ export default function StockWorkspace({
             <Layers className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Master References</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">References</p>
             <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{references.length} <span className="text-xs font-medium text-slate-400">Active</span></h3>
           </div>
         </div>
@@ -527,7 +527,7 @@ export default function StockWorkspace({
             }`}
           >
             <Boxes className="w-4 h-4" />
-            <span>1. Warehouse Raw (Stock 1)</span>
+            <span>Stock 1</span>
           </button>
           
           <button
@@ -539,7 +539,7 @@ export default function StockWorkspace({
             }`}
           >
             <Factory className="w-4 h-4" />
-            <span>2. MALLAS PEGADAS (Stock 2)</span>
+            <span>Stock 2</span>
           </button>
           
           <button
@@ -551,7 +551,7 @@ export default function StockWorkspace({
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>3. Finished Goods (Stock 3)</span>
+            <span>Stock 3</span>
           </button>
           
           <button
@@ -563,13 +563,8 @@ export default function StockWorkspace({
             }`}
           >
             <FileSpreadsheet className="w-4 h-4" />
-            <span>4. Traceability Reports</span>
+            <span>Reports</span>
           </button>
-        </div>
-
-        <div className="hidden lg:flex items-center gap-2 text-xs font-semibold text-slate-500 pr-3">
-          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-          <span>Logged in: {currentUser.fullName}</span>
         </div>
       </div>
 
@@ -595,11 +590,8 @@ export default function StockWorkspace({
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
                   <Boxes className="w-5 h-5 text-blue-600" />
-                  Stock 1 - Warehouse Raw Inventory
+                  Stock 1
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Untouched raw materials stored in warehouse
-                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
@@ -935,11 +927,8 @@ export default function StockWorkspace({
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
                   <Factory className="w-5 h-5 text-amber-500" />
-                  Stock 2 - Production Floor Material Levels (Mallas Pegadas)
+                  Stock 2
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Materials transferred to gluing and active production lines
-                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
@@ -1126,11 +1115,8 @@ export default function StockWorkspace({
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  Stock 3 - Finished Goods Storeroom Levels
+                  Stock 3
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Completed assembled items ready for shipping to clients
-                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
@@ -1323,11 +1309,8 @@ export default function StockWorkspace({
               </div>
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                  Custom Reports &amp; Traceability Suite
+                  Reports
                 </h3>
-                <p className="text-xs text-slate-400">
-                  Compile custom stock logs and export formatted sheets to CSV / Excel
-                </p>
               </div>
             </div>
 
@@ -1337,7 +1320,7 @@ export default function StockWorkspace({
               {/* Report Category Selection */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
-                  1. Report Type
+                  Report Type
                 </label>
                 <CustomSelect
                   value={reportType}
@@ -1357,7 +1340,7 @@ export default function StockWorkspace({
               {/* Reference Selection */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
-                  2. Reference Filter
+                  Reference
                 </label>
                 <CustomReferenceSelect
                   references={references}
@@ -1370,7 +1353,7 @@ export default function StockWorkspace({
               {/* Date Selection */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
-                  3. Date Filter
+                  Date
                 </label>
                 <div className="relative">
                   <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1386,7 +1369,7 @@ export default function StockWorkspace({
               {/* Operator Selection */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
-                  4. Operator Name
+                  Operator
                 </label>
                 <CustomSelect
                   value={repOperatorFilter}
@@ -1398,7 +1381,7 @@ export default function StockWorkspace({
               {/* Movement Type Selection */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
-                  5. Movement Type
+                  Movement Type
                 </label>
                 <CustomSelect
                   disabled={reportType !== "history"}
