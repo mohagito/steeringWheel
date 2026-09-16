@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Reference } from "../types";
 import { AlertTriangle, Search, X, Download, ShieldAlert, Layers } from "lucide-react";
+import { formatSystemTime, getMoroccoTodayDateString } from "../utils/timeUtils";
 
 interface LowStockAlertModalProps {
   isOpen: boolean;
@@ -73,7 +74,7 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
         s3.toString(),
         total.toString(),
         "LOW STOCK (S1 + S2 < 100 PCS)",
-        r.lastUpdate ? new Date(r.lastUpdate).toLocaleString() : "N/A"
+        r.lastUpdate ? formatSystemTime(r.lastUpdate) : "N/A"
       ];
     });
 
@@ -83,7 +84,7 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    const dateStr = new Date().toISOString().split("T")[0];
+    const dateStr = getMoroccoTodayDateString();
     link.setAttribute("download", `LOW_STOCK_ALERTS_S1_S2_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();

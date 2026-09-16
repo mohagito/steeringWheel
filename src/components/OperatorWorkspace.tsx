@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Box, Adjustment, User, Reference, ReceivingInvoice, ScannedInvoiceBox, ScannedTransferItem } from "../types";
-import { doc, getDoc, writeBatch } from "firebase/firestore";
+import { doc, getDoc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { 
   Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon, Sparkles, ArrowRight, Layers, Box as BoxIcon, RotateCcw, Eraser, Trash2, CheckCircle2, XCircle, Edit3, Save, X, PlusCircle, Search, Barcode, AlertTriangle
 } from "lucide-react";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import Swal from "sweetalert2";
+import { formatSystemTime } from "../utils/timeUtils";
 
 interface OperatorWorkspaceProps {
   boxes: Box[];
@@ -888,7 +889,7 @@ export default function OperatorWorkspace({
 
     try {
       const batch = writeBatch(db);
-      const timestamp = new Date().toISOString();
+      const timestamp = serverTimestamp();
 
       // Group requested quantities by reference to validate Stock 1 availability
       const totalsPerRef: { [code: string]: number } = {};
@@ -1581,7 +1582,7 @@ export default function OperatorWorkspace({
                               </span>
                             </div>
                             <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
-                              <span>Scanned: {item.scannedAt ? new Date(item.scannedAt).toLocaleTimeString() : "Just now"}</span>
+                              <span>Scanned: {item.scannedAt ? formatSystemTime(item.scannedAt) : "Just now"}</span>
                               <span>&bull;</span>
                               <span className="text-slate-600 font-semibold">Available S1: {currentRefData?.stock1 ?? "—"} pcs</span>
                             </div>
@@ -1814,7 +1815,7 @@ export default function OperatorWorkspace({
                               )}
                             </div>
                             <span className="text-[10px] text-slate-400 block truncate font-mono mt-0.5">
-                              Barcode: {item.boxBarcode} &bull; Scanned: {item.scannedAt ? new Date(item.scannedAt).toLocaleTimeString() : "Just now"}
+                              Barcode: {item.boxBarcode} &bull; Scanned: {item.scannedAt ? formatSystemTime(item.scannedAt) : "Just now"}
                             </span>
                           </div>
                         )}

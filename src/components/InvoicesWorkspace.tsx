@@ -10,6 +10,13 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomSelect } from "./CustomSelect";
+import { 
+  formatSystemTime, 
+  formatSystemDate, 
+  parseTimestampMs, 
+  getMoroccoTodayDateString, 
+  getMoroccoDateString 
+} from "../utils/timeUtils";
 
 interface InvoicesWorkspaceProps {
   invoices: ReceivingInvoice[];
@@ -57,25 +64,25 @@ export default function InvoicesWorkspace({
     return invoices;
   }, [invoices]);
 
-  // Filter and sort invoices
+  // Filter and sort invoices using Morocco GMT+1 system time
   const filteredInvoices = useMemo(() => {
-    const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const todayStr = getMoroccoTodayDateString();
+    const nowMs = Date.now();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
     return unifiedInvoices
       .filter(inv => {
         // Date filter
         if (dateFilter === "today") {
-          const invDate = inv.createdAt.slice(0, 10);
+          const invDate = getMoroccoDateString(inv.createdAt);
           if (invDate !== todayStr) return false;
         } else if (dateFilter === "week") {
-          const invTime = new Date(inv.createdAt).getTime();
-          if (invTime < sevenDaysAgo.getTime()) return false;
+          const invTime = parseTimestampMs(inv.createdAt);
+          if (nowMs - invTime > sevenDaysMs) return false;
         } else if (dateFilter === "month") {
-          const invTime = new Date(inv.createdAt).getTime();
-          if (invTime < thirtyDaysAgo.getTime()) return false;
+          const invTime = parseTimestampMs(inv.createdAt);
+          if (nowMs - invTime > thirtyDaysMs) return false;
         }
 
         // Search query filter (Invoice #, Operator, Reference codes)
@@ -99,7 +106,7 @@ export default function InvoicesWorkspace({
       .sort((a, b) => {
         let comp = 0;
         if (sortField === "date") {
-          comp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          comp = parseTimestampMs(a.createdAt) - parseTimestampMs(b.createdAt);
         } else if (sortField === "invoiceNumber") {
           comp = a.invoiceNumber.localeCompare(b.invoiceNumber);
         } else if (sortField === "totalQuantity") {
@@ -256,8 +263,8 @@ export default function InvoicesWorkspace({
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     const fileName = inv 
-      ? `Invoice_${inv.invoiceNumber}_Traceability_${new Date().toISOString().slice(0, 10)}.csv`
-      : `Invoices_Master_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+      ? `Invoice_${inv.invoiceNumber}_Traceability_${getMoroccoTodayDateString()}.csv`
+      : `Invoices_Master_Report_${getMoroccoTodayDateString()}.csv`;
     link.setAttribute("download", fileName);
     document.body.appendChild(link);
     link.click();
@@ -786,9 +793,9 @@ export default function InvoicesWorkspace({
                       <td className="p-3.5 text-slate-600 whitespace-nowrap">
                         <div className="flex items-center gap-1.5 text-xs">
                           <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span>{new Date(inv.createdAt).toLocaleDateString()}</span>
+                          <span>{formatSystemDate(inv.createdAt)}</span>
                           <span className="text-slate-400 text-[11px] font-mono">
-                            {new Date(inv.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatSystemTime(inv.createdAt)}
                           </span>
                         </div>
                       </td>
@@ -951,7 +958,7 @@ export default function InvoicesWorkspace({
                     <div className="text-xs text-slate-400 flex items-center gap-3 mt-0.5">
                       <span>Operator: <strong className="text-slate-200">{selectedInvoice.operator}</strong></span>
                       <span>&bull;</span>
-                      <span>Created: {new Date(selectedInvoice.createdAt).toLocaleString()}</span>
+                      <span>Created: {formatSystemTime(selectedInvoice.createdAt)}</span>
                     </div>
                   </div>
                 </div>
@@ -1084,7 +1091,7 @@ export default function InvoicesWorkspace({
                                 )}
                               </td>
                               <td className="p-3 text-slate-500 font-mono text-[11px]">
-                                {item.scannedAt ? new Date(item.scannedAt).toLocaleTimeString() : '-'}
+                                {item.scannedAt ? formatSystemTime(item.scannedAt) : '-'}
                               </td>
                             </tr>
                           );

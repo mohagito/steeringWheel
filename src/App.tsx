@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { 
-  collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, getDoc, getDocs, writeBatch, runTransaction
+  collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, getDoc, getDocs, writeBatch, runTransaction, serverTimestamp
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState, clearInvoicesCollection } from "./seeder";
 import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry, ReceivingInvoice } from "./types";
+import { compareTimestampsDesc, getMoroccoTodayDateString } from "./utils/timeUtils";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
 import OperatorWorkspace from "./components/OperatorWorkspace";
@@ -140,7 +141,7 @@ export default function App() {
           snapshot.forEach((doc) => {
             adjList.push({ id: doc.id, ...doc.data() } as Adjustment);
           });
-          adjList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          adjList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setAdjustments(adjList);
         },
         (error) => {
@@ -172,7 +173,7 @@ export default function App() {
             delList.push({ id: doc.id, ...doc.data() } as Delivery);
           });
           // Sort deliveries descending by timestamp
-          delList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          delList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setDeliveries(delList);
         },
         (error) => {
@@ -190,9 +191,9 @@ export default function App() {
           });
           // Sort productions descending by date, then by timestamp
           prodList.sort((a, b) => {
-            const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+            const dateDiff = compareTimestampsDesc(a.date, b.date);
             if (dateDiff !== 0) return dateDiff;
-            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+            return compareTimestampsDesc(a.timestamp, b.timestamp);
           });
           setProductions(prodList);
         },
@@ -208,7 +209,7 @@ export default function App() {
           snapshot.forEach((doc) => {
             transList.push({ id: doc.id, ...doc.data() } as InventoryTransaction);
           });
-          transList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          transList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setTransactions(transList);
         },
         (error) => {
@@ -223,7 +224,7 @@ export default function App() {
           snapshot.forEach((doc) => {
             scrapList.push({ id: doc.id, ...doc.data() } as ScrapEntry);
           });
-          scrapList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          scrapList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setScraps(scrapList);
         },
         (error) => {
@@ -238,7 +239,7 @@ export default function App() {
           snapshot.forEach((doc) => {
             invList.push({ id: doc.id, ...doc.data() } as ReceivingInvoice);
           });
-          invList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          invList.sort((a, b) => compareTimestampsDesc(a.createdAt, b.createdAt));
           setInvoices(invList);
         },
         (error) => {

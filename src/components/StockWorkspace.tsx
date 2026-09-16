@@ -8,6 +8,7 @@ import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
 import { AddEditReferenceModal } from "./AddEditReferenceModal";
+import { formatSystemTime, getMoroccoTodayDateString } from "../utils/timeUtils";
 
 interface StockWorkspaceProps {
   boxes: Box[];
@@ -227,7 +228,7 @@ export default function StockWorkspace({
             <td style="border: 1px solid #e2e8f0; padding: 8px;">${row.description || ''}</td>
             <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${row.materialType || 'Mesh'}</td>
             <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right; font-weight: bold; mso-number-format: '\\#,\\#\\#0';">${row.quantity || 0}</td>
-            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right; color: #64748b; font-size: 10pt;">${row.timestamp ? new Date(row.timestamp).toLocaleString() : 'N/A'}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right; color: #64748b; font-size: 10pt;">${row.timestamp ? formatSystemTime(row.timestamp) : 'N/A'}</td>
           </tr>
         `;
       }).join('');
@@ -262,7 +263,7 @@ export default function StockWorkspace({
 
         return `
           <tr style="${bg}">
-            <td style="border: 1px solid #e2e8f0; padding: 8px; font-size: 10pt; color: #475569;">${row.timestamp ? new Date(row.timestamp).toLocaleString() : 'N/A'}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; font-size: 10pt; color: #475569;">${row.timestamp ? formatSystemTime(row.timestamp) : 'N/A'}</td>
             <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center; font-weight: bold; font-size: 10pt;">${row.movementType || ''}</td>
             <td style="border: 1px solid #e2e8f0; padding: 8px; font-weight: bold; font-family: monospace;">${row.reference || ''}</td>
             <td style="border: 1px solid #e2e8f0; padding: 8px; color: #334155;">${row.stock || 'N/A'}</td>
@@ -302,7 +303,7 @@ export default function StockWorkspace({
 </head>
 <body>
   <div class="title">${reportTitle}</div>
-  <div class="meta">Generated: ${new Date().toLocaleString()} | Total Records: ${reportData.length}</div>
+  <div class="meta">Generated: ${formatSystemTime(new Date())} | Total Records: ${reportData.length}</div>
   <table>
     <thead>
       ${tableHeaderHtml}
@@ -318,7 +319,7 @@ export default function StockWorkspace({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    const dateStr = new Date().toISOString().split("T")[0];
+    const dateStr = getMoroccoTodayDateString();
     link.download = `MES_Report_${reportType}_${dateStr}.xls`;
     document.body.appendChild(link);
     link.click();
@@ -348,14 +349,14 @@ export default function StockWorkspace({
         `"${(row.description || '').replace(/"/g, '""')}"`,
         row.materialType || 'Mesh',
         row.quantity.toString(),
-        row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A"
+        row.timestamp ? formatSystemTime(row.timestamp) : "N/A"
       ]);
     } else {
       headers = ["Timestamp", "Movement Type", "Reference Code", "Stock Level", "Scanned Qty (Label)", "Real Count (Manual)", "Difference", "Operator", "Notes"];
       rows = reportData.map(row => {
         const { scannedQty, realQty, diff } = parseTransactionQtyDetails(row);
         return [
-          row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A",
+          row.timestamp ? formatSystemTime(row.timestamp) : "N/A",
           row.movementType,
           row.reference,
           row.stock || "N/A",
@@ -374,7 +375,7 @@ export default function StockWorkspace({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    const filename = `MES_Report_${reportType}_${new Date().toISOString().split("T")[0]}.csv`;
+    const filename = `MES_Report_${reportType}_${getMoroccoTodayDateString()}.csv`;
     link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
@@ -697,7 +698,7 @@ export default function StockWorkspace({
                           )}
                         </td>
                         <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
-                          {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
+                          {ref.lastUpdate ? formatSystemTime(ref.lastUpdate) : "N/A"}
                         </td>
                         {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
                           <td className="py-2 px-4 text-center">
@@ -852,7 +853,7 @@ export default function StockWorkspace({
                         )}
                       </td>
                       <td className="py-3 px-4 text-right text-[11px] text-slate-400">
-                        {box.createdAt ? new Date(box.createdAt).toLocaleString() : "N/A"}
+                        {box.createdAt ? formatSystemTime(box.createdAt) : "N/A"}
                       </td>
                       {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
                         <td className="py-2 px-4 text-center">
@@ -1032,7 +1033,7 @@ export default function StockWorkspace({
                           )}
                         </td>
                         <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
-                          {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
+                          {ref.lastUpdate ? formatSystemTime(ref.lastUpdate) : "N/A"}
                         </td>
                         {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
                           <td className="py-2 px-4 text-center">
@@ -1220,7 +1221,7 @@ export default function StockWorkspace({
                           )}
                         </td>
                         <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
-                          {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleString() : "N/A"}
+                          {ref.lastUpdate ? formatSystemTime(ref.lastUpdate) : "N/A"}
                         </td>
                         {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
                           <td className="py-2 px-4 text-center">
@@ -1454,7 +1455,7 @@ export default function StockWorkspace({
                         <td className="py-3 px-4">{row.materialType}</td>
                         <td className="py-3 px-4 text-right text-slate-900 font-extrabold text-sm">{row.quantity.toLocaleString()}</td>
                         <td className="py-3 px-4 text-right text-slate-400 text-[11px]">
-                          {row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A"}
+                          {row.timestamp ? formatSystemTime(row.timestamp) : "N/A"}
                         </td>
                       </tr>
                     ))}
@@ -1488,7 +1489,7 @@ export default function StockWorkspace({
                       return (
                         <tr key={index} className="hover:bg-slate-50/70 transition-colors">
                           <td className="py-3 px-4 text-[11px] text-slate-400">
-                            {row.timestamp ? new Date(row.timestamp).toLocaleString() : "N/A"}
+                            {row.timestamp ? formatSystemTime(row.timestamp) : "N/A"}
                           </td>
                           <td className="py-3 px-4">
                             <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${

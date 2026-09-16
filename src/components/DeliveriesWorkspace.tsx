@@ -9,6 +9,7 @@ import {
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
+import { formatSystemTime, compareTimestampsDesc } from "../utils/timeUtils";
 
 interface DeliveriesWorkspaceProps {
   deliveries: Delivery[];
@@ -320,7 +321,7 @@ export default function DeliveriesWorkspace({
     };
   }, [deliveries]);
 
-  // Pre-filtered deliveries list
+  // Pre-filtered deliveries list sorted by system timestamp descending
   const filteredDeliveries = useMemo(() => {
     return deliveries.filter((d) => {
       const q = searchQuery.toLowerCase().trim();
@@ -332,7 +333,7 @@ export default function DeliveriesWorkspace({
       );
       const matchesCustomer = customerFilter === "All" || d.customer === customerFilter;
       return matchesSearch && matchesCustomer;
-    });
+    }).sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
   }, [deliveries, searchQuery, customerFilter]);
 
   // Unique list of customers in deliveries
@@ -708,12 +709,7 @@ export default function DeliveriesWorkspace({
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredDeliveries.map((delivery) => {
-                    const formattedDate = new Date(delivery.timestamp).toLocaleString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    });
+                    const formattedDate = formatSystemTime(delivery.timestamp);
 
                     const isItemPrecosido = delivery.deliveryType === "PRECOSIDO";
 

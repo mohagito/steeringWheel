@@ -15,8 +15,8 @@ export interface Box {
   expectedQty: number; // Barcode label quantity
   actualQty?: number;  // Real manually counted quantity
   location: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string | any;
+  updatedAt: string | any;
   materialType?: "Mesh" | "Leather" | "Soft";
   invoiceNumber?: string;
   palletQuality?: string;
@@ -30,18 +30,18 @@ export interface Adjustment {
   actualQty: number; // Real Counted Quantity
   difference: number;
   operatorName: string;
-  timestamp: string;
+  timestamp: string | any;
   comment?: string;
   status: "pending" | "approved" | "rejected" | "edited" | "deleted";
   validatedBy?: string;
-  validatedAt?: string;
+  validatedAt?: string | any;
   materialType?: "Mesh" | "Soft" | "Leather";
   stockBefore?: number;
   stockAdded?: number;
   stockAfter?: number;
   invoiceNumber?: string;
   palletQuality?: string;
-  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number; reason: string }>;
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number | string | any; reason: string }>;
 }
 
 export interface Delivery {
@@ -50,12 +50,12 @@ export interface Delivery {
   reference: string;
   quantity: number;
   operatorName: string;
-  timestamp: string;
+  timestamp: string | any;
   customer: string;
   deliveryType?: "PRECOSIDO" | "STEERING WHEELS" | "Villanova" | "Mini Project" | "Normal Delivery";
   notes?: string;
   status?: "completed" | "edited" | "deleted";
-  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number; reason: string }>;
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number | string | any; reason: string }>;
 }
 
 export interface Production {
@@ -64,10 +64,10 @@ export interface Production {
   reference: string;
   quantity: number;
   operatorName: string;
-  timestamp: string;
+  timestamp: string | any;
   notes?: string;
   status?: "completed" | "edited" | "deleted";
-  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number; reason: string }>;
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number | string | any; reason: string }>;
 }
 
 export interface Reference {
@@ -78,15 +78,15 @@ export interface Reference {
   associatedLeather?: string;
   customer?: string;
   active?: boolean; // Default true if undefined
-  createdAt?: string;
+  createdAt?: string | any;
   createdBy?: string;
-  updatedAt?: string;
+  updatedAt?: string | any;
   updatedBy?: string;
   currentStock: number; // Total combined across stocks
   stock1: number; // STOCK 1 - Warehouse Stock (Raw Materials)
   stock2: number; // STOCK 2 - Production Stock (WIP)
   stock3: number; // STOCK 3 - Finished Goods Stock
-  lastUpdate: string;
+  lastUpdate: string | any;
 }
 
 export interface ScrapEntry {
@@ -98,12 +98,12 @@ export interface ScrapEntry {
   invoiceNumber?: string; // Scrap delivery invoice for traceability
   notes?: string;
   supervisorName: string;
-  timestamp: string;
+  timestamp: string | any;
   stockDeductedFrom: "Stock 1" | "Stock 2" | "Stock 3";
   stockBefore: number;
   stockAfter: number;
   status?: "completed" | "edited" | "deleted";
-  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number; reason: string }>;
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number | string | any; reason: string }>;
 }
 
 export interface InventoryTransaction {
@@ -114,7 +114,7 @@ export interface InventoryTransaction {
   stock: "Stock 1" | "Stock 2" | "Stock 3" | "Stock 1 -> Stock 2" | "Stock 2 -> Stock 3" | "Stock 2 -> Stock 1" | string;
   quantity: number;
   operatorName: string;
-  timestamp: string;
+  timestamp: string | any;
   notes?: string;
   invoiceNumber?: string;
   expectedQty?: number;
@@ -137,7 +137,7 @@ export interface ScannedInvoiceBox {
   reference: string;
   expectedQty: number;
   quantity: number; // Real/Physical quantity
-  scannedAt: string;
+  scannedAt: string | any;
   materialType?: string;
   difference?: number;
   palletQuality?: string;

@@ -62,19 +62,14 @@ export interface UnifiedOperation {
   changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: number | string; reason: string }>;
 }
 
-export const formatExactTimestamp = (ts?: string | number) => {
-  if (!ts) return "N/A";
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return String(ts);
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  const year = d.getFullYear();
-  const month = pad(d.getMonth() + 1);
-  const day = pad(d.getDate());
-  const hours = pad(d.getHours());
-  const minutes = pad(d.getMinutes());
-  const seconds = pad(d.getSeconds());
-  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-};
+import { 
+  formatExactTimestamp, 
+  formatSystemTime, 
+  formatSystemTimeOnly, 
+  compareTimestampsDesc 
+} from "../utils/timeUtils";
+
+export { formatExactTimestamp };
 
 export default function SupervisorWorkspace({
   boxes,
@@ -446,7 +441,7 @@ export default function SupervisorWorkspace({
     });
 
     // Sort strictly descending by exact timestamp
-    list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    list.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
 
     return list;
   }, [invoices, deliveries, productions, scraps, adjustments, transactions]);
@@ -819,6 +814,18 @@ export default function SupervisorWorkspace({
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase">Exact Commit Time</span>
                   <span className="font-bold text-blue-700">{formatExactTimestamp(detailOp.timestamp)}</span>
+                  {detailOp.rawInvoice?.approvedAt && detailOp.rawInvoice.createdAt && (
+                    <div className="mt-1 text-[10px] text-slate-500 font-mono space-y-0.5">
+                      <div>Created: <span className="font-semibold text-slate-700">{formatExactTimestamp(detailOp.rawInvoice.createdAt)}</span></div>
+                      <div>Approved: <span className="font-semibold text-emerald-700">{formatExactTimestamp(detailOp.rawInvoice.approvedAt)}</span></div>
+                    </div>
+                  )}
+                  {detailOp.rawAdjustment?.validatedAt && detailOp.rawAdjustment.timestamp && (
+                    <div className="mt-1 text-[10px] text-slate-500 font-mono space-y-0.5">
+                      <div>Submitted: <span className="font-semibold text-slate-700">{formatExactTimestamp(detailOp.rawAdjustment.timestamp)}</span></div>
+                      <div>Validated: <span className="font-semibold text-emerald-700">{formatExactTimestamp(detailOp.rawAdjustment.validatedAt)}</span></div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase">Operation Category</span>
@@ -900,8 +907,8 @@ export default function SupervisorWorkspace({
                               <td className="p-2 text-right font-bold text-blue-700">
                                 {item.quantity} PCS
                               </td>
-                              <td className="p-2 text-right text-slate-400 text-[10px]">
-                                {item.scannedAt ? new Date(item.scannedAt).toLocaleTimeString() : "-"}
+                              <td className="p-2 text-right text-slate-400 text-[10px] font-mono">
+                                {item.scannedAt ? formatSystemTimeOnly(item.scannedAt, false) : "-"}
                               </td>
                             </tr>
                           ))}

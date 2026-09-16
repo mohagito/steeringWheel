@@ -1,6 +1,12 @@
 import React, { useState, useMemo } from "react";
 import { ScrapEntry, Reference, User } from "../types";
 import { 
+  getMoroccoTodayDateString, 
+  formatSystemDate, 
+  formatSystemTime,
+  compareTimestampsDesc 
+} from "../utils/timeUtils";
+import { 
   Trash2, Calendar, Hash, AlertTriangle, CheckCircle2, 
   Search, ShieldAlert, FileText, RefreshCw, Plus,
   Edit2, X, ChevronDown
@@ -42,8 +48,8 @@ export default function ScrapWorkspace({
   onDeleteScrap,
   onUpdateScrap
 }: ScrapWorkspaceProps) {
-  // Get today's date in YYYY-MM-DD
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Get today's date in YYYY-MM-DD (Morocco GMT+1)
+  const todayStr = getMoroccoTodayDateString();
 
   // Form State
   const [date, setDate] = useState(todayStr);
@@ -251,15 +257,17 @@ export default function ScrapWorkspace({
 
   // Filtered Scraps List
   const filteredScraps = useMemo(() => {
-    return scraps.filter(s => {
-      const matchesSearch = 
-        s.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.supervisorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (s.invoiceNumber && s.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase()));
-      
-      return matchesSearch;
-    });
+    return scraps
+      .filter(s => {
+        const matchesSearch = 
+          s.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          s.supervisorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (s.invoiceNumber && s.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+        
+        return matchesSearch;
+      })
+      .sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
   }, [scraps, searchTerm]);
 
   return (
@@ -584,7 +592,10 @@ export default function ScrapWorkspace({
                   {filteredScraps.map((s) => (
                     <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-3 font-mono text-slate-600 font-semibold whitespace-nowrap">
-                        {s.date}
+                        <div>{s.date ? formatSystemDate(s.date) : "—"}</div>
+                        {s.timestamp && (
+                          <div className="text-[10px] text-slate-400 font-normal">{formatSystemTime(s.timestamp)}</div>
+                        )}
                       </td>
                       <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                         {s.reference}

@@ -1,6 +1,18 @@
 import React, { useState, useMemo } from "react";
 import { InventoryTransaction, ReceivingInvoice, Reference, User } from "../types";
 import { 
+  formatSystemTime,
+  formatSystemDate,
+  formatSystemTimeOnly,
+  formatSystemDateTime,
+  getMoroccoDateString,
+  getMoroccoTodayDateString,
+  getMoroccoYesterdayDateString,
+  getSystemRelativeTime,
+  parseTimestampMs,
+  compareTimestampsDesc
+} from "../utils/timeUtils";
+import { 
   History, Search, Filter, ArrowRight, RotateCcw, Truck, 
   Layers, CheckCircle2, Clock, Calendar, Download, Eye, 
   X, Printer, Shield, ArrowUpRight, ArrowDownLeft, AlertCircle,
@@ -191,29 +203,22 @@ export default function RecordsWorkspace({
 
   // Filtered transactions calculation
   const filteredTransactions = useMemo(() => {
-    const now = new Date();
-    const todayStr = now.toISOString().split("T")[0];
-
-    const yesterdayDate = new Date(now);
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayStr = yesterdayDate.toISOString().split("T")[0];
-
-    const weekAgoDate = new Date(now);
-    weekAgoDate.setDate(weekAgoDate.getDate() - 7);
-
-    const monthAgoDate = new Date(now);
-    monthAgoDate.setDate(monthAgoDate.getDate() - 30);
+    const todayStr = getMoroccoTodayDateString();
+    const yesterdayStr = getMoroccoYesterdayDateString();
+    const nowMs = Date.now();
+    const weekAgoMs = nowMs - 7 * 86400000;
+    const monthAgoMs = nowMs - 30 * 86400000;
 
     return transactions.filter(tx => {
       // 1. Time filter
       if (timeFilter !== "all") {
-        const txDate = new Date(tx.timestamp);
-        const txDateStr = tx.timestamp ? tx.timestamp.split("T")[0] : "";
+        const txMs = parseTimestampMs(tx.timestamp) || 0;
+        const txDateStr = getMoroccoDateString(tx.timestamp);
 
         if (timeFilter === "today" && txDateStr !== todayStr) return false;
         if (timeFilter === "yesterday" && txDateStr !== yesterdayStr) return false;
-        if (timeFilter === "week" && txDate < weekAgoDate) return false;
-        if (timeFilter === "month" && txDate < monthAgoDate) return false;
+        if (timeFilter === "week" && txMs < weekAgoMs) return false;
+        if (timeFilter === "month" && txMs < monthAgoMs) return false;
       }
 
       // 2. Operator filter
@@ -257,7 +262,7 @@ export default function RecordsWorkspace({
       }
 
       return true;
-    }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }).sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
   }, [transactions, categoryFilter, operatorFilter, timeFilter, searchQuery, refMap]);
 
   // High-level KPI aggregates based on current operator & time filter (ignoring category tab so tabs reflect real volume)
@@ -274,25 +279,21 @@ export default function RecordsWorkspace({
     let totalProdScrapCount = 0;
 
     // Filter by time & operator for KPIs
-    const now = new Date();
-    const todayStr = now.toISOString().split("T")[0];
-    const yesterdayDate = new Date(now);
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayStr = yesterdayDate.toISOString().split("T")[0];
-    const weekAgoDate = new Date(now);
-    weekAgoDate.setDate(weekAgoDate.getDate() - 7);
-    const monthAgoDate = new Date(now);
-    monthAgoDate.setDate(monthAgoDate.getDate() - 30);
+    const todayStr = getMoroccoTodayDateString();
+    const yesterdayStr = getMoroccoYesterdayDateString();
+    const nowMs = Date.now();
+    const weekAgoMs = nowMs - 7 * 86400000;
+    const monthAgoMs = nowMs - 30 * 86400000;
 
     transactions.forEach(tx => {
       // Time check
       if (timeFilter !== "all") {
-        const txDate = new Date(tx.timestamp);
-        const txDateStr = tx.timestamp ? tx.timestamp.split("T")[0] : "";
+        const txMs = parseTimestampMs(tx.timestamp) || 0;
+        const txDateStr = getMoroccoDateString(tx.timestamp);
         if (timeFilter === "today" && txDateStr !== todayStr) return;
         if (timeFilter === "yesterday" && txDateStr !== yesterdayStr) return;
-        if (timeFilter === "week" && txDate < weekAgoDate) return;
-        if (timeFilter === "month" && txDate < monthAgoDate) return;
+        if (timeFilter === "week" && txMs < weekAgoMs) return;
+        if (timeFilter === "month" && txMs < monthAgoMs) return;
       }
 
       // Operator check
@@ -350,39 +351,15 @@ export default function RecordsWorkspace({
 
   // Format date helper
   const formatTime = (ts: string) => {
-    if (!ts) return "--:--";
-    try {
-      const d = new Date(ts);
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    } catch (e) {
-      return ts;
-    }
+    return formatSystemTimeOnly(ts, true);
   };
 
   const formatDate = (ts: string) => {
-    if (!ts) return "";
-    try {
-      const d = new Date(ts);
-      return d.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
-    } catch (e) {
-      return ts;
-    }
+    return formatSystemDate(ts);
   };
 
   const getRelativeTime = (ts: string) => {
-    if (!ts) return "";
-    try {
-      const diff = Date.now() - new Date(ts).getTime();
-      const mins = Math.floor(diff / 60000);
-      if (mins < 1) return "Just now";
-      if (mins < 60) return `${mins}m ago`;
-      const hrs = Math.floor(mins / 60);
-      if (hrs < 24) return `${hrs}h ago`;
-      const days = Math.floor(hrs / 24);
-      return `${days}d ago`;
-    } catch (e) {
-      return "";
-    }
+    return getSystemRelativeTime(ts);
   };
 
   // Style badge helper
@@ -969,8 +946,8 @@ export default function RecordsWorkspace({
                       </span>
                       <div className="space-y-2 text-slate-700 text-xs">
                         <div className="flex justify-between py-1 border-b border-slate-50">
-                          <span className="text-slate-400">Timestamp:</span>
-                          <span className="font-bold">{formatDate(selectedTx.timestamp)} at {formatTime(selectedTx.timestamp)}</span>
+                          <span className="text-slate-400">Timestamp (Morocco GMT+1):</span>
+                          <span className="font-bold font-mono">{formatSystemTime(selectedTx.timestamp)}</span>
                         </div>
                         <div className="flex justify-between py-1 border-b border-slate-50">
                           <span className="text-slate-400">Logged By:</span>

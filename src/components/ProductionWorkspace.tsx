@@ -9,6 +9,12 @@ import {
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
+import { 
+  getMoroccoTodayDateString, 
+  getMoroccoYesterdayDateString, 
+  formatSystemTime, 
+  compareTimestampsDesc 
+} from "../utils/timeUtils";
 
 interface ProductionWorkspaceProps {
   productions: Production[];
@@ -36,23 +42,14 @@ export default function ProductionWorkspace({
   onDeleteProduction,
   onUpdateProduction
 }: ProductionWorkspaceProps) {
-  // Default to today's date in YYYY-MM-DD
+  // Default to today's date in Morocco GMT+1
   const getTodayString = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return getMoroccoTodayDateString();
   };
 
-  // Default to yesterday's date in YYYY-MM-DD
+  // Default to yesterday's date in Morocco GMT+1
   const getYesterdayString = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return getMoroccoYesterdayDateString();
   };
 
   const [productionDate, setProductionDate] = useState(getTodayString());
@@ -344,7 +341,7 @@ export default function ProductionWorkspace({
     };
   }, [productions]);
 
-  // Pre-filtered productions list
+  // Pre-filtered productions list sorted by system timestamp descending
   const filteredProductions = useMemo(() => {
     return productions.filter((p) => {
       const q = searchQuery.toLowerCase().trim();
@@ -356,7 +353,7 @@ export default function ProductionWorkspace({
       );
       const matchesDate = !dateFilter ? true : p.date === dateFilter;
       return matchesSearch && matchesDate;
-    });
+    }).sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
   }, [productions, searchQuery, dateFilter]);
 
   // Unique list of dates in production logs for filter dropdown
@@ -664,12 +661,7 @@ export default function ProductionWorkspace({
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredProductions.map((p) => {
-                    const formattedDate = new Date(p.timestamp).toLocaleString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    });
+                    const formattedDate = formatSystemTime(p.timestamp);
 
                     return (
                       <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">

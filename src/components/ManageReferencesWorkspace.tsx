@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Reference, User, Box, InventoryTransaction, Delivery, Production, ScrapEntry, Adjustment } from "../types";
+import { formatSystemDate, formatSystemTime } from "../utils/timeUtils";
 import { 
   Search, Plus, Edit2, Power, Trash2, FolderTree, AlertTriangle, ShieldAlert, CheckCircle2, X, RefreshCw
 } from "lucide-react";
@@ -430,8 +431,9 @@ export default function ManageReferencesWorkspace({
 
                       {/* Last Update */}
                       <td className="py-3.5 px-4 text-right text-[11px] text-slate-400 font-mono">
-                        <div>{ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleDateString() : "N/A"}</div>
-                        {ref.updatedBy && <div className="text-[10px] text-slate-400">{ref.updatedBy}</div>}
+                        <div>{ref.lastUpdate ? formatSystemDate(ref.lastUpdate) : "N/A"}</div>
+                        {ref.lastUpdate && <div className="text-[10px] text-slate-400">{formatSystemTime(ref.lastUpdate)}</div>}
+                        {ref.updatedBy && <div className="text-[10px] text-slate-500 font-sans">{ref.updatedBy}</div>}
                       </td>
 
                       {/* Actions */}

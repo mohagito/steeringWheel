@@ -8,14 +8,15 @@ import {
   Package, ArrowRight, Truck, AlertTriangle, Search, 
   Warehouse, Factory, X, Layers, Send, ArrowLeftRight, ShieldAlert, Eye
 } from "lucide-react";
+import { formatSystemTime, getMoroccoTodayDateString, getMoroccoDateString } from "../utils/timeUtils";
 
 // Lucide-styled 3-spoke automotive Steering Wheel Icon
 export function SteeringWheelIcon({ className = "w-6 h-6", size }: { className?: string; size?: number }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      width={size || undefined}
-      height={size || undefined}
+      width={size || 24}
+      height={size || 24}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
@@ -24,14 +25,14 @@ export function SteeringWheelIcon({ className = "w-6 h-6", size }: { className?:
       className={className}
     >
       <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="2.5" />
-      <line x1="3" y1="12" x2="9.5" y2="12" />
-      <line x1="14.5" y1="12" x2="21" y2="12" />
-      <line x1="12" y1="14.5" x2="12" y2="21" />
+      <circle cx="12" cy="12" r="3" />
+      <line x1="3" y1="12" x2="9" y2="12" />
+      <line x1="15" y1="12" x2="21" y2="12" />
+      <line x1="12" y1="15" x2="12" y2="21" />
     </svg>
   );
 }
-import { doc, writeBatch, getDoc } from "firebase/firestore";
+import { doc, writeBatch, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
@@ -71,9 +72,9 @@ export default function DashboardOverview({
   const [modalSubmitting, setModalSubmitting] = useState(false);
   const [modalFeedback, setModalFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  // Format today's date prefix
+  // Format today's date prefix in Morocco GMT+1
   const todayStr = useMemo(() => {
-    return new Date().toISOString().split("T")[0];
+    return getMoroccoTodayDateString();
   }, []);
 
   // 1. Calculate General Metrics & Low Stock Count (Stock 1 + Stock 2 < 100 PCS)
@@ -137,19 +138,25 @@ export default function DashboardOverview({
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      return d.toISOString().split("T")[0];
+      return getMoroccoDateString(d.toISOString());
     }).reverse();
 
     return days.map(day => {
       const dayTransfers = transactions
-        .filter(t => t.timestamp.startsWith(day) && (t.movementType === "TRANSFER" || t.movementType === "TRANSFER S1->S2"))
+        .filter(t => {
+          const tDay = getMoroccoDateString(t.timestamp);
+          return tDay === day && (t.movementType === "TRANSFER" || t.movementType === "TRANSFER S1->S2");
+        })
         .reduce((sum, t) => sum + t.quantity, 0);
 
       const dayDeliveries = transactions
-        .filter(t => t.timestamp.startsWith(day) && (t.movementType === "STOCK 3 OUT" || t.movementType === "DELIVERY" || t.movementType === "STOCK 2 OUT"))
+        .filter(t => {
+          const tDay = getMoroccoDateString(t.timestamp);
+          return tDay === day && (t.movementType === "STOCK 3 OUT" || t.movementType === "DELIVERY" || t.movementType === "STOCK 2 OUT");
+        })
         .reduce((sum, t) => sum + t.quantity, 0);
 
-      const label = new Date(day).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const label = new Date(day + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "Africa/Casablanca" });
       return {
         date: label,
         "Transfers": dayTransfers,
@@ -173,7 +180,7 @@ export default function DashboardOverview({
 
     try {
       const batch = writeBatch(db);
-      const timestamp = new Date().toISOString();
+      const timestamp = serverTimestamp();
       const refDocRef = doc(db, "references", modalRef);
       const refSnap = await getDoc(refDocRef);
 
@@ -381,42 +388,42 @@ export default function DashboardOverview({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* Card 1: Stock 1 */}
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50/90 border border-blue-100/80 text-blue-600 flex items-center justify-center shrink-0 shadow-xs">
-            <Warehouse className="w-6 h-6" />
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4 min-h-[96px]">
+          <div className="w-12 h-12 min-w-12 min-h-12 rounded-2xl bg-blue-50/90 border border-blue-100/80 text-blue-600 flex items-center justify-center shrink-0 shadow-xs">
+            <Warehouse className="w-6 h-6" strokeWidth={2} />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 1</p>
-            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{metrics.totalWarehouseStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5 truncate">{metrics.totalWarehouseStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
           </div>
         </div>
 
         {/* Card 2: Stock 2 */}
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50/90 border border-amber-100/80 text-amber-600 flex items-center justify-center shrink-0 shadow-xs">
-            <Factory className="w-6 h-6" />
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4 min-h-[96px]">
+          <div className="w-12 h-12 min-w-12 min-h-12 rounded-2xl bg-amber-50/90 border border-amber-100/80 text-amber-600 flex items-center justify-center shrink-0 shadow-xs">
+            <Factory className="w-6 h-6" strokeWidth={2} />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2</p>
-            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{metrics.totalProductionStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5 truncate">{metrics.totalProductionStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
           </div>
         </div>
 
         {/* Card 3: Stock 3 */}
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50/90 border border-emerald-100/80 text-emerald-600 flex items-center justify-center shrink-0 shadow-xs">
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4 min-h-[96px]">
+          <div className="w-12 h-12 min-w-12 min-h-12 rounded-2xl bg-emerald-50/90 border border-emerald-100/80 text-emerald-600 flex items-center justify-center shrink-0 shadow-xs">
             <SteeringWheelIcon className="w-6 h-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 3</p>
-            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{metrics.totalFinishedStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5 truncate">{metrics.totalFinishedStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
           </div>
         </div>
 
         {/* Card 4: Low Stock Alerts */}
         <div 
           onClick={() => setIsAlertModalOpen(true)}
-          className={`border rounded-3xl p-5 shadow-xl transition-all cursor-pointer relative overflow-hidden flex items-center justify-between gap-4 ${
+          className={`border rounded-3xl p-5 shadow-xl transition-all cursor-pointer relative overflow-hidden flex items-center justify-between gap-4 min-h-[96px] ${
             metrics.lowStockCount > 0 
               ? "bg-gradient-to-br from-rose-50/90 to-white border-rose-200 shadow-rose-500/10 hover:border-rose-300" 
               : "bg-white border-slate-100 shadow-slate-200/40"
@@ -737,7 +744,7 @@ export default function DashboardOverview({
                       )}
                     </td>
                     <td className="py-3 px-4 text-right text-[11px] text-slate-400 font-mono">
-                      {ref.lastUpdate ? new Date(ref.lastUpdate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "N/A"}
+                      {ref.lastUpdate ? formatSystemTime(ref.lastUpdate) : "N/A"}
                     </td>
                   </tr>
                 );
