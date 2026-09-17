@@ -8,7 +8,7 @@ import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
 import { AddEditReferenceModal } from "./AddEditReferenceModal";
-import { formatSystemTime, getMoroccoTodayDateString } from "../utils/timeUtils";
+import { formatSystemTime, getMoroccoTodayDateString, getMoroccoDateString } from "../utils/timeUtils";
 
 interface StockWorkspaceProps {
   boxes: Box[];
@@ -171,7 +171,7 @@ export default function StockWorkspace({
       const refCode = item.reference || item.code || "";
       const matchesRef = repRefFilter === "All" || refCode.toUpperCase() === repRefFilter.toUpperCase();
       
-      const dateStr = item.timestamp || "";
+      const dateStr = getMoroccoDateString(item.timestamp);
       const matchesDate = !repDateFilter || dateStr.startsWith(repDateFilter);
 
       const matchesOp = repOperatorFilter === "All" || item.operatorName === repOperatorFilter;

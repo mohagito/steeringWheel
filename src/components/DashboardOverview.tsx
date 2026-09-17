@@ -89,12 +89,18 @@ export default function DashboardOverview({
     });
 
     const todaysTransfers = transactions
-      .filter(t => t.timestamp.startsWith(todayStr) && (t.movementType === "TRANSFER" || t.movementType === "TRANSFER S1->S2"))
-      .reduce((sum, t) => sum + t.quantity, 0);
+      .filter(t => {
+        const tDay = getMoroccoDateString(t.timestamp);
+        return tDay === todayStr && (t.movementType === "TRANSFER" || t.movementType === "TRANSFER S1->S2");
+      })
+      .reduce((sum, t) => sum + (t.quantity || 0), 0);
 
     const todaysDeliveries = transactions
-      .filter(t => t.timestamp.startsWith(todayStr) && (t.movementType === "STOCK 3 OUT" || t.movementType === "STOCK 2 OUT / STOCK 3 IN" || t.movementType === "DELIVERY" || t.movementType === "STOCK 2 OUT"))
-      .reduce((sum, t) => sum + t.quantity, 0);
+      .filter(t => {
+        const tDay = getMoroccoDateString(t.timestamp);
+        return tDay === todayStr && (t.movementType === "STOCK 3 OUT" || t.movementType === "STOCK 2 OUT / STOCK 3 IN" || t.movementType === "DELIVERY" || t.movementType === "STOCK 2 OUT");
+      })
+      .reduce((sum, t) => sum + (t.quantity || 0), 0);
 
     return {
       totalWarehouseStock,

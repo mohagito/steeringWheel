@@ -5,7 +5,7 @@ import {
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState, clearInvoicesCollection } from "./seeder";
 import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry, ReceivingInvoice } from "./types";
-import { compareTimestampsDesc, getMoroccoTodayDateString } from "./utils/timeUtils";
+import { compareTimestampsDesc, getMoroccoTodayDateString, normalizeDocTimestamps } from "./utils/timeUtils";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
 import OperatorWorkspace from "./components/OperatorWorkspace";
@@ -122,7 +122,7 @@ export default function App() {
         (snapshot) => {
           const boxesList: Box[] = [];
           snapshot.forEach((doc) => {
-            boxesList.push({ id: doc.id, ...doc.data() } as Box);
+            boxesList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as Box);
           });
           // Sort boxes alphabetically by barcode
           boxesList.sort((a, b) => a.barcode.localeCompare(b.barcode));
@@ -139,7 +139,7 @@ export default function App() {
         (snapshot) => {
           const adjList: Adjustment[] = [];
           snapshot.forEach((doc) => {
-            adjList.push({ id: doc.id, ...doc.data() } as Adjustment);
+            adjList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as Adjustment);
           });
           adjList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setAdjustments(adjList);
@@ -154,7 +154,7 @@ export default function App() {
         (snapshot) => {
           const refList: Reference[] = [];
           snapshot.forEach((doc) => {
-            refList.push({ id: doc.id, ...doc.data() } as Reference);
+            refList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as Reference);
           });
           refList.sort((a, b) => a.code.localeCompare(b.code));
           setReferences(refList);
@@ -170,7 +170,7 @@ export default function App() {
         (snapshot) => {
           const delList: Delivery[] = [];
           snapshot.forEach((doc) => {
-            delList.push({ id: doc.id, ...doc.data() } as Delivery);
+            delList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as Delivery);
           });
           // Sort deliveries descending by timestamp
           delList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
@@ -187,7 +187,7 @@ export default function App() {
         (snapshot) => {
           const prodList: Production[] = [];
           snapshot.forEach((doc) => {
-            prodList.push({ id: doc.id, ...doc.data() } as Production);
+            prodList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as Production);
           });
           // Sort productions descending by date, then by timestamp
           prodList.sort((a, b) => {
@@ -207,7 +207,7 @@ export default function App() {
         (snapshot) => {
           const transList: InventoryTransaction[] = [];
           snapshot.forEach((doc) => {
-            transList.push({ id: doc.id, ...doc.data() } as InventoryTransaction);
+            transList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as InventoryTransaction);
           });
           transList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setTransactions(transList);
@@ -222,7 +222,7 @@ export default function App() {
         (snapshot) => {
           const scrapList: ScrapEntry[] = [];
           snapshot.forEach((doc) => {
-            scrapList.push({ id: doc.id, ...doc.data() } as ScrapEntry);
+            scrapList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as ScrapEntry);
           });
           scrapList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setScraps(scrapList);
@@ -237,7 +237,7 @@ export default function App() {
         (snapshot) => {
           const invList: ReceivingInvoice[] = [];
           snapshot.forEach((doc) => {
-            invList.push({ id: doc.id, ...doc.data() } as ReceivingInvoice);
+            invList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as ReceivingInvoice);
           });
           invList.sort((a, b) => compareTimestampsDesc(a.createdAt, b.createdAt));
           setInvoices(invList);
@@ -252,7 +252,7 @@ export default function App() {
         (snapshot) => {
           const usersList: User[] = [];
           snapshot.forEach((doc) => {
-            usersList.push({ id: doc.id, ...doc.data() } as User);
+            usersList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as User);
           });
           setUsers(usersList);
           setLoading(false);

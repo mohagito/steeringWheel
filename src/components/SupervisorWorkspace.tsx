@@ -649,16 +649,15 @@ export default function SupervisorWorkspace({
 
           {/* Desktop view: table */}
           <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200/80">
-            <table className="industrial-table w-full min-w-[1100px]" id="all-operations-table">
+            <table className="industrial-table w-full min-w-[900px]" id="all-operations-table">
               <thead>
                 <tr>
-                  <th className="w-[15%] min-w-[140px]">Exact Timestamp</th>
-                  <th className="w-[13%] min-w-[110px]">Operation Type</th>
-                  <th className="w-[16%] min-w-[130px]">Reference</th>
-                  <th className="w-[10%] min-w-[90px] text-right">Quantity</th>
-                  <th className="w-[14%] min-w-[120px]">Operator / User</th>
-                  <th className="w-[27%] min-w-[200px]">Operational Details & Notes</th>
-                  <th className="w-[5%] min-w-[60px] text-center">Actions</th>
+                  <th className="w-[20%] min-w-[150px]">Exact Timestamp</th>
+                  <th className="w-[18%] min-w-[120px]">Operation Type</th>
+                  <th className="w-[24%] min-w-[150px]">Reference</th>
+                  <th className="w-[16%] min-w-[110px] text-right">Quantity</th>
+                  <th className="w-[16%] min-w-[130px]">Operator / User</th>
+                  <th className="w-[6%] min-w-[60px] text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono text-slate-800">
@@ -682,9 +681,6 @@ export default function SupervisorWorkspace({
                         {op.quantity > 0 ? `${op.quantity.toLocaleString()} PCS` : "-"}
                       </td>
                       <td className="text-slate-700 font-sans font-medium text-xs">{op.operator}</td>
-                      <td className="text-xs text-slate-600 font-sans max-w-xs truncate" title={op.details}>
-                        {op.details}
-                      </td>
                       <td className="text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <button
@@ -713,7 +709,7 @@ export default function SupervisorWorkspace({
 
                 {filteredOperations.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400 font-sans">
+                    <td colSpan={6} className="py-12 text-center text-slate-400 font-sans">
                       No matching operations found for the current filter.
                     </td>
                   </tr>
