@@ -223,10 +223,23 @@ export const DEFAULT_REFERENCES: Reference[] = [
     stock3: 0,
     lastUpdate: new Date().toISOString(),
     customer: "Stellantis"
+  },
+  {
+    id: "R001L200A",
+    code: "R001L200A",
+    description: "MALLA OVCTF TEP",
+    materialType: "Mesh",
+    associatedLeather: "R002A631A",
+    currentStock: 0,
+    stock1: 0,
+    stock2: 0,
+    stock3: 0,
+    lastUpdate: new Date().toISOString(),
+    customer: "STELLANTIS"
   }
 ];
 
-// Seed data
+// Seed data - Exactly 3 active operational users
 const DEFAULT_USERS: User[] = [
   {
     id: "user_shifta",
@@ -248,13 +261,6 @@ const DEFAULT_USERS: User[] = [
     fullName: "MANAGER",
     role: "admin",
     pin: "9472"
-  },
-  {
-    id: "user_soukaina",
-    username: "soukaina",
-    fullName: "SOUKAINA",
-    role: "supervisor",
-    pin: "8315"
   }
 ];
 

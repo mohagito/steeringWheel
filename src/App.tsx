@@ -2503,6 +2503,9 @@ export default function App() {
       let needsFix = false;
       const patch: any = {};
 
+      if (typeof data.stock1 !== "number") { patch.stock1 = s1; needsFix = true; }
+      if (typeof data.stock2 !== "number") { patch.stock2 = s2; needsFix = true; }
+      if (typeof data.stock3 !== "number") { patch.stock3 = s3; needsFix = true; }
       if (data.currentStock !== expectedTotal) { patch.currentStock = expectedTotal; needsFix = true; }
       if (!data.code) { patch.code = d.id; needsFix = true; }
       if (!data.description) { patch.description = `Malla Reference ${d.id}`; needsFix = true; }
@@ -2517,6 +2520,11 @@ export default function App() {
 
     // 2. Audit & Fix Users
     usersSnap.forEach((u) => {
+      if (u.id === "user_soukaina" || u.data()?.username === "soukaina") {
+        batch.delete(doc(db, "users", u.id));
+        repairedUsers++;
+        return;
+      }
       const data = u.data();
       let needsFix = false;
       const patch: any = {};
