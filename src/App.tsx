@@ -4,7 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState, clearInvoicesCollection } from "./seeder";
-import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry, ReceivingInvoice } from "./types";
+import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry, ReceivingInvoice, ScannedInvoiceBox } from "./types";
 import { compareTimestampsDesc, getMoroccoTodayDateString, normalizeDocTimestamps } from "./utils/timeUtils";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
@@ -106,12 +106,6 @@ export default function App() {
         await seedDatabaseIfNeeded();
         // 2. Automatically run self-healing database integrity audit
         await handleAuditDatabase();
-
-        // 3. Clear existing invoice records on start so register is empty and ready for fresh input forward
-        if (!localStorage.getItem("invoices_cleared_fresh_start")) {
-          localStorage.setItem("invoices_cleared_fresh_start", "true");
-          await clearInvoicesCollection();
-        }
       } catch (err) {
         console.error("Initialization / Audit failed", err);
       }
@@ -2541,6 +2535,109 @@ export default function App() {
 
     if (repairedRefs > 0 || repairedUsers > 0) {
       await batch.commit();
+    }
+
+    // 3. Audit & Auto-Heal Invoices: Reconstruct invoice documents from ledger if any are missing
+    try {
+      const invoicesSnap = await getDocs(collection(db, "invoices"));
+      const existingInvNums = new Set(
+        invoicesSnap.docs.map((d) => String(d.data().invoiceNumber || "").trim().toUpperCase())
+      );
+
+      const transSnap = await getDocs(collection(db, "transactions"));
+      const boxSnap = await getDocs(collection(db, "boxes"));
+
+      const missingInvoicesMap = new Map<string, { txs: any[]; boxes: any[] }>();
+
+      transSnap.docs.forEach((d) => {
+        const data = d.data();
+        if (data.invoiceNumber) {
+          const invNum = String(data.invoiceNumber).trim();
+          if (invNum && !existingInvNums.has(invNum.toUpperCase())) {
+            if (!missingInvoicesMap.has(invNum)) {
+              missingInvoicesMap.set(invNum, { txs: [], boxes: [] });
+            }
+            missingInvoicesMap.get(invNum)!.txs.push({ id: d.id, ...data });
+          }
+        }
+      });
+
+      boxSnap.docs.forEach((d) => {
+        const data = d.data();
+        if (data.invoiceNumber) {
+          const invNum = String(data.invoiceNumber).trim();
+          if (invNum && !existingInvNums.has(invNum.toUpperCase())) {
+            if (!missingInvoicesMap.has(invNum)) {
+              missingInvoicesMap.set(invNum, { txs: [], boxes: [] });
+            }
+            missingInvoicesMap.get(invNum)!.boxes.push({ id: d.id, ...data });
+          }
+        }
+      });
+
+      if (missingInvoicesMap.size > 0) {
+        for (const [invNum, group] of missingInvoicesMap.entries()) {
+          const txList = group.txs;
+          const boxList = group.boxes;
+          const times = [
+            ...txList.map((t) => t.timestamp),
+            ...boxList.map((b) => b.createdAt || b.updatedAt)
+          ].filter(Boolean);
+          times.sort();
+          const createdAt = times[0] || new Date().toISOString();
+          const approvedAt = times[times.length - 1] || createdAt;
+          const operator = txList[0]?.operatorName || "Shift A";
+
+          let items: ScannedInvoiceBox[] = [];
+          if (boxList.length > 0) {
+            items = boxList.map((b, idx) => ({
+              id: b.id || `item-${idx}`,
+              boxBarcode: b.barcode || `BOX-${b.reference}-${invNum}-${idx}`,
+              reference: b.reference || "",
+              expectedQty: Number(b.expectedQty) || Number(b.actualQty) || 0,
+              quantity: Number(b.actualQty) || Number(b.quantity) || 0,
+              scannedAt: b.createdAt || b.updatedAt || createdAt,
+              materialType: b.materialType || "Mesh",
+              difference: 0,
+              palletQuality: b.palletQuality || "",
+              destinationStock: "Stock 1"
+            }));
+          } else {
+            items = txList.map((t, idx) => ({
+              id: t.id || `item-${idx}`,
+              boxBarcode: t.barcode || `BOX-${t.reference}-${invNum}-${idx}`,
+              reference: t.reference || "",
+              expectedQty: Number(t.expectedQty) || Number(t.quantity) || 0,
+              quantity: Number(t.quantity) || 0,
+              scannedAt: t.timestamp || createdAt,
+              materialType: "Mesh",
+              difference: 0,
+              palletQuality: t.palletQuality || "",
+              destinationStock: "Stock 1"
+            }));
+          }
+
+          const totalBoxes = items.length;
+          const totalQuantity = items.reduce((sum, it) => sum + it.quantity, 0);
+          const invoiceId = `inv-${invNum.toLowerCase().replace(/[^a-z0-9_-]/g, "_")}`;
+
+          await setDoc(doc(db, "invoices", invoiceId), {
+            id: invoiceId,
+            invoiceNumber: invNum,
+            operator,
+            createdAt,
+            status: "approved",
+            approvedAt,
+            approvedBy: operator,
+            notes: `Received via Invoice ${invNum}`,
+            totalBoxes,
+            totalQuantity,
+            items
+          });
+        }
+      }
+    } catch (invAuditErr) {
+      console.warn("Auto-healing invoices check warning:", invAuditErr);
     }
 
     return { repairedRefs, repairedUsers };

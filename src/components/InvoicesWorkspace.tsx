@@ -698,8 +698,26 @@ export default function InvoicesWorkspace({
 
         {filteredInvoices.length === 0 ? (
           <div className="p-12 text-center text-slate-400 space-y-3" id="invoices-empty-state">
-            <FileText className="w-12 h-12 mx-auto text-slate-300 stroke-1" />
-            <div className="text-sm font-semibold text-slate-600">No invoices found matching criteria</div>
+            <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+              <FileText className="w-7 h-7 stroke-1.5" />
+            </div>
+            <div className="text-sm font-semibold text-slate-700">No invoices found matching criteria</div>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              {searchQuery || dateFilter !== "all" 
+                ? "Try adjusting your search keywords or date filter to view existing invoices."
+                : "No incoming stock invoices have been recorded yet. New receiving batches scanned by operators will appear here."}
+            </p>
+            {(searchQuery || dateFilter !== "all") && (
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  setDateFilter("all");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors cursor-pointer border border-blue-200"
+              >
+                Reset Filters
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
