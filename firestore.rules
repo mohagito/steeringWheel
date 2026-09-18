@@ -42,6 +42,10 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /test/{testId} {
+      allow read: if true;
+    }
+
     // Default catch-all
     match /{document=**} {
       allow read, write: if false;
