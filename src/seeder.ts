@@ -283,10 +283,6 @@ export async function clearCollection(collectionName: string) {
   }
 }
 
-export async function clearInvoicesCollection() {
-  await clearCollection("invoices");
-}
-
 export async function seedDatabaseIfNeeded() {
   try {
     // 1. Ensure default users exist
