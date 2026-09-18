@@ -51,7 +51,7 @@ export interface UnifiedOperation {
     barcode?: string;
     difference?: number;
     scannedAt?: string;
-    destinationStock?: "Stock 1" | "Stock 3";
+    destinationStock?: "Stock 1" | "Stock 2" | "Stock 3";
   }>;
   rawInvoice?: ReceivingInvoice;
   rawDelivery?: Delivery;
@@ -204,14 +204,19 @@ export default function SupervisorWorkspace({
       const commitTime = inv.approvedAt || inv.createdAt;
       const totalQty = inv.totalQuantity || items.reduce((s, it) => s + (it.quantity || 0), 0);
 
-      const hasS1 = items.some(it => it.destinationStock !== "Stock 3");
+      const hasS1 = items.some(it => it.destinationStock === "Stock 1" || !it.destinationStock);
+      const hasS2 = items.some(it => it.destinationStock === "Stock 2");
       const hasS3 = items.some(it => it.destinationStock === "Stock 3");
-      const affectedStock = hasS1 && hasS3 
-        ? "Stock 1 & Stock 3" 
-        : hasS3 
-          ? "Stock 3 (Finished Goods)" 
-          : "Stock 1 (Warehouse)";
-      const stockTypeTag = hasS1 && hasS3 ? "S1/S3 IN" : hasS3 ? "S3 IN" : "S1 IN";
+      const stockParts: string[] = [];
+      if (hasS1) stockParts.push("Stock 1");
+      if (hasS2) stockParts.push("Stock 2");
+      if (hasS3) stockParts.push("Stock 3");
+      const affectedStock = stockParts.length > 1 ? stockParts.join(" & ") : (stockParts[0] || "Stock 1");
+      const tagParts: string[] = [];
+      if (hasS1) tagParts.push("S1");
+      if (hasS2) tagParts.push("S2");
+      if (hasS3) tagParts.push("S3");
+      const stockTypeTag = tagParts.length > 0 ? `${tagParts.join("/")} IN` : "S1 IN";
 
       list.push({
         id: `inv-${inv.id}`,
@@ -227,7 +232,7 @@ export default function SupervisorWorkspace({
         quantity: totalQty,
         operator: inv.approvedBy ? `${inv.operator} (Approved by ${inv.approvedBy})` : inv.operator,
         affectedStock,
-        details: `Invoice #${inv.invoiceNumber} • ${inv.totalBoxes || items.length} box(es) • ${totalQty} PCS${hasS1 && hasS3 ? ' (Mixed S1+S3)' : ''}`,
+        details: `Invoice #${inv.invoiceNumber} • ${inv.totalBoxes || items.length} box(es) • ${totalQty} PCS${stockParts.length > 1 ? ` (${stockParts.join('+')})` : ''}`,
         status: inv.status === "approved" ? "approved" : inv.status === "cancelled" ? "deleted" : "pending",
         invoiceNumber: inv.invoiceNumber,
         batchItems: items,

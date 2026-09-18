@@ -38,6 +38,7 @@ import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
 import { LowStockAlertModal } from "./LowStockAlertModal";
 import Swal from "sweetalert2";
+import { executeProtectedStockOperation } from "../services/protectionLayer";
 
 interface DashboardOverviewProps {
   boxes: Box[];
@@ -185,174 +186,219 @@ export default function DashboardOverview({
     setModalFeedback(null);
 
     try {
-      const batch = writeBatch(db);
-      const timestamp = serverTimestamp();
-      const refDocRef = doc(db, "references", modalRef);
-      const refSnap = await getDoc(refDocRef);
-
-      if (!refSnap.exists()) {
-        setModalFeedback({ type: "error", message: `Reference code ${modalRef} not found.` });
-        setModalSubmitting(false);
-        return;
-      }
-
-      const refData = refSnap.data();
-      const s1 = refData.stock1 || 0;
-      const s2 = refData.stock2 || 0;
-      const s3 = refData.stock3 || 0;
       const operatorName = currentUser?.fullName || "Operator";
-
       let successMsg = "";
 
       if (activeModal === "incoming") {
-        // INCOMING TRUCK -> Stock 1 IN
-        const newS1 = s1 + qty;
-        const newTotal = newS1 + s2 + s3;
-
-        batch.update(refDocRef, { stock1: newS1, currentStock: newTotal, lastUpdate: timestamp });
-        const transId = `trans-inc-${Date.now()}`;
-        batch.set(doc(db, "transactions", transId), {
-          id: transId,
-          reference: modalRef,
-          movementType: "STOCK 1 IN",
-          stock: "Stock 1",
-          quantity: qty,
+        await executeProtectedStockOperation({
+          operationType: "INCOMING_RECEIPT",
+          referenceCode: modalRef,
           operatorName,
-          timestamp,
-          notes: `Incoming Truck: ${modalNote || "Standard Receipt"}`
+          reason: `Incoming Truck: ${modalNote || "Standard Receipt"}`,
+          execute: async (refData, transaction) => {
+            const s1 = refData.stock1 || 0;
+            const newS1 = s1 + qty;
+            const newTotal = newS1 + (refData.stock2 || 0) + (refData.stock3 || 0);
+            const transId = `trans-inc-${Date.now()}`;
+            const now = new Date().toISOString();
+
+            transaction.set(doc(db, "transactions", transId), {
+              id: transId,
+              reference: modalRef,
+              movementType: "STOCK 1 IN",
+              stock: "Stock 1",
+              quantity: qty,
+              operatorName,
+              timestamp: now,
+              notes: `Incoming Truck: ${modalNote || "Standard Receipt"}`
+            });
+
+            return {
+              stockChanges: [{ referenceCode: modalRef, newStock1: newS1, newStock2: refData.stock2 || 0, newStock3: refData.stock3 || 0, newTotal }]
+            };
+          }
         });
-        await batch.commit();
         successMsg = `Successfully added ${qty} pcs to Stock 1 (Warehouse Raw Material).`;
       } else if (activeModal === "mallas") {
-        // MALLAS PEGADAS -> Stock 1 OUT -> Stock 2 IN
-        if (qty > s1) {
-          setModalFeedback({ type: "error", message: `Insufficient Stock 1! Available: ${s1} pcs, requested: ${qty} pcs.` });
-          setModalSubmitting(false);
-          return;
-        }
-        const newS1 = Math.max(0, s1 - qty);
-        const newS2 = s2 + qty;
-        const newTotal = newS1 + newS2 + s3;
-
-        batch.update(refDocRef, { stock1: newS1, stock2: newS2, currentStock: newTotal, lastUpdate: timestamp });
-        const transId = `trans-trf-${Date.now()}`;
-        batch.set(doc(db, "transactions", transId), {
-          id: transId,
-          reference: modalRef,
-          movementType: "TRANSFER S1->S2",
-          stock: "Stock 1 -> Stock 2",
-          quantity: qty,
+        await executeProtectedStockOperation({
+          operationType: "TRANSFER_S1_S2",
+          referenceCode: modalRef,
           operatorName,
-          timestamp,
-          notes: `Sent to Gluing/Processing: ${modalNote || "Mallas Pegadas"}`
+          reason: `Sent to Gluing/Processing: ${modalNote || "Mallas Pegadas"}`,
+          execute: async (refData, transaction) => {
+            const s1 = refData.stock1 || 0;
+            if (qty > s1) {
+              throw new Error(`Insufficient Stock 1! Available: ${s1} pcs, requested: ${qty} pcs.`);
+            }
+            const newS1 = s1 - qty;
+            const newS2 = (refData.stock2 || 0) + qty;
+            const newTotal = newS1 + newS2 + (refData.stock3 || 0);
+            const transId = `trans-trf-${Date.now()}`;
+            const now = new Date().toISOString();
+
+            transaction.set(doc(db, "transactions", transId), {
+              id: transId,
+              reference: modalRef,
+              movementType: "TRANSFER S1->S2",
+              stock: "Stock 1 -> Stock 2",
+              quantity: qty,
+              operatorName,
+              timestamp: now,
+              notes: `Sent to Gluing/Processing: ${modalNote || "Mallas Pegadas"}`
+            });
+
+            return {
+              stockChanges: [{ referenceCode: modalRef, newStock1: newS1, newStock2: newS2, newStock3: refData.stock3 || 0, newTotal }]
+            };
+          }
         });
-        await batch.commit();
         successMsg = `Successfully transferred ${qty} pcs to Stock 2 (Mallas Pegadas).`;
       } else if (activeModal === "production") {
-        // DAILY PRODUCTION -> Stock 2 OUT -> Stock 3 IN
-        if (qty > s2) {
-          setModalFeedback({ type: "error", message: `Insufficient Stock 2! Available: ${s2} pcs, requested: ${qty} pcs.` });
-          setModalSubmitting(false);
-          return;
-        }
-        const newS2 = Math.max(0, s2 - qty);
-        const newS3 = s3 + qty;
-        const newTotal = s1 + newS2 + newS3;
-
-        batch.update(refDocRef, { stock2: newS2, stock3: newS3, currentStock: newTotal, lastUpdate: timestamp });
-        const transId = `trans-prod-${Date.now()}`;
-        batch.set(doc(db, "transactions", transId), {
-          id: transId,
-          reference: modalRef,
-          movementType: "STOCK 2 OUT / STOCK 3 IN",
-          stock: "Stock 2 -> Stock 3",
-          quantity: qty,
+        await executeProtectedStockOperation({
+          operationType: "PRODUCTION_OUT",
+          referenceCode: modalRef,
           operatorName,
-          timestamp,
-          notes: `Montaje Steering Wheel Assembly: ${modalNote || "Daily Production"}`
+          reason: `Montaje Steering Wheel Assembly: ${modalNote || "Daily Production"}`,
+          execute: async (refData, transaction) => {
+            const s2 = refData.stock2 || 0;
+            if (qty > s2) {
+              throw new Error(`Insufficient Stock 2! Available: ${s2} pcs, requested: ${qty} pcs.`);
+            }
+            const newS2 = s2 - qty;
+            const newS3 = (refData.stock3 || 0) + qty;
+            const newTotal = (refData.stock1 || 0) + newS2 + newS3;
+            const transId = `trans-prod-${Date.now()}`;
+            const now = new Date().toISOString();
+
+            transaction.set(doc(db, "transactions", transId), {
+              id: transId,
+              reference: modalRef,
+              movementType: "STOCK 2 OUT / STOCK 3 IN",
+              stock: "Stock 2 -> Stock 3",
+              quantity: qty,
+              operatorName,
+              timestamp: now,
+              notes: `Montaje Steering Wheel Assembly: ${modalNote || "Daily Production"}`
+            });
+
+            return {
+              stockChanges: [{ referenceCode: modalRef, newStock1: refData.stock1 || 0, newStock2: newS2, newStock3: newS3, newTotal }]
+            };
+          }
         });
-        await batch.commit();
         successMsg = `Successfully assembled ${qty} Steering Wheels into Stock 3.`;
       } else if (activeModal === "precosido") {
-        // PRECOSIDO INVOICE SENT -> Stock 2 OUT
-        if (qty > s2) {
-          setModalFeedback({ type: "error", message: `Insufficient Stock 2! Available: ${s2} pcs, requested: ${qty} pcs.` });
-          setModalSubmitting(false);
-          return;
-        }
-        const newS2 = Math.max(0, s2 - qty);
-        const newTotal = s1 + newS2 + s3;
-
-        batch.update(refDocRef, { stock2: newS2, currentStock: newTotal, lastUpdate: timestamp });
-        const transId = `trans-pre-${Date.now()}`;
-        batch.set(doc(db, "transactions", transId), {
-          id: transId,
-          reference: modalRef,
-          movementType: "STOCK 2 OUT",
-          stock: "Stock 2",
-          quantity: qty,
+        await executeProtectedStockOperation({
+          operationType: "DELIVERY_OUT",
+          referenceCode: modalRef,
           operatorName,
-          timestamp,
-          notes: `Precosido Invoice Dispatch: ${modalNote || "Precosido Invoice"}`
+          reason: `Precosido Invoice Dispatch: ${modalNote || "Precosido Invoice"}`,
+          execute: async (refData, transaction) => {
+            const s2 = refData.stock2 || 0;
+            if (qty > s2) {
+              throw new Error(`Insufficient Stock 2! Available: ${s2} pcs, requested: ${qty} pcs.`);
+            }
+            const newS2 = s2 - qty;
+            const newTotal = (refData.stock1 || 0) + newS2 + (refData.stock3 || 0);
+            const transId = `trans-pre-${Date.now()}`;
+            const now = new Date().toISOString();
+
+            transaction.set(doc(db, "transactions", transId), {
+              id: transId,
+              reference: modalRef,
+              movementType: "STOCK 2 OUT",
+              stock: "Stock 2",
+              quantity: qty,
+              operatorName,
+              timestamp: now,
+              notes: `Precosido Invoice Dispatch: ${modalNote || "Precosido Invoice"}`
+            });
+
+            return {
+              stockChanges: [{ referenceCode: modalRef, newStock1: refData.stock1 || 0, newStock2: newS2, newStock3: refData.stock3 || 0, newTotal }]
+            };
+          }
         });
-        await batch.commit();
         successMsg = `Successfully dispatched ${qty} pcs Precosido from Stock 2.`;
       } else if (activeModal === "villanova") {
-        // VILLANOVA DELIVERY -> Stock 3 OUT
-        if (qty > s3) {
-          setModalFeedback({ type: "error", message: `Insufficient Stock 3! Available: ${s3} pcs, requested: ${qty} pcs.` });
-          setModalSubmitting(false);
-          return;
-        }
-        const newS3 = Math.max(0, s3 - qty);
-        const newTotal = s1 + s2 + newS3;
-
-        batch.update(refDocRef, { stock3: newS3, currentStock: newTotal, lastUpdate: timestamp });
-        const transId = `trans-del-${Date.now()}`;
-        batch.set(doc(db, "transactions", transId), {
-          id: transId,
-          reference: modalRef,
-          movementType: "STOCK 3 OUT",
-          stock: "Stock 3",
-          quantity: qty,
+        await executeProtectedStockOperation({
+          operationType: "DELIVERY_OUT",
+          referenceCode: modalRef,
           operatorName,
-          timestamp,
-          notes: `Villanova SW Delivery: ${modalNote || "Villanova Dispatch"}`
+          reason: `Villanova SW Delivery: ${modalNote || "Villanova Dispatch"}`,
+          execute: async (refData, transaction) => {
+            const s3 = refData.stock3 || 0;
+            if (qty > s3) {
+              throw new Error(`Insufficient Stock 3! Available: ${s3} pcs, requested: ${qty} pcs.`);
+            }
+            const newS3 = s3 - qty;
+            const newTotal = (refData.stock1 || 0) + (refData.stock2 || 0) + newS3;
+            const transId = `trans-del-${Date.now()}`;
+            const now = new Date().toISOString();
+
+            transaction.set(doc(db, "transactions", transId), {
+              id: transId,
+              reference: modalRef,
+              movementType: "STOCK 3 OUT",
+              stock: "Stock 3",
+              quantity: qty,
+              operatorName,
+              timestamp: now,
+              notes: `Villanova SW Delivery: ${modalNote || "Villanova Dispatch"}`
+            });
+
+            return {
+              stockChanges: [{ referenceCode: modalRef, newStock1: refData.stock1 || 0, newStock2: refData.stock2 || 0, newStock3: newS3, newTotal }]
+            };
+          }
         });
-        await batch.commit();
         successMsg = `Successfully shipped ${qty} Steering Wheels to Villanova from Stock 3.`;
       } else if (activeModal === "remove") {
-        // REMOVE / DEDUCT STOCK
-        let newS1 = s1;
-        let newS2 = s2;
-        let newS3 = s3;
         let stageName = "Stock 1 (Warehouse)";
-
-        if (removeStockStage === "stock1") {
-          newS1 = s1 - qty;
-          stageName = "Stock 1 (Warehouse)";
-        } else if (removeStockStage === "stock2") {
-          newS2 = s2 - qty;
-          stageName = "Stock 2 (Gluing WIP)";
-        } else if (removeStockStage === "stock3") {
-          newS3 = s3 - qty;
-          stageName = "Stock 3 (Finished Wheels)";
-        }
-
-        const newTotal = newS1 + newS2 + newS3;
-        batch.update(refDocRef, { stock1: newS1, stock2: newS2, stock3: newS3, currentStock: newTotal, lastUpdate: timestamp });
-        const transId = `trans-rmv-${Date.now()}`;
-        batch.set(doc(db, "transactions", transId), {
-          id: transId,
-          reference: modalRef,
-          movementType: "STOCK REMOVED",
-          stock: stageName,
-          quantity: qty,
+        await executeProtectedStockOperation({
+          operationType: "STOCK_ADJUSTMENT",
+          referenceCode: modalRef,
           operatorName,
-          timestamp,
-          notes: `Stock Deduction (${stageName}): ${modalNote || "Removed by user"}`
+          reason: `Stock Deduction: ${modalNote || "Removed by user"}`,
+          execute: async (refData, transaction) => {
+            let s1 = refData.stock1 || 0;
+            let s2 = refData.stock2 || 0;
+            let s3 = refData.stock3 || 0;
+
+            if (removeStockStage === "stock1") {
+              if (qty > s1) throw new Error(`Insufficient Stock 1! Available: ${s1} pcs, requested: ${qty} pcs.`);
+              s1 = s1 - qty;
+              stageName = "Stock 1 (Warehouse)";
+            } else if (removeStockStage === "stock2") {
+              if (qty > s2) throw new Error(`Insufficient Stock 2! Available: ${s2} pcs, requested: ${qty} pcs.`);
+              s2 = s2 - qty;
+              stageName = "Stock 2 (Gluing WIP)";
+            } else if (removeStockStage === "stock3") {
+              if (qty > s3) throw new Error(`Insufficient Stock 3! Available: ${s3} pcs, requested: ${qty} pcs.`);
+              s3 = s3 - qty;
+              stageName = "Stock 3 (Finished Wheels)";
+            }
+
+            const newTotal = s1 + s2 + s3;
+            const transId = `trans-rmv-${Date.now()}`;
+            const now = new Date().toISOString();
+
+            transaction.set(doc(db, "transactions", transId), {
+              id: transId,
+              reference: modalRef,
+              movementType: "STOCK REMOVED",
+              stock: stageName,
+              quantity: qty,
+              operatorName,
+              timestamp: now,
+              notes: `Stock Deduction (${stageName}): ${modalNote || "Removed by user"}`
+            });
+
+            return {
+              stockChanges: [{ referenceCode: modalRef, newStock1: s1, newStock2: s2, newStock3: s3, newTotal }]
+            };
+          }
         });
-        await batch.commit();
         successMsg = `Successfully removed ${qty} pcs from ${stageName}.`;
       }
 

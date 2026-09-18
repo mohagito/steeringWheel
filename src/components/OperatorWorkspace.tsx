@@ -8,6 +8,7 @@ import {
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import Swal from "sweetalert2";
 import { formatSystemTime } from "../utils/timeUtils";
+import { executeProtectedStockOperation, executeProtectedTransfer } from "../services/protectionLayer";
 
 interface OperatorWorkspaceProps {
   boxes: Box[];
@@ -93,10 +94,10 @@ export default function OperatorWorkspace({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editQty, setEditQty] = useState("");
   const [editRef, setEditRef] = useState("");
-  const [editDestinationStock, setEditDestinationStock] = useState<"Stock 1" | "Stock 3">("Stock 1");
+  const [editDestinationStock, setEditDestinationStock] = useState<"Stock 1" | "Stock 2" | "Stock 3">("Stock 1");
 
-  // Destination Stock Selection for New Truck Intake: "Stock 1" (Mallas Not Touched) vs "Stock 3" (Steering Wheels)
-  const [destinationStock, setDestinationStock] = useState<"Stock 1" | "Stock 3">("Stock 1");
+  // Destination Stock Selection for New Truck Intake: "Stock 1" (Raw / Mallas Not Touched), "Stock 2" (Production / WIP), or "Stock 3" (Steering Wheels)
+  const [destinationStock, setDestinationStock] = useState<"Stock 1" | "Stock 2" | "Stock 3">("Stock 1");
 
   // Edit Scanned Record States (PEGADAS mode)
   const [isPegadasEditMode, setIsPegadasEditMode] = useState(false);
@@ -235,14 +236,16 @@ export default function OperatorWorkspace({
   // Active Invoice Totals grouped by reference
   const activeInvoiceRefBreakdown = useMemo(() => {
     if (!activePendingInvoice || !activePendingInvoice.items) return [];
-    const map = new Map<string, { reference: string; quantity: number; boxes: number; s1Qty: number; s3Qty: number }>();
+    const map = new Map<string, { reference: string; quantity: number; boxes: number; s1Qty: number; s2Qty: number; s3Qty: number }>();
     activePendingInvoice.items.forEach(item => {
       const ref = item.reference.toUpperCase();
-      const cur = map.get(ref) || { reference: item.reference, quantity: 0, boxes: 0, s1Qty: 0, s3Qty: 0 };
+      const cur = map.get(ref) || { reference: item.reference, quantity: 0, boxes: 0, s1Qty: 0, s2Qty: 0, s3Qty: 0 };
       cur.quantity += item.quantity;
       cur.boxes += 1;
       if (item.destinationStock === "Stock 3") {
         cur.s3Qty += item.quantity;
+      } else if (item.destinationStock === "Stock 2") {
+        cur.s2Qty += item.quantity;
       } else {
         cur.s1Qty += item.quantity;
       }
@@ -466,56 +469,54 @@ export default function OperatorWorkspace({
         setSuccessMsg(`SCANNED: Added ${finalCode} (${expectedQtyVal} PCS) to Pegadas transfer batch. Total: ${updatedBatch.length} item(s) (${updatedBatch.reduce((sum, item) => sum + item.quantity, 0)} PCS).`);
       
       } else if (opMode === "RETURN") {
-        // RETURN MODE: Return from Stock 2 to Stock 1
-        const batch = writeBatch(db);
-        const refDocRef = doc(db, "references", refData.code);
-        const refSnap = await getDoc(refDocRef);
-        let currentStock1 = 0;
-        let currentStock2 = 0;
-        let currentStock3 = 0;
-        if (refSnap.exists()) {
-          const data = refSnap.data();
-          currentStock1 = data.stock1 || 0;
-          currentStock2 = data.stock2 || 0;
-          currentStock3 = data.stock3 || 0;
-        }
-
+        // RETURN MODE: Return from Stock 2 to Stock 1 via Protection Layer
         const returnQty = actualQtyVal;
-        if (returnQty > currentStock2) {
-          setErrorMsg(`Insufficient stock in Stock 2. Available: ${currentStock2} pcs, requested return: ${returnQty} pcs.`);
-          playErrorBeep();
-          setSubmitting(false);
-          return;
-        }
-
-        const newStock1 = currentStock1 + returnQty;
-        const newStock2 = Math.max(0, currentStock2 - returnQty);
-        const newTotal = newStock1 + newStock2 + currentStock3;
-
-        batch.update(refDocRef, {
-          stock1: newStock1,
-          stock2: newStock2,
-          currentStock: newTotal,
-          lastUpdate: timestamp
-        });
-
-        const transId = `trans-ret-${Date.now()}`;
-        const transDocRef = doc(db, "transactions", transId);
-        batch.set(transDocRef, {
-          id: transId,
-          reference: refData.code,
-          movementType: "RETURN S2->S1",
-          stock: "Stock 2 -> Stock 1",
-          quantity: returnQty,
-          expectedQty: returnQty,
-          actualQty: returnQty,
-          difference: 0,
+        await executeProtectedStockOperation({
+          operationType: "RETURN_S2_S1",
+          referenceCode: refData.code,
           operatorName: currentUser.fullName,
-          timestamp,
-          notes: `Return from Stock 2 to Stock 1 (Not Touched). Qty: ${returnQty}`
-        });
+          reason: `Return from Stock 2 to Stock 1 (Not Touched). Qty: ${returnQty}`,
+          execute: async (currentData, transaction) => {
+            const currentStock1 = currentData.stock1 || 0;
+            const currentStock2 = currentData.stock2 || 0;
+            const currentStock3 = currentData.stock3 || 0;
 
-        await batch.commit();
+            if (returnQty > currentStock2) {
+              throw new Error(`Insufficient stock in Stock 2. Available: ${currentStock2} pcs, requested return: ${returnQty} pcs.`);
+            }
+
+            const newStock1 = currentStock1 + returnQty;
+            const newStock2 = currentStock2 - returnQty;
+            const newTotal = newStock1 + newStock2 + currentStock3;
+
+            const transId = `trans-ret-${Date.now()}`;
+            const now = new Date().toISOString();
+            const transDocRef = doc(db, "transactions", transId);
+            transaction.set(transDocRef, {
+              id: transId,
+              reference: refData.code,
+              movementType: "RETURN S2->S1",
+              stock: "Stock 2 -> Stock 1",
+              quantity: returnQty,
+              expectedQty: returnQty,
+              actualQty: returnQty,
+              difference: 0,
+              operatorName: currentUser.fullName,
+              timestamp: now,
+              notes: `Return from Stock 2 to Stock 1 (Not Touched). Qty: ${returnQty}`
+            });
+
+            return {
+              stockChanges: [{
+                referenceCode: refData.code,
+                newStock1,
+                newStock2,
+                newStock3: currentStock3,
+                newTotal
+              }]
+            };
+          }
+        });
 
         playSuccessBeep();
         setSuccessMsg(`SUCCESS: Returned ${returnQty} pcs of ${refData.code} from Stock 2 back to Stock 1 (Not Touched).`);
@@ -524,7 +525,7 @@ export default function OperatorWorkspace({
         const diff = actualQtyVal - expectedQtyVal;
         const safeInvoiceSlug = cleanInvoice.replace(/[\/\\]/g, "-").replace(/\s+/g, "_");
         const boxBarcode = `BOX-${finalCode}-${safeInvoiceSlug}-${Date.now().toString().slice(-4)}`;
-        const chosenDest: "Stock 1" | "Stock 3" = destinationStock === "Stock 3" ? "Stock 3" : "Stock 1";
+        const chosenDest: "Stock 1" | "Stock 2" | "Stock 3" = destinationStock;
 
         const newBoxItem: ScannedInvoiceBox = {
           id: `box-${finalCode}-${safeInvoiceSlug}-${Date.now().toString().slice(-6)}`,
@@ -533,7 +534,7 @@ export default function OperatorWorkspace({
           expectedQty: expectedQtyVal,
           quantity: actualQtyVal,
           scannedAt: timestamp,
-          materialType: refData.materialType || (chosenDest === "Stock 3" ? "Steering Wheel" : "Mesh"),
+          materialType: refData.materialType || (chosenDest === "Stock 3" ? "Steering Wheel" : chosenDest === "Stock 2" ? "Precosido / WIP" : "Mesh"),
           difference: diff,
           destinationStock: chosenDest
         };
@@ -563,7 +564,11 @@ export default function OperatorWorkspace({
 
         playScanBeep();
         const diffText = diff !== 0 ? ` (Diff: ${diff > 0 ? '+' : ''}${diff} PCS)` : "";
-        const destLabel = chosenDest === "Stock 3" ? "STOCK 3 [Steering Wheels]" : "STOCK 1 [Mallas Not Touched]";
+        const destLabel = chosenDest === "Stock 3" 
+          ? "STOCK 3 [Steering Wheels]" 
+          : chosenDest === "Stock 2"
+          ? "STOCK 2 [Production WIP / Precosido]"
+          : "STOCK 1 [Mallas Not Touched]";
         setSuccessMsg(`SCANNED: Added ${finalCode} (${actualQtyVal} PCS ➔ ${destLabel}${diffText}) to Invoice ${cleanInvoice}. Total: ${totalBoxes} boxes.`);
       }
       
@@ -622,7 +627,7 @@ export default function OperatorWorkspace({
     setEditingItemId(item.id);
     setEditQty(item.quantity.toString());
     setEditRef(item.reference);
-    setEditDestinationStock(item.destinationStock === "Stock 3" ? "Stock 3" : "Stock 1");
+    setEditDestinationStock(item.destinationStock === "Stock 3" ? "Stock 3" : item.destinationStock === "Stock 2" ? "Stock 2" : "Stock 1");
   };
 
   const handleSaveItemEdit = async (itemId: string) => {
@@ -675,7 +680,11 @@ export default function OperatorWorkspace({
       }
       setEditingItemId(null);
       playScanBeep();
-      const destLabel = editDestinationStock === "Stock 3" ? "Stock 3 (Steering Wheels)" : "Stock 1 (Mallas Not Touched)";
+      const destLabel = editDestinationStock === "Stock 3" 
+        ? "Stock 3 (Steering Wheels)" 
+        : editDestinationStock === "Stock 2"
+        ? "Stock 2 (Production WIP)"
+        : "Stock 1 (Mallas Not Touched)";
       setSuccessMsg(`Updated scanned box: ${res.match.code} (${newQty} PCS ➔ ${destLabel}).`);
     } catch (err: any) {
       console.error(err);
@@ -701,9 +710,11 @@ export default function OperatorWorkspace({
       }
       playSuccessBeep();
 
-      const s1Items = activePendingInvoice.items.filter(it => it.destinationStock !== "Stock 3");
+      const s1Items = activePendingInvoice.items.filter(it => it.destinationStock === "Stock 1" || !it.destinationStock);
+      const s2Items = activePendingInvoice.items.filter(it => it.destinationStock === "Stock 2");
       const s3Items = activePendingInvoice.items.filter(it => it.destinationStock === "Stock 3");
       const s1Qty = s1Items.reduce((acc, it) => acc + it.quantity, 0);
+      const s2Qty = s2Items.reduce((acc, it) => acc + it.quantity, 0);
       const s3Qty = s3Items.reduce((acc, it) => acc + it.quantity, 0);
 
       await Swal.fire({
@@ -714,6 +725,7 @@ export default function OperatorWorkspace({
             <p><strong>Invoice Number:</strong> <span style="color: #2563eb;">${activePendingInvoice.invoiceNumber}</span></p>
             <p><strong>Total Boxes:</strong> ${activePendingInvoice.totalBoxes} boxes</p>
             ${s1Qty > 0 ? `<p><strong>Stock 1 (Mallas Not Touched):</strong> <strong style="color: #059669;">+${s1Qty.toLocaleString()} PCS</strong></p>` : ''}
+            ${s2Qty > 0 ? `<p><strong>Stock 2 (Production WIP):</strong> <strong style="color: #4f46e5;">+${s2Qty.toLocaleString()} PCS</strong></p>` : ''}
             ${s3Qty > 0 ? `<p><strong>Stock 3 (Steering Wheels):</strong> <strong style="color: #d97706;">+${s3Qty.toLocaleString()} PCS</strong></p>` : ''}
             <p><strong>Total Added:</strong> <strong style="color: #0f172a;">${activePendingInvoice.totalQuantity.toLocaleString()} PCS</strong></p>
             <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2px 6px; border-radius: 4px;">APPROVED &bull; COMMITTED</span></p>
@@ -732,7 +744,12 @@ export default function OperatorWorkspace({
       setActualQuantity("");
       setIsEditMode(false);
       setEditingItemId(null);
-      setSuccessMsg(`Invoice ${activePendingInvoice.invoiceNumber} validated (${activePendingInvoice.totalQuantity} PCS committed: ${s1Qty} PCS ➔ Stock 1, ${s3Qty} PCS ➔ Stock 3). Ready for next invoice.`);
+      const breakdownParts: string[] = [];
+      if (s1Qty > 0) breakdownParts.push(`${s1Qty} PCS ➔ Stock 1`);
+      if (s2Qty > 0) breakdownParts.push(`${s2Qty} PCS ➔ Stock 2`);
+      if (s3Qty > 0) breakdownParts.push(`${s3Qty} PCS ➔ Stock 3`);
+      const breakdownStr = breakdownParts.length > 0 ? breakdownParts.join(", ") : `${activePendingInvoice.totalQuantity} PCS`;
+      setSuccessMsg(`Invoice ${activePendingInvoice.invoiceNumber} validated (${breakdownStr}). Ready for next invoice.`);
       setTimeout(() => invoiceRef.current?.focus(), 50);
 
     } catch (err: any) {
@@ -888,78 +905,14 @@ export default function OperatorWorkspace({
     setSuccessMsg("");
 
     try {
-      const batch = writeBatch(db);
-      const timestamp = serverTimestamp();
+      // Execute transfers through backend protection layer
+      const transferEntries = pegadasBatch.map(item => ({
+        reference: item.reference,
+        quantity: item.quantity,
+        notes: `Mallas Pegadas (Sent to Gluing/Processing - Stock 1 -> Stock 2)`
+      }));
 
-      // Group requested quantities by reference to validate Stock 1 availability
-      const totalsPerRef: { [code: string]: number } = {};
-      for (const item of pegadasBatch) {
-        totalsPerRef[item.reference] = (totalsPerRef[item.reference] || 0) + item.quantity;
-      }
-
-      // Fetch current reference stocks from Firestore
-      const refDataMap: { [code: string]: any } = {};
-      for (const code of Object.keys(totalsPerRef)) {
-        const refDocRef = doc(db, "references", code);
-        const refSnap = await getDoc(refDocRef);
-        if (refSnap.exists()) {
-          refDataMap[code] = refSnap.data();
-        } else {
-          const found = references.find(r => r.code === code);
-          refDataMap[code] = {
-            stock1: found?.stock1 || 0,
-            stock2: found?.stock2 || 0,
-            stock3: found?.stock3 || 0
-          };
-        }
-
-        const availableStock1 = refDataMap[code].stock1 || 0;
-        const requestedQty = totalsPerRef[code];
-        if (requestedQty > availableStock1) {
-          throw new Error(`Insufficient stock in Stock 1 for Reference ${code}. Available in Stock 1: ${availableStock1} PCS, Batch requested: ${requestedQty} PCS.`);
-        }
-      }
-
-      // Apply batch updates to Reference Stock balances
-      for (const code of Object.keys(totalsPerRef)) {
-        const currentStock1 = refDataMap[code].stock1 || 0;
-        const currentStock2 = refDataMap[code].stock2 || 0;
-        const currentStock3 = refDataMap[code].stock3 || 0;
-        const transferQty = totalsPerRef[code];
-
-        const newStock1 = Math.max(0, currentStock1 - transferQty);
-        const newStock2 = currentStock2 + transferQty;
-        const newTotal = newStock1 + newStock2 + currentStock3;
-
-        const refDocRef = doc(db, "references", code);
-        batch.update(refDocRef, {
-          stock1: newStock1,
-          stock2: newStock2,
-          currentStock: newTotal,
-          lastUpdate: timestamp
-        });
-      }
-
-      // Write individual transaction audit logs
-      for (const item of pegadasBatch) {
-        const transId = `trans-trf-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-        const transDocRef = doc(db, "transactions", transId);
-        batch.set(transDocRef, {
-          id: transId,
-          reference: item.reference,
-          movementType: "TRANSFER S1->S2",
-          stock: "Stock 1 -> Stock 2",
-          quantity: item.quantity,
-          expectedQty: item.quantity,
-          actualQty: item.quantity,
-          difference: 0,
-          operatorName: currentUser.fullName,
-          timestamp,
-          notes: `Mallas Pegadas (Sent to Gluing/Processing - Stock 1 -> Stock 2)`
-        });
-      }
-
-      await batch.commit();
+      await executeProtectedTransfer(transferEntries, currentUser.fullName);
       playSuccessBeep();
 
       const totalPcs = pegadasBatch.reduce((sum, item) => sum + item.quantity, 0);
@@ -1245,14 +1198,14 @@ export default function OperatorWorkspace({
                 Destination Stock
               </label>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setDestinationStock("Stock 1");
                     setErrorMsg("");
                   }}
-                  className={`py-2.5 px-4 rounded-xl border text-center font-mono font-bold text-xs tracking-wider transition-all cursor-pointer ${
+                  className={`py-2.5 px-3 rounded-xl border text-center font-mono font-bold text-xs tracking-wider transition-all cursor-pointer ${
                     destinationStock === "Stock 1"
                       ? "bg-blue-50 text-blue-600 border-blue-300 ring-2 ring-blue-500/20 shadow-xs"
                       : "bg-white hover:bg-slate-50 text-slate-600 border-slate-200"
@@ -1265,10 +1218,26 @@ export default function OperatorWorkspace({
                 <button
                   type="button"
                   onClick={() => {
+                    setDestinationStock("Stock 2");
+                    setErrorMsg("");
+                  }}
+                  className={`py-2.5 px-3 rounded-xl border text-center font-mono font-bold text-xs tracking-wider transition-all cursor-pointer ${
+                    destinationStock === "Stock 2"
+                      ? "bg-indigo-50 text-indigo-600 border-indigo-300 ring-2 ring-indigo-500/20 shadow-xs"
+                      : "bg-white hover:bg-slate-50 text-slate-600 border-slate-200"
+                  }`}
+                  id="op-destination-stock-2"
+                >
+                  STOCK 2
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
                     setDestinationStock("Stock 3");
                     setErrorMsg("");
                   }}
-                  className={`py-2.5 px-4 rounded-xl border text-center font-mono font-bold text-xs tracking-wider transition-all cursor-pointer ${
+                  className={`py-2.5 px-3 rounded-xl border text-center font-mono font-bold text-xs tracking-wider transition-all cursor-pointer ${
                     destinationStock === "Stock 3"
                       ? "bg-emerald-50 text-emerald-600 border-emerald-300 ring-2 ring-emerald-500/20 shadow-xs"
                       : "bg-white hover:bg-slate-50 text-slate-600 border-slate-200"
@@ -1773,10 +1742,11 @@ export default function OperatorWorkspace({
                             />
                             <select
                               value={editDestinationStock}
-                              onChange={(e) => setEditDestinationStock(e.target.value as "Stock 1" | "Stock 3")}
+                              onChange={(e) => setEditDestinationStock(e.target.value as "Stock 1" | "Stock 2" | "Stock 3")}
                               className="px-2 py-1 bg-white border border-blue-400 rounded-md text-[11px] font-bold text-slate-900 font-mono focus:outline-none"
                             >
                               <option value="Stock 1">STOCK 1</option>
+                              <option value="Stock 2">STOCK 2</option>
                               <option value="Stock 3">STOCK 3</option>
                             </select>
                             <button
@@ -1807,6 +1777,10 @@ export default function OperatorWorkspace({
                               {item.destinationStock === "Stock 3" ? (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-200 font-mono">
                                   STOCK 3
+                                </span>
+                              ) : item.destinationStock === "Stock 2" ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-50 text-indigo-600 border border-indigo-200 font-mono">
+                                  STOCK 2
                                 </span>
                               ) : (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-600 border border-blue-200 font-mono">
@@ -1898,6 +1872,11 @@ export default function OperatorWorkspace({
                         {item.s1Qty > 0 && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/80">
                             S1: {item.s1Qty} pcs
+                          </span>
+                        )}
+                        {item.s2Qty > 0 && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-800/80">
+                            S2: {item.s2Qty} pcs
                           </span>
                         )}
                         {item.s3Qty > 0 && (

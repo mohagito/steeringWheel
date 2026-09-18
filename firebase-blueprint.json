@@ -145,6 +145,20 @@
         "totalQuantity": { "type": "number", "description": "Sum of all physical pieces across scanned boxes" }
       },
       "required": ["invoiceNumber", "operator", "status", "createdAt"]
+    },
+    "ProtectionLog": {
+      "title": "ProtectionLog",
+      "description": "Backend database protection and safety incident log",
+      "type": "object",
+      "properties": {
+        "eventType": { "type": "string", "description": "Protection incident event type" },
+        "reference": { "type": "string", "description": "Target reference code" },
+        "attemptedOperation": { "type": "string", "description": "Operation type attempted" },
+        "reason": { "type": "string", "description": "Detailed explanation of safety blockage" },
+        "timestamp": { "type": "string", "description": "Timestamp of incident" },
+        "operator": { "type": "string", "description": "Operator identifier" }
+      },
+      "required": ["eventType", "attemptedOperation", "reason", "timestamp"]
     }
   },
   "firestore": {
@@ -183,6 +197,10 @@
     "/transactions/{transactionId}": {
       "schema": "Transaction",
       "description": "Collection of unified audit transactions"
+    },
+    "/protection_logs/{logId}": {
+      "schema": "ProtectionLog",
+      "description": "Collection of backend database protection and safety incident logs"
     }
   }
 }

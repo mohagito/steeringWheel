@@ -128,7 +128,7 @@ export interface InventoryTransaction {
   stock2After?: number;
   stock3Before?: number;
   stock3After?: number;
-  destinationStock?: "Stock 1" | "Stock 3";
+  destinationStock?: "Stock 1" | "Stock 2" | "Stock 3";
 }
 
 export interface ScannedInvoiceBox {
@@ -141,7 +141,7 @@ export interface ScannedInvoiceBox {
   materialType?: string;
   difference?: number;
   palletQuality?: string;
-  destinationStock?: "Stock 1" | "Stock 3";
+  destinationStock?: "Stock 1" | "Stock 2" | "Stock 3";
 }
 
 export interface ScannedTransferItem {
@@ -185,4 +185,25 @@ export interface ProductAssembly {
   gaineRef: string; // GAINE
   finalRef: string; // RÉFÉRENCE
   designation: string; // DÉSIGNATION
+}
+
+export type ProtectionEventType =
+  | "NEGATIVE_STOCK_BLOCKED"
+  | "INVALID_QUANTITY_BLOCKED"
+  | "UNKNOWN_REFERENCE_BLOCKED"
+  | "DUPLICATE_OPERATION_BLOCKED"
+  | "INVALID_OPERATION_TYPE_BLOCKED"
+  | "UNAUTHORIZED_WRITE_BLOCKED"
+  | "CONCURRENCY_CONFLICT";
+
+export interface ProtectionLog {
+  id: string;
+  eventType: ProtectionEventType;
+  reference?: string;
+  attemptedOperation: string;
+  reason: string;
+  timestamp: string;
+  operator?: string;
+  source?: string;
+  payloadSummary?: string;
 }

@@ -1038,7 +1038,7 @@ export default function InvoicesWorkspace({
                     <div className="text-[10px] font-bold text-slate-500 uppercase font-mono">TRACEABILITY</div>
                     <div className="text-xs font-semibold text-emerald-600 mt-1 flex items-center gap-1">
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>{selectedInvoice.items?.some(it => it.destinationStock === "Stock 3") ? "Multi-Stock Verified" : "Stock 1 Verified"}</span>
+                      <span>{selectedInvoice.items?.some(it => it.destinationStock === "Stock 3" || it.destinationStock === "Stock 2") ? "Multi-Stock Verified" : "Stock 1 Verified"}</span>
                     </div>
                   </div>
                 </div>
@@ -1086,6 +1086,10 @@ export default function InvoicesWorkspace({
                                 {item.destinationStock === "Stock 3" ? (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
                                     STOCK 3
+                                  </span>
+                                ) : item.destinationStock === "Stock 2" ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase bg-indigo-50 text-indigo-600 border border-indigo-200">
+                                    STOCK 2
                                   </span>
                                 ) : (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase bg-blue-50 text-blue-600 border border-blue-200">
@@ -1394,6 +1398,7 @@ export default function InvoicesWorkspace({
                                   className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded font-mono font-bold text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                                 >
                                   <option value="Stock 1">STOCK 1</option>
+                                  <option value="Stock 2">STOCK 2</option>
                                   <option value="Stock 3">STOCK 3</option>
                                 </select>
                               </td>
