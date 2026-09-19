@@ -110,7 +110,7 @@ export interface InventoryTransaction {
   id: string;
   barcode?: string;
   reference: string;
-  movementType: "STOCK 1 IN" | "STOCK 1 OUT" | "TRANSFER S1->S2" | "STOCK 2 IN" | "STOCK 2 OUT" | "STOCK 2 OUT / STOCK 3 IN" | "STOCK 3 IN" | "STOCK 3 OUT" | "TRANSFER" | "DELIVERY" | "SCRAP (CON COLA)" | "SCRAP (SIN COLA)" | "RETURN S2->S1" | string;
+  movementType: "STOCK 1 IN" | "STOCK 1 OUT" | "TRANSFER S1->S2" | "STOCK 2 IN" | "STOCK 2 OUT" | "STOCK 2 OUT / STOCK 3 IN" | "STOCK 3 IN" | "STOCK 3 OUT" | "TRANSFER" | "DELIVERY" | "SCRAP (CON COLA)" | "SCRAP (SIN COLA)" | "RETURN S2->S1" | "INCOMPLETA" | string;
   stock: "Stock 1" | "Stock 2" | "Stock 3" | "Stock 1 -> Stock 2" | "Stock 2 -> Stock 3" | "Stock 2 -> Stock 1" | string;
   quantity: number;
   operatorName: string;

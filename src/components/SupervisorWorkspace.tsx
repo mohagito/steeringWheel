@@ -411,6 +411,10 @@ export default function SupervisorWorkspace({
         category = "invoice";
         typeLabel = "S1 IN";
         affectedStock = "Stock 1 (Warehouse)";
+      } else if (tx.movementType === "INCOMPLETA") {
+        category = "adjustment";
+        typeLabel = "INCOMPLETA";
+        affectedStock = "Stock 1 (Warehouse)";
       } else if (isReversal) {
         category = "admin";
         if (tx.notes?.toLowerCase().includes("invoice") || tx.movementType?.includes("INVOICE")) {
@@ -469,6 +473,7 @@ export default function SupervisorWorkspace({
         (operationsTypeFilter === "S2 OUT" && op.type === "S2 OUT") ||
         (operationsTypeFilter === "S3 OUT" && op.type === "S3 OUT") ||
         (operationsTypeFilter === "S1 RETURN" && op.type === "S1 RETURN") ||
+        (operationsTypeFilter === "INCOMPLETA" && op.type === "INCOMPLETA") ||
         (operationsTypeFilter === "DELETED" && (op.type.includes("DELETED") || op.type.includes("CANCELLED") || op.category === "admin" || op.type === "REVERSAL"));
 
       return matchesSearch && matchesType;
@@ -498,6 +503,8 @@ export default function SupervisorWorkspace({
         return "bg-indigo-100 text-indigo-900 border-indigo-300 font-black";
       case "S1 RETURN":
         return "bg-cyan-100 text-cyan-900 border-cyan-300 font-black";
+      case "INCOMPLETA":
+        return "bg-rose-100 text-rose-900 border-rose-300 font-black";
       case "DELETED INVOICE":
       case "CANCELLED DELIVERY":
       case "CANCELLED PROD":
@@ -644,6 +651,7 @@ export default function SupervisorWorkspace({
                   { value: "S2 OUT", label: "S2 OUT (PRECOSIDO / SCRAP)" },
                   { value: "S3 OUT", label: "S3 OUT (SW DELIVERY / SCRAP)" },
                   { value: "S1 RETURN", label: "S1 RETURN" },
+                  { value: "INCOMPLETA", label: "INCOMPLETA (STOCK 1 OUT)" },
                   { value: "DELETED", label: "DELETED / CANCELLED" }
                 ]}
                 className="w-56"

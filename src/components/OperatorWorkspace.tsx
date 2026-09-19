@@ -49,8 +49,8 @@ export default function OperatorWorkspace({
     } catch (e) {}
   }, []);
   
-  // Operation Mode: INTAKE vs TRANSFER (Pegadas) vs RETURN
-  const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER" | "RETURN">("INTAKE");
+  // Operation Mode: INTAKE vs TRANSFER (Pegadas) vs RETURN vs INCOMPLETA
+  const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER" | "RETURN" | "INCOMPLETA">("INTAKE");
 
   // Local optimistic pending invoice for instant (0ms) UI updates during rapid scanning (INTAKE mode)
   const [localPendingInvoice, setLocalPendingInvoice] = useState<ReceivingInvoice | null>(null);
@@ -270,7 +270,7 @@ export default function OperatorWorkspace({
   const handleInvoiceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      if (invoiceNumber.trim()) {
+      if (invoiceNumber.trim() || opMode === "INCOMPLETA") {
         playScanBeep();
         referenceRef.current?.focus();
       }
@@ -418,7 +418,7 @@ export default function OperatorWorkspace({
 
     const rawRef = referenceCode.trim();
     const expectedQtyVal = parseInt(quantity);
-    const actualQtyVal = (opMode === "TRANSFER" || opMode === "RETURN")
+    const actualQtyVal = (opMode === "TRANSFER" || opMode === "RETURN" || opMode === "INCOMPLETA")
       ? expectedQtyVal
       : (actualQuantity.trim() !== "" ? parseInt(actualQuantity) : expectedQtyVal);
 
@@ -520,6 +520,66 @@ export default function OperatorWorkspace({
 
         playSuccessBeep();
         setSuccessMsg(`SUCCESS: Returned ${returnQty} pcs of ${refData.code} from Stock 2 back to Stock 1 (Not Touched).`);
+      } else if (opMode === "INCOMPLETA") {
+        // INCOMPLETA MODE: Remove directly from Stock 1 via Protection Layer
+        const incompletQty = expectedQtyVal;
+        const optInvoice = cleanInvoice || "";
+
+        await executeProtectedStockOperation({
+          operationType: "INCOMPLETA_STOCK1_OUT",
+          referenceCode: refData.code,
+          operatorName: currentUser.fullName,
+          reason: `Incompleta: removed from Stock 1. Qty: ${incompletQty}${optInvoice ? ` (Invoice: ${optInvoice})` : ""}`,
+          execute: async (currentData, transaction) => {
+            const currentStock1 = currentData.stock1 || 0;
+            const currentStock2 = currentData.stock2 || 0;
+            const currentStock3 = currentData.stock3 || 0;
+
+            if (incompletQty > currentStock1) {
+              throw new Error(`Insufficient stock in Stock 1. Available: ${currentStock1} pcs, requested to remove: ${incompletQty} pcs.`);
+            }
+
+            const newStock1 = currentStock1 - incompletQty;
+            const newTotal = newStock1 + currentStock2 + currentStock3;
+
+            const transId = `trans-inc-${Date.now()}`;
+            const now = new Date().toISOString();
+            const transDocRef = doc(db, "transactions", transId);
+            
+            const transData: any = {
+              id: transId,
+              reference: refData.code,
+              movementType: "INCOMPLETA",
+              stock: "Stock 1",
+              quantity: incompletQty,
+              expectedQty: incompletQty,
+              actualQty: incompletQty,
+              difference: -incompletQty,
+              operatorName: currentUser.fullName,
+              timestamp: now,
+              notes: `Incompleta: removed ${incompletQty} pcs from Stock 1${optInvoice ? ` (Invoice: ${optInvoice})` : ""}`
+            };
+
+            if (optInvoice) {
+              transData.invoiceNumber = optInvoice;
+            }
+
+            transaction.set(transDocRef, transData);
+
+            return {
+              stockChanges: [{
+                referenceCode: refData.code,
+                newStock1,
+                newStock2: currentStock2,
+                newStock3: currentStock3,
+                newTotal
+              }]
+            };
+          }
+        });
+
+        playSuccessBeep();
+        setSuccessMsg(`SUCCESS [INCOMPLETA]: Removed ${incompletQty} pcs of ${refData.code} from Stock 1${optInvoice ? ` (Invoice: ${optInvoice})` : ""}.`);
       } else {
         // INTAKE MODE: INVOICE-BASED RECEIVING
         const diff = actualQtyVal - expectedQtyVal;
@@ -980,7 +1040,7 @@ export default function OperatorWorkspace({
     setReferenceCode("");
     setQuantity("");
     setActualQuantity("");
-    if (opMode === "INTAKE") {
+    if (opMode === "INTAKE" || opMode === "INCOMPLETA") {
       setInvoiceNumber("");
       localStorage.removeItem("op_invoice");
       setLocalPendingInvoice(null);
@@ -1061,7 +1121,13 @@ export default function OperatorWorkspace({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                {opMode === "INTAKE" ? "Truck Intake (Stock 1)" : opMode === "TRANSFER" ? "Transfer to Pegadas (Stock 1 → Stock 2)" : "Return to Stock 1"}
+                {opMode === "INTAKE" 
+                  ? "New Truck Intake (Stock 1)" 
+                  : opMode === "TRANSFER" 
+                  ? "Transfer to Pegadas (Stock 1 → Stock 2)" 
+                  : opMode === "RETURN"
+                  ? "Return to Stock 1"
+                  : "Incompleta (Remove from Stock 1)"}
               </h3>
             </div>
           </div>
@@ -1078,7 +1144,7 @@ export default function OperatorWorkspace({
         </div>
 
         {/* Operation Mode Selector Tabs */}
-        <div className="grid grid-cols-3 gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 font-mono">
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 font-mono">
           <button
             type="button"
             onClick={() => {
@@ -1088,14 +1154,15 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => referenceRef.current?.focus(), 50);
             }}
-            className={`py-2.5 px-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
               opMode === "INTAKE"
                 ? "bg-slate-900 text-white shadow-xs"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
             }`}
+            id="op-tab-new-truck"
           >
             <span>🚛</span>
-            <span>Truck Intake</span>
+            <span className="truncate">New Truck</span>
           </button>
           <button
             type="button"
@@ -1106,14 +1173,15 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => referenceRef.current?.focus(), 50);
             }}
-            className={`py-2.5 px-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
               opMode === "TRANSFER"
                 ? "bg-slate-900 text-white shadow-xs"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
             }`}
+            id="op-tab-pegadas"
           >
             <span>🔵</span>
-            <span>Pegadas</span>
+            <span className="truncate">Pegadas</span>
           </button>
           <button
             type="button"
@@ -1124,14 +1192,34 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => referenceRef.current?.focus(), 50);
             }}
-            className={`py-2.5 px-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
               opMode === "RETURN"
                 ? "bg-slate-900 text-white shadow-xs"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
             }`}
+            id="op-tab-return"
           >
             <span>↩️</span>
-            <span>Return</span>
+            <span className="truncate">Return</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpMode("INCOMPLETA");
+              setErrorMsg("");
+              setSuccessMsg("");
+              setAutoCorrectNotice("");
+              setTimeout(() => referenceRef.current?.focus(), 50);
+            }}
+            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
+              opMode === "INCOMPLETA"
+                ? "bg-rose-900 text-white shadow-xs"
+                : "text-rose-700 hover:text-rose-900 hover:bg-white/60"
+            }`}
+            id="op-tab-incompleta"
+          >
+            <span>⚠️</span>
+            <span className="truncate">INCOMPLETA</span>
           </button>
         </div>
 
@@ -1159,14 +1247,19 @@ export default function OperatorWorkspace({
 
         <form onSubmit={handleFormSubmit} className="space-y-5">
           
-          {/* INVOICE NUMBER (Only for Intake from New Truck) */}
-          {opMode === "INTAKE" && (
+          {/* INVOICE NUMBER: Required for INTAKE, Optional for INCOMPLETA */}
+          {(opMode === "INTAKE" || opMode === "INCOMPLETA") && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Invoice Number
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>Invoice Number</span>
+                  {opMode === "INCOMPLETA" ? (
+                    <span className="text-[10px] font-normal text-slate-500 lowercase font-sans">(optional)</span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-rose-500">*</span>
+                  )}
                 </label>
-                {activePendingInvoice && (
+                {opMode === "INTAKE" && activePendingInvoice && (
                   <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                     ACTIVE ({activePendingInvoice.totalBoxes} boxes / {activePendingInvoice.totalQuantity} PCS)
@@ -1178,8 +1271,8 @@ export default function OperatorWorkspace({
                 <input
                   ref={invoiceRef}
                   type="text"
-                  required
-                  placeholder="Invoice number..."
+                  required={opMode === "INTAKE"}
+                  placeholder={opMode === "INCOMPLETA" ? "Invoice number (optional)..." : "Invoice number..."}
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                   onKeyDown={handleInvoiceKeyDown}
@@ -1379,6 +1472,26 @@ export default function OperatorWorkspace({
                 autoComplete="off"
               />
             </div>
+          ) : opMode === "INCOMPLETA" ? (
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>Quantity (PCS)</span>
+                <span className="text-[10px] text-rose-600 font-bold font-mono">Deduct from Stock 1</span>
+              </label>
+              <input
+                ref={quantityRef}
+                type="number"
+                required
+                min="1"
+                placeholder="Quantity to remove..."
+                value={quantity}
+                onChange={handleQuantityChange}
+                onKeyDown={handleQuantityKeyDown}
+                className="w-full px-4 py-2.5 bg-rose-50/40 focus:bg-white border border-rose-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/10 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all"
+                id="op-quantity-field"
+                autoComplete="off"
+              />
+            </div>
           ) : (
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -1428,6 +1541,8 @@ export default function OperatorWorkspace({
                   ? "bg-blue-600 hover:bg-blue-700"
                   : opMode === "RETURN"
                   ? "bg-amber-600 hover:bg-amber-700"
+                  : opMode === "INCOMPLETA"
+                  ? "bg-rose-600 hover:bg-rose-700"
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
               id="op-submit-trigger"
@@ -1435,12 +1550,18 @@ export default function OperatorWorkspace({
               {submitting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  ADDING...
+                  PROCESSING...
                 </>
               ) : (
                 <>
                   <Check className="w-4 h-4" />
-                  {opMode === "INTAKE" ? "ADD BOX" : opMode === "TRANSFER" ? "ADD TO BATCH" : "CONFIRM RETURN"}
+                  {opMode === "INTAKE" 
+                    ? "ADD BOX" 
+                    : opMode === "TRANSFER" 
+                    ? "ADD TO BATCH" 
+                    : opMode === "RETURN" 
+                    ? "CONFIRM RETURN" 
+                    : "CONFIRM"}
                 </>
               )}
             </button>
