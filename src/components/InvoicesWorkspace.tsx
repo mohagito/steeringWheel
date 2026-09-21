@@ -64,7 +64,7 @@ export default function InvoicesWorkspace({
     return invoices;
   }, [invoices]);
 
-  // Filter and sort invoices using Morocco GMT+1 system time
+  // Filter and sort invoices using Morocco system time (Africa/Casablanca)
   const filteredInvoices = useMemo(() => {
     const todayStr = getMoroccoTodayDateString();
     const nowMs = Date.now();

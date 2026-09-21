@@ -42,12 +42,12 @@ export default function ProductionWorkspace({
   onDeleteProduction,
   onUpdateProduction
 }: ProductionWorkspaceProps) {
-  // Default to today's date in Morocco GMT+1
+  // Default to today's date in Morocco (Africa/Casablanca)
   const getTodayString = () => {
     return getMoroccoTodayDateString();
   };
 
-  // Default to yesterday's date in Morocco GMT+1
+  // Default to yesterday's date in Morocco (Africa/Casablanca)
   const getYesterdayString = () => {
     return getMoroccoYesterdayDateString();
   };

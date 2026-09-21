@@ -946,7 +946,7 @@ export default function RecordsWorkspace({
                       </span>
                       <div className="space-y-2 text-slate-700 text-xs">
                         <div className="flex justify-between py-1 border-b border-slate-50">
-                          <span className="text-slate-400">Timestamp (Morocco GMT+1):</span>
+                          <span className="text-slate-400">Timestamp:</span>
                           <span className="font-bold font-mono">{formatSystemTime(selectedTx.timestamp)}</span>
                         </div>
                         <div className="flex justify-between py-1 border-b border-slate-50">

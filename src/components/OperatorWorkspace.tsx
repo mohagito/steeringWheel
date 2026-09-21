@@ -21,6 +21,7 @@ interface OperatorWorkspaceProps {
   onApproveInvoice?: (invoiceId: string) => Promise<void>;
   onCancelInvoice?: (invoiceId: string) => Promise<void>;
   onOpenLowStockModal?: () => void;
+  onNavigateToTab?: (tab: string) => void;
 }
 
 export default function OperatorWorkspace({ 
@@ -33,7 +34,8 @@ export default function OperatorWorkspace({
   onSavePendingInvoice,
   onApproveInvoice,
   onCancelInvoice,
-  onOpenLowStockModal
+  onOpenLowStockModal,
+  onNavigateToTab
 }: OperatorWorkspaceProps) {
   
   // Persisted Invoice Input (Used only for INTAKE mode) - initialized strictly empty
@@ -1222,6 +1224,21 @@ export default function OperatorWorkspace({
             <span className="truncate">INCOMPLETA</span>
           </button>
         </div>
+
+        {/* Quick shortcut to PEGADAS section */}
+        {opMode === "TRANSFER" && onNavigateToTab && (
+          <div className="flex items-center justify-between p-2.5 bg-teal-50 border border-teal-200/80 rounded-xl text-xs">
+            <span className="text-teal-900 font-medium">Looking for your validated Stock 1 → Stock 2 history?</span>
+            <button
+              type="button"
+              onClick={() => onNavigateToTab("pegadas")}
+              className="text-xs font-bold text-teal-700 hover:text-teal-900 underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>View PEGADAS Records</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Notifications */}
         {successMsg && (

@@ -159,6 +159,41 @@
         "operator": { "type": "string", "description": "Operator identifier" }
       },
       "required": ["eventType", "attemptedOperation", "reason", "timestamp"]
+    },
+    "BezelReference": {
+      "title": "BezelReference",
+      "description": "Product reference for Bezel module stock control",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "Bezel reference code" },
+        "description": { "type": "string", "description": "Description of the Bezel component" },
+        "client": { "type": "string", "description": "Client name (e.g. PSA, OPEL)" },
+        "stock1": { "type": "number", "description": "Incoming / available Bezel stock" },
+        "stock2": { "type": "number", "description": "Assemblage / ready for delivery Bezel stock" },
+        "totalStock": { "type": "number", "description": "Total combined stock (stock1 + stock2)" },
+        "active": { "type": "boolean", "description": "Whether the reference is active" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last update timestamp" }
+      },
+      "required": ["code", "description", "stock1", "stock2"]
+    },
+    "BezelOperation": {
+      "title": "BezelOperation",
+      "description": "Traceable atomic stock movement operation for the Bezel module",
+      "type": "object",
+      "properties": {
+        "operationType": { "type": "string", "enum": ["NEW_TRUCK", "BEZEL_ASSEMBLAGE", "BEZEL_DELIVERY", "BEZEL_RETURN", "BEZEL_SCRAP"], "description": "Operation type" },
+        "reference": { "type": "string", "description": "Bezel reference code" },
+        "quantity": { "type": "number", "description": "Quantity moved" },
+        "sourceStock": { "type": "string", "description": "Source stock (STOCK 1 or STOCK 2)" },
+        "destinationStock": { "type": "string", "description": "Destination stock (STOCK 1, STOCK 2, OUT, or SCRAP)" },
+        "invoiceNumber": { "type": "string", "description": "Truck or delivery invoice number" },
+        "reason": { "type": "string", "description": "Scrap or reversal reason" },
+        "operatorName": { "type": "string", "description": "Operator who executed the operation" },
+        "timestamp": { "type": "string", "description": "Execution timestamp" },
+        "status": { "type": "string", "enum": ["completed", "reversed"], "description": "Operation status" }
+      },
+      "required": ["operationType", "reference", "quantity", "operatorName", "timestamp", "status"]
     }
   },
   "firestore": {
@@ -201,6 +236,14 @@
     "/protection_logs/{logId}": {
       "schema": "ProtectionLog",
       "description": "Collection of backend database protection and safety incident logs"
+    },
+    "/bezel_references/{refId}": {
+      "schema": "BezelReference",
+      "description": "Collection of Bezel components and authoritative stock levels"
+    },
+    "/bezel_operations/{opId}": {
+      "schema": "BezelOperation",
+      "description": "Collection of Bezel inventory movements and audit logs"
     }
   }
 }

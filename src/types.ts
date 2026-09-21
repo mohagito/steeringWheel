@@ -129,6 +129,14 @@ export interface InventoryTransaction {
   stock3Before?: number;
   stock3After?: number;
   destinationStock?: "Stock 1" | "Stock 2" | "Stock 3";
+  status?: "active" | "edited" | "REVERSED" | string;
+  originalQuantity?: number;
+  reversedAt?: string | any;
+  reversedBy?: string;
+  reversalReason?: string;
+  lastModifiedAt?: string | any;
+  lastModifiedBy?: string;
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; delta?: number; modifiedBy: string; timestamp: number | string | any; reason: string }>;
 }
 
 export interface ScannedInvoiceBox {
@@ -207,3 +215,60 @@ export interface ProtectionLog {
   source?: string;
   payloadSummary?: string;
 }
+
+// ==========================================
+// BEZEL MODULE TYPES & DATA CONTRACTS
+// ==========================================
+
+export interface BezelReference {
+  id: string; // Typically matches code, e.g. "A015E335A"
+  code: string;
+  description: string;
+  client?: string; // Client, e.g. "PSA", "OPEL"
+  stock1: number; // Incoming / available Bezel material
+  stock2: number; // Assemblage / ready for delivery
+  totalStock?: number; // stock1 + stock2
+  active: boolean;
+  createdAt: string | any;
+  updatedAt: string | any;
+  createdBy?: string;
+  lastOperation?: string;
+}
+
+export type BezelOperationType =
+  | "NEW_TRUCK"
+  | "BEZEL_ASSEMBLAGE"
+  | "BEZEL_DELIVERY"
+  | "BEZEL_RETURN"
+  | "BEZEL_SCRAP";
+
+export interface BezelOperation {
+  id: string; // Unique stable operation ID
+  operationType: BezelOperationType;
+  reference: string;
+  quantity: number;
+  sourceStock?: "STOCK 1" | "STOCK 2";
+  destinationStock?: "STOCK 1" | "STOCK 2" | "OUT" | "SCRAP";
+  invoiceNumber?: string;
+  reason?: string;
+  operatorName: string;
+  operatorId?: string;
+  timestamp: string | any;
+  stock1Before?: number;
+  stock1After?: number;
+  stock2Before?: number;
+  stock2After?: number;
+  status: "completed" | "reversed";
+  reversalReason?: string;
+  reversedAt?: string | any;
+  reversedBy?: string;
+  notes?: string;
+}
+
+export interface BezelTruckItem {
+  id: string;
+  reference: string;
+  quantity: number;
+  destinationStock: "STOCK 1" | "STOCK 2";
+}
+

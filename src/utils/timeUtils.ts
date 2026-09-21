@@ -1,21 +1,84 @@
 import { serverTimestamp, Timestamp } from "firebase/firestore";
 
 /**
- * GLOBAL TIME UTILITY — MOROCCO GMT+1
+ * GLOBAL TIME UTILITY — MOROCCO (Africa/Casablanca)
  * 
- * Official standard time across the entire application: MOROCCO TIME (GMT+1 / UTC+1).
+ * Official standard time across the entire application: MOROCCO TIME (Africa/Casablanca).
  * 
  * Key Principles:
  * 1. Database: Authoritative Firestore server timestamps (serverTimestamp()).
- * 2. Display: Formatted strictly in Morocco GMT+1 (UTC+1).
+ * 2. Display: Formatted strictly in IANA timezone Africa/Casablanca.
  * 3. Never trust client device clock for business record times.
  * 4. Consistent format: DD/MM/YYYY HH:mm:ss.
+ * 5. Automatic handling of Moroccan timezone changes via the IANA timezone database.
  */
 
 export const MOROCCO_TIMEZONE = "Africa/Casablanca";
-export const MOROCCO_TIMEZONE_LABEL = "Morocco GMT+1";
-// Morocco standard time is GMT+1 (1 hour ahead of UTC: +3,600,000 milliseconds)
-export const MOROCCO_OFFSET_MS = 3600000;
+export const MOROCCO_TIMEZONE_LABEL = "Morocco (Africa/Casablanca)";
+
+// Reusable cached Intl.DateTimeFormat instance configured for Africa/Casablanca
+const casablancaFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: MOROCCO_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+export interface CasablancaDateTimeParts {
+  day: string;
+  month: string;
+  year: string;
+  hour: string;
+  minute: string;
+  second: string;
+}
+
+/**
+ * Extracts date and time components strictly according to Africa/Casablanca timezone.
+ */
+export function getCasablancaParts(input?: any): CasablancaDateTimeParts | null {
+  const ms = input !== undefined ? parseTimestampMs(input) : Date.now();
+  if (ms === null) return null;
+
+  try {
+    const parts = casablancaFormatter.formatToParts(new Date(ms));
+    let day = "01";
+    let month = "01";
+    let year = "1970";
+    let hour = "00";
+    let minute = "00";
+    let second = "00";
+
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (p.type === "day") day = p.value;
+      else if (p.type === "month") month = p.value;
+      else if (p.type === "year") year = p.value;
+      else if (p.type === "hour") hour = p.value === "24" ? "00" : p.value;
+      else if (p.type === "minute") minute = p.value;
+      else if (p.type === "second") second = p.value;
+    }
+
+    return { day, month, year, hour, minute, second };
+  } catch (err) {
+    console.error("Error formatting date in Africa/Casablanca:", err);
+    // Safe fallback using UTC if Intl fails in rare environment
+    const d = new Date(ms);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return {
+      day: pad(d.getUTCDate()),
+      month: pad(d.getUTCMonth() + 1),
+      year: d.getUTCFullYear().toString(),
+      hour: pad(d.getUTCHours()),
+      minute: pad(d.getUTCMinutes()),
+      second: pad(d.getUTCSeconds()),
+    };
+  }
+}
 
 /**
  * Returns Firestore's authoritative server timestamp Sentinel.
@@ -139,25 +202,16 @@ export interface FormatOptions {
 }
 
 /**
- * Centralized formatting utility: Formats any timestamp into MOROCCO TIME (GMT+1).
+ * Centralized formatting utility: Formats any timestamp into MOROCCO TIME (Africa/Casablanca).
  * Default output: DD/MM/YYYY HH:mm:ss
  */
 export function formatSystemTime(input: any, options: FormatOptions = {}): string {
-  const ms = parseTimestampMs(input);
-  if (ms === null) {
+  const parts = getCasablancaParts(input);
+  if (!parts) {
     return options.fallback !== undefined ? options.fallback : "N/A";
   }
 
-  // Shift by Morocco GMT+1 offset (+1 hour)
-  const shifted = new Date(ms + MOROCCO_OFFSET_MS);
-  const pad = (n: number) => n.toString().padStart(2, "0");
-
-  const day = pad(shifted.getUTCDate());
-  const month = pad(shifted.getUTCMonth() + 1);
-  const year = shifted.getUTCFullYear();
-  const hours = pad(shifted.getUTCHours());
-  const minutes = pad(shifted.getUTCMinutes());
-  const seconds = pad(shifted.getUTCSeconds());
+  const { day, month, year, hour, minute, second } = parts;
 
   if (options.format === "date-only") {
     return `${day}/${month}/${year}`;
@@ -165,73 +219,71 @@ export function formatSystemTime(input: any, options: FormatOptions = {}): strin
 
   if (options.format === "time-only") {
     return options.includeSeconds === false
-      ? `${hours}:${minutes}`
-      : `${hours}:${minutes}:${seconds}`;
+      ? `${hour}:${minute}`
+      : `${hour}:${minute}:${second}`;
   }
 
   if (options.includeSeconds === false) {
-    return `${day}/${month}/${year} ${hours}:${minutes}`;
+    return `${day}/${month}/${year} ${hour}:${minute}`;
   }
 
-  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+  return `${day}/${month}/${year} ${hour}:${minute}:${second}`;
 }
 
 /**
- * Formats as DD/MM/YYYY HH:mm:ss in Morocco GMT+1
+ * Formats as DD/MM/YYYY HH:mm:ss in Morocco (Africa/Casablanca)
  */
 export function formatSystemDateTime(input: any, includeSeconds: boolean = true): string {
   return formatSystemTime(input, { format: "datetime", includeSeconds });
 }
 
 /**
- * Formats as DD/MM/YYYY in Morocco GMT+1
+ * Formats as DD/MM/YYYY in Morocco (Africa/Casablanca)
  */
 export function formatSystemDate(input: any): string {
   return formatSystemTime(input, { format: "date-only" });
 }
 
 /**
- * Formats as HH:mm:ss or HH:mm in Morocco GMT+1
+ * Formats as HH:mm:ss or HH:mm in Morocco (Africa/Casablanca)
  */
 export function formatSystemTimeOnly(input: any, includeSeconds: boolean = false): string {
   return formatSystemTime(input, { format: "time-only", includeSeconds });
 }
 
 /**
- * SupervisorWorkspace alias: Formats as DD/MM/YYYY HH:mm:ss in Morocco GMT+1
+ * Formats as DD/MM/YYYY HH:mm:ss in Morocco (Africa/Casablanca)
  */
 export function formatExactTimestamp(input?: any): string {
   return formatSystemTime(input, { format: "datetime", includeSeconds: true, fallback: "N/A" });
 }
 
 /**
- * Extracts the calendar date in Morocco GMT+1 as "YYYY-MM-DD".
+ * Extracts the calendar date in Morocco (Africa/Casablanca) as "YYYY-MM-DD".
  * Useful for grouping, date filtering, and default form inputs.
  */
 export function getMoroccoDateString(input?: any): string {
-  const ms = input ? parseTimestampMs(input) : Date.now();
-  if (ms === null) return "";
-  const shifted = new Date(ms + MOROCCO_OFFSET_MS);
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  const year = shifted.getUTCFullYear();
-  const month = pad(shifted.getUTCMonth() + 1);
-  const day = pad(shifted.getUTCDate());
-  return `${year}-${month}-${day}`;
+  const parts = getCasablancaParts(input !== undefined ? input : Date.now());
+  if (!parts) return "";
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 /**
- * Returns today's date in Morocco GMT+1 as "YYYY-MM-DD"
+ * Returns today's date in Morocco (Africa/Casablanca) as "YYYY-MM-DD"
  */
 export function getMoroccoTodayDateString(): string {
   return getMoroccoDateString(Date.now());
 }
 
 /**
- * Returns yesterday's date in Morocco GMT+1 as "YYYY-MM-DD"
+ * Returns yesterday's date in Morocco (Africa/Casablanca) as "YYYY-MM-DD"
  */
 export function getMoroccoYesterdayDateString(): string {
-  const yesterdayMs = Date.now() - 24 * 60 * 60 * 1000;
-  return getMoroccoDateString(yesterdayMs);
+  const todayParts = getCasablancaParts(Date.now());
+  if (!todayParts) return "";
+  // Calculate yesterday in Casablanca by shifting 1 calendar day back at midday UTC
+  const d = new Date(Date.UTC(Number(todayParts.year), Number(todayParts.month) - 1, Number(todayParts.day) - 1, 12, 0, 0));
+  return getMoroccoDateString(d.getTime());
 }
 
 /**

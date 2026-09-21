@@ -42,6 +42,14 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /bezel_references/{refId} {
+      allow read, write: if true;
+    }
+
+    match /bezel_operations/{opId} {
+      allow read, write: if true;
+    }
+
     match /test/{testId} {
       allow read: if true;
     }

@@ -1885,6 +1885,11 @@ export async function executeProtectedEditOperation(
     const txSnap = await getDoc(doc(db, "transactions", txId));
     if (!txSnap.exists()) throw new Error("Transaction record not found");
     const txData = txSnap.data();
+
+    if (txData.status === "REVERSED") {
+      throw new Error("Cannot modify an operation that has been reversed.");
+    }
+
     const oldQty = txData.quantity || 0;
     const delta = newQty - oldQty;
     const refCode = (txData.reference || "").trim().toUpperCase();
@@ -1906,11 +1911,39 @@ export async function executeProtectedEditOperation(
       else if (txData.stock === "Stock 2 -> Stock 3") deltas.push({ reference: refCode, delta2: -delta, delta3: delta });
     }
 
+    const historyEntry = {
+      action: "EDIT",
+      oldQty,
+      newQty,
+      delta,
+      modifiedBy: operatorName,
+      timestamp,
+      reason
+    };
+    const existingHistory = txData.changeHistory || [];
+
+    const editTransId = `trans-edit-tx-${Date.now()}`;
+    transactions.push({
+      id: editTransId,
+      reference: refCode,
+      movementType: `${txData.movementType || "TRANSFER"} (EDIT)`,
+      stock: txData.stock || "Stock 1 -> Stock 2",
+      quantity: Math.abs(delta),
+      operatorName: `${operatorName} (Correction)`,
+      timestamp,
+      notes: `Edited operation ${oldQty} → ${newQty} (Diff: ${delta > 0 ? `+${delta}` : delta}). Reason: ${reason}`
+    });
+
     additionalWrites = (transaction) => {
       transaction.update(
         doc(db, "transactions", txId),
         cleanDocData({
           quantity: newQty,
+          originalQuantity: txData.originalQuantity !== undefined ? txData.originalQuantity : oldQty,
+          lastModifiedAt: timestamp,
+          lastModifiedBy: operatorName,
+          status: "edited",
+          changeHistory: [...existingHistory, historyEntry],
           notes: `${txData.notes || ""} | Corrected from ${oldQty} to ${newQty} on ${timestamp} by ${operatorName}. Reason: ${reason}`
         })
       );
@@ -2094,6 +2127,11 @@ export async function executeProtectedDeleteOrReverseOperation(
     const txSnap = await getDoc(doc(db, "transactions", txId));
     if (!txSnap.exists()) throw new Error("Transaction record not found");
     const txData = txSnap.data();
+
+    if (txData.status === "REVERSED") {
+      throw new Error("This operation has already been reversed.");
+    }
+
     const qty = txData.quantity || 0;
     const refCode = (txData.reference || "").trim().toUpperCase();
 
@@ -2127,9 +2165,24 @@ export async function executeProtectedDeleteOrReverseOperation(
       notes: `Deleted operation (${txData.movementType}) reversal. Reason: ${reason}`
     });
 
-    additionalWrites = (transaction) => {
-      transaction.delete(doc(db, "transactions", txId));
-    };
+    if (category === "transfer" || txData.movementType === "TRANSFER S1->S2" || txData.movementType === "TRANSFER") {
+      additionalWrites = (transaction) => {
+        transaction.update(
+          doc(db, "transactions", txId),
+          cleanDocData({
+            status: "REVERSED",
+            reversedAt: timestamp,
+            reversedBy: operatorName,
+            reversalReason: reason,
+            notes: `${txData.notes || ""} | REVERSED on ${timestamp} by ${operatorName}. Reason: ${reason}`
+          })
+        );
+      };
+    } else {
+      additionalWrites = (transaction) => {
+        transaction.delete(doc(db, "transactions", txId));
+      };
+    }
   }
 
   await executeProtectedStockOperation({

@@ -73,7 +73,7 @@ export default function DashboardOverview({
   const [modalSubmitting, setModalSubmitting] = useState(false);
   const [modalFeedback, setModalFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  // Format today's date prefix in Morocco GMT+1
+  // Format today's date prefix in Morocco (Africa/Casablanca)
   const todayStr = useMemo(() => {
     return getMoroccoTodayDateString();
   }, []);

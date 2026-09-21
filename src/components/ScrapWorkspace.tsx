@@ -48,7 +48,7 @@ export default function ScrapWorkspace({
   onDeleteScrap,
   onUpdateScrap
 }: ScrapWorkspaceProps) {
-  // Get today's date in YYYY-MM-DD (Morocco GMT+1)
+  // Get today's date in YYYY-MM-DD (Morocco - Africa/Casablanca)
   const todayStr = getMoroccoTodayDateString();
 
   // Form State

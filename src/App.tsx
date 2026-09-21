@@ -18,12 +18,15 @@ import ScrapWorkspace from "./components/ScrapWorkspace";
 import ManageReferencesWorkspace from "./components/ManageReferencesWorkspace";
 import InvoicesWorkspace from "./components/InvoicesWorkspace";
 import RecordsWorkspace from "./components/RecordsWorkspace";
+import PegadasWorkspace from "./components/PegadasWorkspace";
+import ModuleSelection from "./components/ModuleSelection";
+import BezelWorkspace from "./components/BezelWorkspace";
 import { LowStockAlertModal } from "./components/LowStockAlertModal";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
   RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2, FolderTree, FileText,
-  AlertTriangle, History
+  AlertTriangle, History, Layers, ArrowLeft
 } from "lucide-react";
 import {
   executeProtectedDeliveries,
@@ -64,7 +67,7 @@ export default function App() {
   const [invoices, setInvoices] = useState<ReceivingInvoice[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">(() => {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">(() => {
     try {
       const savedUser = sessionStorage.getItem("epp_current_user");
       const savedTab = sessionStorage.getItem("epp_active_tab") as any;
@@ -79,6 +82,23 @@ export default function App() {
       if (savedTab) return savedTab;
     } catch (e) {}
     return "dashboard";
+  });
+  const [activeModule, setActiveModule] = useState<"meshes" | "bezel" | null>(() => {
+    try {
+      const savedUser = sessionStorage.getItem("epp_current_user");
+      const savedModule = sessionStorage.getItem("epp_active_module");
+      if (savedUser) {
+        const u: User = JSON.parse(savedUser);
+        if (u.role === "operator") {
+          return "meshes";
+        }
+        if (savedModule === "meshes" || savedModule === "bezel") {
+          return savedModule;
+        }
+        return null;
+      }
+    } catch (e) {}
+    return null;
   });
   const [isGlobalLowStockModalOpen, setIsGlobalLowStockModalOpen] = useState(false);
 
@@ -106,6 +126,14 @@ export default function App() {
       sessionStorage.setItem("epp_active_tab", activeTab);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeModule) {
+      sessionStorage.setItem("epp_active_module", activeModule);
+    } else {
+      sessionStorage.removeItem("epp_active_module");
+    }
+  }, [activeModule]);
 
   // Sync state with Firestore on mount
   useEffect(() => {
@@ -497,9 +525,20 @@ export default function App() {
     });
   };
 
-  // Supervisor/Manager Action: Edit operation quantity & record audit history (Protected)
+  // Supervisor/Manager/Operator Action: Edit operation quantity & record audit history (Protected)
   const handleEditOperation = async (opId: string, category: string, newQty: number, reason: string) => {
     if (!currentUser) return;
+    if (currentUser.role === "operator") {
+      const txId = opId.startsWith("tx-") ? opId.replace("tx-", "") : opId.startsWith("batch-trf-") ? opId.replace("batch-trf-", "") : opId;
+      const targetTx = transactions.find(t => t.id === txId || t.id === opId);
+      if (targetTx) {
+        const cleanTxOp = (targetTx.operatorName || "").replace(/\s*\([^)]*\)/g, "").trim().toLowerCase();
+        const cleanUser = currentUser.fullName.replace(/\s*\([^)]*\)/g, "").trim().toLowerCase();
+        if (cleanTxOp && cleanUser && cleanTxOp !== cleanUser) {
+          throw new Error("Unauthorized: Operators can only modify their own operations.");
+        }
+      }
+    }
     await executeProtectedEditOperation(opId, category, newQty, reason, currentUser.fullName);
   };
 
@@ -510,7 +549,18 @@ export default function App() {
       throw new Error("Unauthorized: Insufficient permissions to delete or reverse operations.");
     }
     if (!reason || reason.trim() === "") {
-      throw new Error("A reason for deletion is required.");
+      throw new Error("A reason for deletion or reversal is required.");
+    }
+    if (currentUser.role === "operator") {
+      const txId = opId.startsWith("tx-") ? opId.replace("tx-", "") : opId.startsWith("batch-trf-") ? opId.replace("batch-trf-", "") : opId;
+      const targetTx = transactions.find(t => t.id === txId || t.id === opId);
+      if (targetTx) {
+        const cleanTxOp = (targetTx.operatorName || "").replace(/\s*\([^)]*\)/g, "").trim().toLowerCase();
+        const cleanUser = currentUser.fullName.replace(/\s*\([^)]*\)/g, "").trim().toLowerCase();
+        if (cleanTxOp && cleanUser && cleanTxOp !== cleanUser) {
+          throw new Error("Unauthorized: Operators can only reverse their own operations.");
+        }
+      }
     }
     await executeProtectedDeleteOrReverseOperation(opId, category, reason, currentUser.fullName);
   };
@@ -769,8 +819,10 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     setActiveTab("dashboard");
+    setActiveModule(null);
     sessionStorage.removeItem("epp_current_user");
     sessionStorage.removeItem("epp_active_tab");
+    sessionStorage.removeItem("epp_active_module");
   };
 
   if (loading) {
@@ -792,12 +844,45 @@ export default function App() {
       <RoleGate 
         onLogin={(user) => {
           setCurrentUser(user);
+          // Show the clean module selection screen [ MESHES ] / [ BEZEL ] for all users
+          setActiveModule(null);
+          sessionStorage.removeItem("epp_active_module");
           if (user.role === "operator") {
             setActiveTab("operator");
           } else {
             setActiveTab("dashboard");
           }
         }} 
+      />
+    );
+  }
+
+  // Module selection screen for ALL roles (Operator, Supervisor, Manager) when no module is active
+  if (activeModule === null) {
+    return (
+      <ModuleSelection
+        currentUser={currentUser}
+        onSelectModule={(mod) => {
+          setActiveModule(mod);
+          if (mod === "meshes" && currentUser.role === "operator") {
+            setActiveTab("operator");
+          }
+        }}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // BEZEL module entry point
+  if (activeModule === "bezel") {
+    return (
+      <BezelWorkspace
+        currentUser={currentUser}
+        onBackToModules={() => {
+          setActiveModule(null);
+          sessionStorage.removeItem("epp_active_module");
+        }}
+        onLogout={handleLogout}
       />
     );
   }
@@ -821,6 +906,25 @@ export default function App() {
               STEERING WHEEL STOCK
             </div>
           </div>
+
+          {/* Module Switcher for All Portals (Operator, Supervisor, Manager) */}
+          <button
+            onClick={() => {
+              setActiveModule(null);
+              sessionStorage.removeItem("epp_active_module");
+            }}
+            id="sidebar-back-to-modules-btn"
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#0e1d33] hover:bg-[#142845] text-slate-300 hover:text-white text-xs font-semibold tracking-wide border border-blue-900/40 hover:border-blue-500/50 transition-all cursor-pointer shadow-xs active:scale-98"
+            title="Return to module selection (MESHES / BEZEL)"
+          >
+            <div className="flex items-center gap-2">
+              <ArrowLeft className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span>Modules</span>
+            </div>
+            <span className="text-[10px] text-blue-400 font-mono uppercase bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-800/40">
+              MESHES
+            </span>
+          </button>
 
           {/* Navigation Items */}
           <nav className="flex md:flex-col flex-row flex-wrap md:space-y-1 gap-1" id="primary-navigation-tabs">
@@ -963,6 +1067,24 @@ export default function App() {
               </button>
             )}
 
+            {/* PEGADAS Tab (Operator / Supervisor / Admin) */}
+            {currentUser.role !== "admin" && (
+              <button
+                onClick={() => setActiveTab("pegadas")}
+                id="nav-tab-pegadas"
+                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                  activeTab === "pegadas"
+                    ? "text-teal-400 font-bold bg-[#0f1e36] border-teal-400"
+                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Layers className="w-4 h-4 shrink-0 text-teal-400" />
+                  <span>PEGADAS</span>
+                </div>
+              </button>
+            )}
+
             {/* Records Tab (Hidden from Manager portal) */}
             {currentUser.role !== "admin" && (
               <button
@@ -1055,6 +1177,18 @@ export default function App() {
         {/* Header Bar */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sm:px-8 shrink-0">
           <div className="flex items-center gap-3 sm:gap-4">
+            <button
+              onClick={() => {
+                setActiveModule(null);
+                sessionStorage.removeItem("epp_active_module");
+              }}
+              id="header-back-to-modules-btn"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 text-xs font-semibold tracking-wide transition-all cursor-pointer active:scale-95 shrink-0"
+              title="Return to module selection (MESHES / BEZEL)"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Modules</span>
+            </button>
             <h1 className="text-base sm:text-lg font-bold text-slate-800 font-display">
               {activeTab === "dashboard" && "Operational Dashboard"}
               {activeTab === "stock" && "Real-time Stock Inventory"}
@@ -1064,6 +1198,7 @@ export default function App() {
               {activeTab === "scrap" && "SCRAP & NOK Mesh Management"}
               {activeTab === "manage-references" && "Manage References Catalog"}
               {activeTab === "operator" && "Inventory Count Workspace"}
+              {activeTab === "pegadas" && "MALLAS PEGADAS — Stock 1 → Stock 2 Operations"}
               {activeTab === "records" && "Operator Movement Records & History"}
               {activeTab === "supervisor" && "Supervisor Validation & Sign-offs"}
               {activeTab === "admin" && "Administrative Control Center"}
@@ -1208,6 +1343,18 @@ export default function App() {
                   onApproveInvoice={handleApproveInvoice}
                   onCancelInvoice={handleCancelInvoice}
                   onOpenLowStockModal={() => setIsGlobalLowStockModalOpen(true)}
+                  onNavigateToTab={(tab) => setActiveTab(tab as any)}
+                />
+              )}
+
+              {activeTab === "pegadas" && (
+                <PegadasWorkspace
+                  transactions={transactions}
+                  references={references}
+                  currentUser={currentUser}
+                  onEditOperation={handleEditOperation}
+                  onDeleteOperation={handleDeleteOrReverseOperation}
+                  onNavigateToTab={(tab) => setActiveTab(tab as any)}
                 />
               )}
 
