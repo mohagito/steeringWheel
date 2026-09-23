@@ -91,14 +91,22 @@ export interface Reference {
 
 export interface ScrapEntry {
   id: string;
+  operationId?: string;
+  operationType?: string; // "SCRAP / NOK"
   date: string; // YYYY-MM-DD
   reference: string;
   quantity: number;
-  condition?: string; // Optional (legacy traceability)
+  condition?: string; // Optional (legacy traceability e.g. "CON COLA" / "SIN COLA")
+  cola?: "CON_COLA" | "SIN_COLA";
+  colaStatus?: "CON_COLA" | "SIN_COLA";
   invoiceNumber?: string; // Scrap delivery invoice for traceability
   notes?: string;
   supervisorName: string;
+  operator?: string;
+  operatorName?: string;
   timestamp: string | any;
+  serverTimestamp?: any;
+  sourceStock?: "Stock 1" | "Stock 2" | "Stock 3";
   stockDeductedFrom: "Stock 1" | "Stock 2" | "Stock 3";
   stockBefore: number;
   stockAfter: number;
@@ -117,6 +125,8 @@ export interface InventoryTransaction {
   timestamp: string | any;
   notes?: string;
   invoiceNumber?: string;
+  cola?: "CON_COLA" | "SIN_COLA";
+  colaStatus?: "CON_COLA" | "SIN_COLA";
   expectedQty?: number;
   actualQty?: number;
   difference?: number;

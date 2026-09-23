@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from "react";
-import { Box, Adjustment, Reference, InventoryTransaction, User } from "../types";
+import { Box, Adjustment, Reference, InventoryTransaction, User, ScrapEntry } from "../types";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   AreaChart, Area 
 } from "recharts";
 import { 
   Package, ArrowRight, Truck, AlertTriangle, Search, 
-  Warehouse, Factory, X, Layers, Send, ArrowLeftRight, ShieldAlert, Eye
+  Warehouse, Factory, X, Layers, Send, ArrowLeftRight, ShieldAlert, Eye,
+  Trash2, FileText, CheckCircle2, ChevronRight, Calendar, Filter
 } from "lucide-react";
 import { formatSystemTime, getMoroccoTodayDateString, getMoroccoDateString } from "../utils/timeUtils";
 
@@ -39,13 +40,19 @@ import { CustomSelect } from "./CustomSelect";
 import { LowStockAlertModal } from "./LowStockAlertModal";
 import Swal from "sweetalert2";
 import { executeProtectedStockOperation } from "../services/protectionLayer";
-import { calculateStockValuation } from "../utils/stockValuation";
+import { 
+  calculateStockValuation, 
+  calculateScrapValuation, 
+  MESHES_PRICE_LIST, 
+  isConColaScrap 
+} from "../utils/stockValuation";
 
 interface DashboardOverviewProps {
   boxes: Box[];
   adjustments: Adjustment[];
   references: Reference[];
   transactions: InventoryTransaction[];
+  scraps?: ScrapEntry[];
   currentUser?: User | null;
   onNavigateTab?: (tab: string) => void;
   onTriggerScan?: () => void;
@@ -56,6 +63,7 @@ export default function DashboardOverview({
   adjustments, 
   references = [], 
   transactions = [],
+  scraps = [],
   currentUser,
   onNavigateTab,
   onTriggerScan 
@@ -64,6 +72,11 @@ export default function DashboardOverview({
   const [materialFilter, setMaterialFilter] = useState<"All" | "Mesh" | "Soft">("All");
   const [stockStatusFilter, setStockStatusFilter] = useState<"All" | "Low Stock" | "Normal">("All");
   const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
+
+  // Scrap Evaluation Controls
+  const [scrapPeriod, setScrapPeriod] = useState<"all" | "today" | "week" | "month">("all");
+  const [scrapInvoiceFilter, setScrapInvoiceFilter] = useState<string>("all");
+  const [scrapViewMode, setScrapViewMode] = useState<"reference" | "invoice">("reference");
 
   // Quick Action Modal State
   const [activeModal, setActiveModal] = useState<"incoming" | "mallas" | "production" | "precosido" | "villanova" | "remove" | null>(null);
@@ -118,6 +131,131 @@ export default function DashboardOverview({
   const stock1Valuation = useMemo(() => calculateStockValuation(references, "stock1"), [references]);
   const stock2Valuation = useMemo(() => calculateStockValuation(references, "stock2"), [references]);
   const stock3Valuation = useMemo(() => calculateStockValuation(references, "stock3"), [references]);
+
+  // Unique available invoices from scrap records
+  const availableScrapInvoices = useMemo(() => {
+    const set = new Set<string>();
+    scraps.forEach(s => {
+      if (s.status !== "deleted" && s.invoiceNumber) {
+        set.add(s.invoiceNumber.trim().toUpperCase());
+      }
+    });
+    return Array.from(set).sort();
+  }, [scraps]);
+
+  // Scraps filtered by invoice
+  const filteredScrapsForValuation = useMemo(() => {
+    if (scrapInvoiceFilter === "all") return scraps;
+    return scraps.filter(s => (s.invoiceNumber || "").trim().toUpperCase() === scrapInvoiceFilter);
+  }, [scraps, scrapInvoiceFilter]);
+
+  // Derived Scrap Monetary Valuation for CON COLA pieces
+  const scrapValuation = useMemo(() => {
+    return calculateScrapValuation(filteredScrapsForValuation, scrapPeriod);
+  }, [filteredScrapsForValuation, scrapPeriod]);
+
+  // Enriched breakdown with reference descriptions and invoice tags
+  const referenceBreakdownWithDetails = useMemo(() => {
+    return scrapValuation.breakdown.map(item => {
+      const refObj = references.find(r => r.code.toUpperCase() === item.reference.toUpperCase());
+      const invoiceSet = new Set<string>();
+      filteredScrapsForValuation.forEach(s => {
+        if (s.status !== "deleted" && (s.reference || "").toUpperCase() === item.reference.toUpperCase()) {
+          if (s.invoiceNumber) invoiceSet.add(s.invoiceNumber.trim().toUpperCase());
+        }
+      });
+      return {
+        ...item,
+        description: refObj?.description || "",
+        invoices: Array.from(invoiceSet)
+      };
+    });
+  }, [scrapValuation, references, filteredScrapsForValuation]);
+
+  // Invoices breakdown group
+  const invoiceGroups = useMemo(() => {
+    const groups: Record<string, {
+      invoiceNumber: string;
+      totalValue: number;
+      totalPcs: number;
+      conColaPcs: number;
+      sinColaPcs: number;
+      items: {
+        reference: string;
+        description: string;
+        pcs: number;
+        conColaPcs: number;
+        sinColaPcs: number;
+        unitPrice?: number;
+        totalValue: number;
+      }[];
+    }> = {};
+
+    const todayStrMorocco = getMoroccoTodayDateString();
+    const currentMonthStr = todayStrMorocco.slice(0, 7);
+    const now = new Date();
+    const weekAgoStr = getMoroccoDateString(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString());
+
+    const periodScraps = filteredScrapsForValuation.filter(s => {
+      if (s.status === "deleted") return false;
+      const recordDate = s.date || (s.timestamp ? getMoroccoDateString(s.timestamp) : "");
+      if (!recordDate) return true;
+      if (scrapPeriod === "today") return recordDate === todayStrMorocco;
+      if (scrapPeriod === "week") return recordDate >= weekAgoStr && recordDate <= todayStrMorocco;
+      if (scrapPeriod === "month") return recordDate.startsWith(currentMonthStr);
+      return true;
+    });
+
+    periodScraps.forEach(s => {
+      const inv = (s.invoiceNumber || "NO-INVOICE").trim().toUpperCase();
+      const refCode = (s.reference || "").trim().toUpperCase();
+      const qty = s.quantity || 0;
+      if (qty <= 0 || !refCode) return;
+      const unitPrice = MESHES_PRICE_LIST[refCode];
+      const val = unitPrice ? Math.round((qty * unitPrice + Number.EPSILON) * 100) / 100 : 0;
+      const refObj = references.find(r => r.code.toUpperCase() === refCode);
+      const isCon = isConColaScrap(s);
+
+      if (!groups[inv]) {
+        groups[inv] = {
+          invoiceNumber: inv,
+          totalValue: 0,
+          totalPcs: 0,
+          conColaPcs: 0,
+          sinColaPcs: 0,
+          items: []
+        };
+      }
+
+      groups[inv].totalValue = Math.round((groups[inv].totalValue + val + Number.EPSILON) * 100) / 100;
+      groups[inv].totalPcs += qty;
+      if (isCon) {
+        groups[inv].conColaPcs += qty;
+      } else {
+        groups[inv].sinColaPcs += qty;
+      }
+
+      const existingItem = groups[inv].items.find(i => i.reference === refCode);
+      if (existingItem) {
+        existingItem.pcs += qty;
+        if (isCon) existingItem.conColaPcs += qty;
+        else existingItem.sinColaPcs += qty;
+        existingItem.totalValue = Math.round((existingItem.totalValue + val + Number.EPSILON) * 100) / 100;
+      } else {
+        groups[inv].items.push({
+          reference: refCode,
+          description: refObj?.description || "",
+          pcs: qty,
+          conColaPcs: isCon ? qty : 0,
+          sinColaPcs: isCon ? 0 : qty,
+          unitPrice,
+          totalValue: val
+        });
+      }
+    });
+
+    return Object.values(groups).sort((a, b) => b.totalValue - a.totalValue);
+  }, [filteredScrapsForValuation, scrapPeriod, references]);
 
   // Filter and search references for the main list
   const filteredReferences = useMemo(() => {
@@ -827,6 +965,7 @@ export default function DashboardOverview({
               <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
                 <th className="py-3 px-4">Reference</th>
                 <th className="py-3 px-4">Description</th>
+                <th className="py-3 px-3 text-right">Unit Price</th>
                 <th className="py-3 px-3 text-center">Type</th>
                 <th className="py-3 px-4 text-right">Stock 1</th>
                 <th className="py-3 px-4 text-right">Stock 2</th>
@@ -844,11 +983,19 @@ export default function DashboardOverview({
                 const total = s1 + s2 + s3;
                 const s1PlusS2 = s1 + s2;
                 const isLow = s1PlusS2 < 100;
+                const unitPrice = MESHES_PRICE_LIST[ref.code.toUpperCase()];
 
                 return (
                   <tr key={ref.id} className={`hover:bg-slate-50/70 transition-colors ${isLow ? "bg-rose-50/20" : ""}`}>
                     <td className="py-3 px-4 font-mono font-bold text-slate-900">{ref.code}</td>
                     <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{ref.description}</td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-700 whitespace-nowrap">
+                      {unitPrice !== undefined ? (
+                        `€ ${unitPrice.toFixed(2)}`
+                      ) : (
+                        <span className="text-slate-400 font-normal italic text-[11px]">—</span>
+                      )}
+                    </td>
                     <td className="py-3 px-3 text-center">
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-slate-100 text-slate-700">
                         {ref.materialType}
@@ -891,7 +1038,7 @@ export default function DashboardOverview({
 
               {filteredReferences.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400 font-mono text-xs">
+                  <td colSpan={10} className="py-12 text-center text-slate-400 font-mono text-xs">
                     No references found matching "{searchQuery}".
                   </td>
                 </tr>
@@ -899,6 +1046,352 @@ export default function DashboardOverview({
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* DEDICATED SCRAP EVALUATION SECTION */}
+      <div className="bg-white border border-slate-100 rounded-3xl shadow-xl shadow-slate-200/40 p-6 space-y-6" id="scrap-evaluation-section">
+        
+        {/* Section Header & Interactive Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="p-2 bg-rose-50 text-rose-600 rounded-xl border border-rose-100">
+                <Trash2 className="w-5 h-5" />
+              </span>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  Scrap Evaluation
+                </h3>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Period Filters */}
+            <div className="inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => setScrapPeriod("all")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  scrapPeriod === "all"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                All Time
+              </button>
+              <button
+                type="button"
+                onClick={() => setScrapPeriod("today")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  scrapPeriod === "today"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => setScrapPeriod("week")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  scrapPeriod === "week"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                This Week
+              </button>
+              <button
+                type="button"
+                onClick={() => setScrapPeriod("month")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  scrapPeriod === "month"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                This Month
+              </button>
+            </div>
+
+            {/* Invoice Filter */}
+            {availableScrapInvoices.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <select
+                  value={scrapInvoiceFilter}
+                  onChange={(e) => setScrapInvoiceFilter(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 focus:outline-none focus:border-rose-500 cursor-pointer"
+                >
+                  <option value="all">All Invoices ({availableScrapInvoices.length})</option>
+                  {availableScrapInvoices.map((inv) => (
+                    <option key={inv} value={inv}>
+                      {inv}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* View Mode Toggle */}
+            <div className="inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => setScrapViewMode("reference")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  scrapViewMode === "reference"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                By Reference
+              </button>
+              <button
+                type="button"
+                onClick={() => setScrapViewMode("invoice")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  scrapViewMode === "invoice"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                By Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI Summary Cards for Scrap Evaluation */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Card 1: Total Monetary Value of All Scrap */}
+          <div className="p-5 bg-gradient-to-br from-rose-50/70 to-amber-50/40 border border-rose-200/80 rounded-2xl flex flex-col justify-between">
+            <div>
+              <span className="text-[11px] font-mono font-bold text-rose-700 uppercase tracking-wider">
+                Total Scrap Value
+              </span>
+              <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 mt-1">
+                {scrapValuation.formattedTotalValue}
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-rose-200/50 flex items-center justify-between text-[11px] font-mono text-slate-500">
+              <span>Period: {scrapPeriod === "all" ? "All Time" : scrapPeriod === "today" ? "Today" : scrapPeriod === "week" ? "Last 7 Days" : "This Month"}</span>
+              <span className="font-bold text-rose-700">{scrapValuation.totalScrapPcs.toLocaleString()} PCS TOTAL</span>
+            </div>
+          </div>
+
+          {/* Card 2: CON COLA Volume & Value */}
+          <div className="p-5 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-mono font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  CON COLA
+                </span>
+                <span className="text-xs font-mono font-extrabold text-amber-900">
+                  {scrapValuation.formattedConColaValue}
+                </span>
+              </div>
+              <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 mt-1">
+                {scrapValuation.conColaPcs.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-200/60 text-[11px] font-mono text-slate-500 flex items-center justify-between">
+              <span>Valued with unit prices</span>
+              <span className="font-semibold text-slate-700">{scrapValuation.formattedConColaValue}</span>
+            </div>
+          </div>
+
+          {/* Card 3: SIN COLA Volume & Value */}
+          <div className="p-5 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-slate-500" />
+                  SIN COLA
+                </span>
+                <span className="text-xs font-mono font-extrabold text-slate-900">
+                  {scrapValuation.formattedSinColaValue}
+                </span>
+              </div>
+              <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 mt-1">
+                {scrapValuation.sinColaPcs.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-mono text-slate-500">
+              <span>Valued with unit prices</span>
+              <span className="font-semibold text-slate-700">{scrapValuation.formattedSinColaValue}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Missing Price Notice (if any) */}
+        {scrapValuation.missingPriceCount > 0 && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2 font-mono">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Note:</strong> {scrapValuation.missingPriceCount} reference(s) ({scrapValuation.missingPriceRefs.join(", ")}) do not have a unit price configured in the price catalog. Their quantity is tracked but monetary value is omitted.
+            </span>
+          </div>
+        )}
+
+        {/* VIEW 1: BREAKDOWN BY REFERENCE */}
+        {scrapViewMode === "reference" && (
+          <div className="overflow-x-auto rounded-2xl border border-slate-100">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-200/80 text-[11px] uppercase font-mono font-bold tracking-wider">
+                  <th className="py-3 px-4">Reference</th>
+                  <th className="py-3 px-4">Description</th>
+                  <th className="py-3 px-3 text-right">CON COLA</th>
+                  <th className="py-3 px-3 text-right">SIN COLA</th>
+                  <th className="py-3 px-4 text-right">Total (PCS)</th>
+                  <th className="py-3 px-4 text-right">Unit Price (€)</th>
+                  <th className="py-3 px-4 text-right font-black text-slate-900">Total Value (€)</th>
+                  <th className="py-3 px-4">Invoice(s)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs font-mono">
+                {referenceBreakdownWithDetails.length > 0 ? (
+                  referenceBreakdownWithDetails.map((item) => (
+                    <tr key={item.reference} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
+                        {item.reference}
+                      </td>
+                      <td className="py-3 px-4 font-sans text-slate-600 truncate max-w-xs">
+                        {item.description || "—"}
+                      </td>
+                      <td className="py-3 px-3 text-right text-amber-800 whitespace-nowrap">
+                        {item.conColaPcs > 0 ? `${item.conColaPcs.toLocaleString()} pcs` : "—"}
+                      </td>
+                      <td className="py-3 px-3 text-right text-slate-600 whitespace-nowrap">
+                        {item.sinColaPcs > 0 ? `${item.sinColaPcs.toLocaleString()} pcs` : "—"}
+                      </td>
+                      <td className="py-3 px-4 text-right font-extrabold text-slate-900 whitespace-nowrap">
+                        {item.totalPcs.toLocaleString()} PCS
+                      </td>
+                      <td className="py-3 px-4 text-right text-slate-600 whitespace-nowrap">
+                        {item.hasPrice ? `€ ${item.unitPrice?.toFixed(2)}` : <span className="text-amber-600 italic">No price</span>}
+                      </td>
+                      <td className="py-3 px-4 text-right font-extrabold text-slate-900 whitespace-nowrap">
+                        {item.hasPrice ? `€ ${item.totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {item.invoices.length > 0 ? (
+                            item.invoices.map((inv) => (
+                              <span
+                                key={inv}
+                                onClick={() => setScrapInvoiceFilter(inv)}
+                                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold border border-slate-200/80 cursor-pointer transition-colors"
+                                title={`Click to filter by invoice ${inv}`}
+                              >
+                                {inv}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-slate-400 italic text-[10px]">—</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-slate-400 font-sans text-xs">
+                      No scrap recorded for the selected period {scrapInvoiceFilter !== "all" ? `and Invoice ${scrapInvoiceFilter}` : ""}.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {referenceBreakdownWithDetails.length > 0 && (
+                <tfoot>
+                  <tr className="bg-slate-50 border-t-2 border-slate-200 text-xs font-mono font-black text-slate-900">
+                    <td className="py-3.5 px-4" colSpan={2}>
+                      TOTAL SCRAP EVALUATION
+                    </td>
+                    <td className="py-3.5 px-3 text-right text-amber-900 font-bold">
+                      {scrapValuation.conColaPcs.toLocaleString()} pcs
+                    </td>
+                    <td className="py-3.5 px-3 text-right text-slate-700 font-bold">
+                      {scrapValuation.sinColaPcs.toLocaleString()} pcs
+                    </td>
+                    <td className="py-3.5 px-4 text-right text-slate-900 font-black">
+                      {scrapValuation.totalScrapPcs.toLocaleString()} PCS
+                    </td>
+                    <td className="py-3.5 px-4 text-right text-slate-400 font-normal">
+                      —
+                    </td>
+                    <td className="py-3.5 px-4 text-right text-rose-600 text-sm font-black">
+                      {scrapValuation.formattedTotalValue}
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-400 font-normal">
+                      {scrapValuation.breakdown.length} references
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+
+        {/* VIEW 2: BREAKDOWN GROUPED BY INVOICE */}
+        {scrapViewMode === "invoice" && (
+          <div className="space-y-3">
+            {invoiceGroups.length > 0 ? (
+              invoiceGroups.map((group) => (
+                <div
+                  key={group.invoiceNumber}
+                  className="p-4 bg-slate-50/70 border border-slate-200/80 rounded-2xl space-y-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1 bg-slate-900 text-white rounded-lg font-mono font-black text-xs">
+                        {group.invoiceNumber}
+                      </span>
+                      <span className="text-xs text-slate-500 font-mono">
+                        {group.items.length} {group.items.length === 1 ? "reference" : "references"}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-xs font-mono font-bold text-slate-600">
+                        {group.totalPcs.toLocaleString()} PCS (CON: {group.conColaPcs} / SIN: {group.sinColaPcs})
+                      </span>
+                      <span className="text-sm sm:text-base font-mono font-black text-rose-600">
+                        € {group.totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {group.items.map((it) => (
+                      <div
+                        key={it.reference}
+                        className="p-2.5 bg-white border border-slate-200/80 rounded-xl flex items-center justify-between text-xs font-mono shadow-2xs"
+                      >
+                        <div className="min-w-0 mr-2">
+                          <div className="font-bold text-slate-900 truncate">{it.reference}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{it.description || "—"}</div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-bold text-slate-700">{it.pcs} PCS</div>
+                          <div className="text-[11px] font-extrabold text-slate-900">
+                            {it.unitPrice ? `€ ${it.totalValue.toFixed(2)}` : "—"}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center text-slate-400 text-xs font-mono bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                No invoices found with scrap for the selected filter.
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
       {/* CHARTS GRID */}

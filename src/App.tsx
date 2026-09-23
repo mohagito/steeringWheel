@@ -351,10 +351,13 @@ export default function App() {
 
   // Action: Supervisor logs NOK / Scrap Mesh entry (Single or Batch) (Protected)
   const handleSubmitScrap = async (
-    scrapInput: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter"> | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[]
+    scrapInput:
+      | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">
+      | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[],
+    idempotencyKey?: string
   ) => {
     if (!currentUser) return;
-    await executeProtectedScrap(scrapInput, currentUser.fullName);
+    await executeProtectedScrap(scrapInput, currentUser.fullName, idempotencyKey);
   };
 
   // Action: Supervisor/Operator deletes / reverts a scrap entry (Protected)
@@ -370,6 +373,8 @@ export default function App() {
       quantity: number;
       stockDeductedFrom?: "Stock 1" | "Stock 2" | "Stock 3";
       condition?: string;
+      cola?: "CON_COLA" | "SIN_COLA";
+      colaStatus?: "CON_COLA" | "SIN_COLA";
       invoiceNumber?: string;
       date?: string;
     },
@@ -1248,6 +1253,7 @@ export default function App() {
                   adjustments={adjustments} 
                   references={references}
                   transactions={transactions}
+                  scraps={scraps}
                   currentUser={currentUser}
                   onNavigateTab={(tab) => setActiveTab(tab)}
                   onTriggerScan={currentUser.role !== "admin" ? () => setActiveTab("operator") : undefined}

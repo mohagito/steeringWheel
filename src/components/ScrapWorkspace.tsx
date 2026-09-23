@@ -18,13 +18,19 @@ interface ScrapRow {
   referenceCode: string;
   stock: "Stock 1" | "Stock 2" | "Stock 3";
   quantity: string;
+  cola: "CON_COLA" | "SIN_COLA" | "";
 }
 
 interface ScrapWorkspaceProps {
   scraps: ScrapEntry[];
   references: Reference[];
   currentUser: User;
-  onSubmitScrap: (scrapData: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter"> | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[]) => Promise<void>;
+  onSubmitScrap: (
+    scrapData:
+      | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">
+      | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[],
+    idempotencyKey?: string
+  ) => Promise<void>;
   onDeleteScrap?: (scrapId: string, reason?: string) => Promise<void>;
   onUpdateScrap?: (
     scrapId: string,
@@ -33,6 +39,8 @@ interface ScrapWorkspaceProps {
       quantity: number;
       stockDeductedFrom?: "Stock 1" | "Stock 2" | "Stock 3";
       condition?: string;
+      cola?: "CON_COLA" | "SIN_COLA";
+      colaStatus?: "CON_COLA" | "SIN_COLA";
       invoiceNumber?: string;
       date?: string;
     },
@@ -57,7 +65,7 @@ export default function ScrapWorkspace({
   
   // Multi-reference rows
   const [rows, setRows] = useState<ScrapRow[]>([
-    { referenceCode: "", stock: "Stock 2", quantity: "" }
+    { referenceCode: "", stock: "Stock 2", quantity: "", cola: "" }
   ]);
 
   // UX Feedback States
@@ -74,6 +82,7 @@ export default function ScrapWorkspace({
   const [editStock, setEditStock] = useState<"Stock 1" | "Stock 2" | "Stock 3">("Stock 2");
   const [editQuantity, setEditQuantity] = useState("");
   const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
+  const [editCola, setEditCola] = useState<"CON_COLA" | "SIN_COLA">("CON_COLA");
   const [editDate, setEditDate] = useState("");
   const [editReason, setEditReason] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
@@ -85,6 +94,8 @@ export default function ScrapWorkspace({
     setEditStock(s.stockDeductedFrom || "Stock 2");
     setEditQuantity(s.quantity.toString());
     setEditInvoiceNumber(s.invoiceNumber || "");
+    const isCon = s.cola === "CON_COLA" || s.colaStatus === "CON_COLA" || s.condition === "CON COLA";
+    setEditCola(isCon ? "CON_COLA" : "SIN_COLA");
     setEditDate(s.date || todayStr);
     setEditReason("");
     setEditError("");
@@ -107,6 +118,12 @@ export default function ScrapWorkspace({
       return;
     }
 
+    const cleanInvoice = editInvoiceNumber.trim().toUpperCase();
+    if (!cleanInvoice) {
+      setEditError("Invoice Number is required.");
+      return;
+    }
+
     const refObj = references.find((r) => r.code === editReference);
     if (!refObj) {
       setEditError("Please select a valid reference.");
@@ -121,7 +138,10 @@ export default function ScrapWorkspace({
           reference: editReference,
           quantity: newQty,
           stockDeductedFrom: editStock,
-          invoiceNumber: editInvoiceNumber.trim().toUpperCase() || undefined,
+          condition: editCola === "CON_COLA" ? "CON COLA" : "SIN COLA",
+          cola: editCola,
+          colaStatus: editCola,
+          invoiceNumber: cleanInvoice,
           date: editDate
         },
         editReason.trim() || "Scrap record updated"
@@ -147,7 +167,7 @@ export default function ScrapWorkspace({
   const handleAddRow = () => {
     setRows([
       ...rows,
-      { referenceCode: "", stock: "Stock 2", quantity: "" }
+      { referenceCode: "", stock: "Stock 2", quantity: "", cola: "" }
     ]);
   };
 
@@ -156,7 +176,7 @@ export default function ScrapWorkspace({
     setRows(rows.filter((_, i) => i !== index));
   };
 
-  const handleRowChange = (index: number, field: keyof ScrapRow, value: string) => {
+  const handleRowChange = (index: number, field: keyof ScrapRow, value: any) => {
     const updatedRows = [...rows];
     let finalVal = value;
     if (field === "referenceCode" && value) {
@@ -196,6 +216,11 @@ export default function ScrapWorkspace({
     }
 
     const cleanedInvoice = invoiceNumber.trim().toUpperCase();
+    if (!cleanedInvoice) {
+      setErrorMsg("Invoice Number is required. Please enter the associated invoice number.");
+      return;
+    }
+
     const submissions: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[] = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -203,13 +228,34 @@ export default function ScrapWorkspace({
       const cleanRef = row.referenceCode.trim().toUpperCase();
 
       if (!cleanRef) {
-        setErrorMsg(`Row ${i + 1}: Please select a reference code.`);
+        setErrorMsg(`Item #${i + 1}: Please select a reference code.`);
         return;
       }
 
       const qtyVal = parseInt(row.quantity, 10);
       if (isNaN(qtyVal) || qtyVal <= 0) {
-        setErrorMsg(`Row ${i + 1} (${cleanRef}): Please enter a valid positive quantity for NOK pieces.`);
+        setErrorMsg(`Item #${i + 1} (${cleanRef}): Please enter a valid quantity greater than 0.`);
+        return;
+      }
+
+      const refObj = references.find((r) => r.code.toUpperCase() === cleanRef);
+      if (!refObj) {
+        setErrorMsg(`Item #${i + 1}: Reference "${cleanRef}" not found in inventory.`);
+        return;
+      }
+
+      const availableInStock =
+        row.stock === "Stock 1" ? (refObj.stock1 || 0) : row.stock === "Stock 2" ? (refObj.stock2 || 0) : (refObj.stock3 || 0);
+
+      if (qtyVal > availableInStock) {
+        setErrorMsg(
+          `Item #${i + 1} (${cleanRef}): Scrapping ${qtyVal} PCS exceeds current available ${row.stock} inventory (${availableInStock} PCS). Negative stock is not allowed.`
+        );
+        return;
+      }
+
+      if (!row.cola || (row.cola !== "CON_COLA" && row.cola !== "SIN_COLA")) {
+        setErrorMsg(`Item #${i + 1} (${cleanRef}): COLA selection is required. Please select [ CON COLA ] or [ SIN COLA ].`);
         return;
       }
 
@@ -217,32 +263,37 @@ export default function ScrapWorkspace({
         date,
         reference: cleanRef,
         quantity: qtyVal,
+        sourceStock: row.stock,
         stockDeductedFrom: row.stock,
         invoiceNumber: cleanedInvoice,
+        cola: row.cola,
+        colaStatus: row.cola,
+        condition: row.cola === "CON_COLA" ? "CON COLA" : "SIN COLA",
         notes: ""
       });
     }
 
     try {
       setSubmitting(true);
-      await onSubmitScrap(submissions);
+      const idempotencyKey = `scrap-sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      await onSubmitScrap(submissions, idempotencyKey);
 
-      const msg = `Logged ${submissions.length} scrap reference item(s)${cleanedInvoice ? ` for Invoice ${cleanedInvoice}` : ""} on ${date}.`;
+      const msg = `Recorded ${submissions.length} scrap operation(s) for Invoice ${cleanedInvoice} on ${date}.`;
       setSuccessMsg(msg);
       
       // Reset entry inputs (keep date)
       setInvoiceNumber("");
-      setRows([{ referenceCode: "", stock: "Stock 2", quantity: "" }]);
+      setRows([{ referenceCode: "", stock: "Stock 2", quantity: "", cola: "" }]);
 
       Swal.fire({
-        title: "Good job!",
+        title: "Scrap Recorded",
         text: msg,
         icon: "success",
         confirmButtonText: "OK",
-        confirmButtonColor: "#2563eb"
+        confirmButtonColor: "#e11d48"
       });
       
-      setTimeout(() => setSuccessMsg(""), 4500);
+      setTimeout(() => setSuccessMsg(""), 5000);
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || "Failed to record scrap entries.");
@@ -377,17 +428,19 @@ export default function ScrapWorkspace({
 
               {/* SCRAP INVOICE NUMBER */}
               <div className="min-w-0">
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Invoice #
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Invoice #</span>
+                  <span className="text-rose-600 font-bold text-[9px] uppercase tracking-wide">Required</span>
                 </label>
                 <div className="relative">
                   <FileText className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="e.g. INV-001"
+                    required
+                    placeholder="e.g. INV-2026-045"
                     value={invoiceNumber}
                     onChange={(e) => setInvoiceNumber(e.target.value)}
-                    className="w-full pl-8 pr-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold uppercase"
+                    className="w-full pl-8 pr-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold uppercase placeholder:normal-case placeholder:font-normal"
                   />
                 </div>
               </div>
@@ -397,7 +450,7 @@ export default function ScrapWorkspace({
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Items
+                  Scrap Details
                 </span>
                 <span className="text-[10px] font-mono text-slate-400">
                   {rows.length} {rows.length > 1 ? "items" : "item"}
@@ -427,9 +480,11 @@ export default function ScrapWorkspace({
                       </div>
 
                       <div className="space-y-3 overflow-visible">
-                        {/* Reference Selector - Full Width */}
+                        {/* 1. REFERENCE */}
                         <div className="w-full overflow-visible">
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">REFERENCE</label>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                            REFERENCE <span className="text-rose-600">*</span>
+                          </label>
                           <CustomReferenceSelect
                             references={references}
                             value={row.referenceCode}
@@ -441,40 +496,102 @@ export default function ScrapWorkspace({
                           />
                         </div>
 
-                        {/* Stock & Quantity in clean 2-column grid */}
-                        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 w-full">
-                          {/* Stock Selector */}
-                          <div className="min-w-0">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">STOCK</label>
-                            <div className="relative">
-                              <select
-                                value={row.stock}
-                                onChange={(e) => handleRowChange(index, "stock", e.target.value as "Stock 1" | "Stock 2" | "Stock 3")}
-                                className="w-full min-h-[40px] pl-3 pr-8 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono text-slate-900 font-bold cursor-pointer appearance-none shadow-2xs"
-                                required
-                              >
-                                <option value="Stock 1">Stock 1 {selectedRefObj ? `(${selectedRefObj.stock1 || 0})` : ""}</option>
-                                <option value="Stock 2">Stock 2 {selectedRefObj ? `(${selectedRefObj.stock2 || 0})` : ""}</option>
-                                <option value="Stock 3">Stock 3 {selectedRefObj ? `(${selectedRefObj.stock3 || 0})` : ""}</option>
-                              </select>
-                              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                            </div>
-                          </div>
+                        {/* 2. QUANTITY */}
+                        <div className="w-full">
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                            QUANTITY (PCS) <span className="text-rose-600">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="Enter quantity to scrap..."
+                            value={row.quantity}
+                            onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
+                            className="w-full min-h-[38px] px-3 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono text-slate-900 font-bold shadow-2xs"
+                            required
+                          />
+                        </div>
 
-                          {/* Quantity per Row */}
-                          <div className="min-w-0">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">QUANTITY</label>
-                            <input
-                              type="number"
-                              min="1"
-                              placeholder="Qty..."
-                              value={row.quantity}
-                              onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
-                              className="w-full min-h-[40px] px-3 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono text-slate-900 font-bold shadow-2xs"
-                              required
-                            />
+                        {/* 3. STOCK SELECTION */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                            STOCK SOURCE <span className="text-rose-600">*</span>
+                          </label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleRowChange(index, "stock", "Stock 1")}
+                              className={`py-2.5 px-2 rounded-xl border text-xs font-mono font-bold transition-all flex items-center justify-center cursor-pointer ${
+                                row.stock === "Stock 1"
+                                  ? "bg-rose-50 border-rose-400 text-rose-800 ring-2 ring-rose-400/30"
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <span>STOCK 1</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRowChange(index, "stock", "Stock 2")}
+                              className={`py-2.5 px-2 rounded-xl border text-xs font-mono font-bold transition-all flex items-center justify-center cursor-pointer ${
+                                row.stock === "Stock 2"
+                                  ? "bg-rose-50 border-rose-400 text-rose-800 ring-2 ring-rose-400/30"
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <span>STOCK 2</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRowChange(index, "stock", "Stock 3")}
+                              className={`py-2.5 px-2 rounded-xl border text-xs font-mono font-bold transition-all flex items-center justify-center cursor-pointer ${
+                                row.stock === "Stock 3"
+                                  ? "bg-rose-50 border-rose-400 text-rose-800 ring-2 ring-rose-400/30"
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <span>STOCK 3</span>
+                            </button>
                           </div>
                         </div>
+
+                        {/* 4. COLA STATUS (REQUIRED) */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                              COLA <span className="text-rose-600">*</span>
+                            </label>
+                            <span className="text-[9px] font-bold text-slate-400">
+                              {row.cola ? (row.cola === "CON_COLA" ? "CON COLA SELECTED" : "SIN COLA SELECTED") : "CHOOSE ONE"}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleRowChange(index, "cola", "CON_COLA")}
+                              className={`py-2.5 px-3 rounded-xl border text-xs font-mono font-extrabold uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                row.cola === "CON_COLA"
+                                  ? "bg-amber-500 border-amber-600 text-white shadow-md shadow-amber-500/20 ring-2 ring-amber-400/40"
+                                  : "bg-white border-slate-200 text-slate-700 hover:bg-amber-50/50 hover:border-amber-300"
+                              }`}
+                            >
+                              {row.cola === "CON_COLA" && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                              <span>CON COLA</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRowChange(index, "cola", "SIN_COLA")}
+                              className={`py-2.5 px-3 rounded-xl border text-xs font-mono font-extrabold uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                row.cola === "SIN_COLA"
+                                  ? "bg-slate-700 border-slate-800 text-white shadow-md shadow-slate-700/20 ring-2 ring-slate-400/40"
+                                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100/70"
+                              }`}
+                            >
+                              {row.cola === "SIN_COLA" && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                              <span>SIN COLA</span>
+                            </button>
+                          </div>
+                        </div>
+
                       </div>
 
                       {selectedRefObj && (
@@ -487,10 +604,10 @@ export default function ScrapWorkspace({
                             <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 1" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600 bg-slate-100"}`}>
                               S1: {selectedRefObj.stock1 || 0}
                             </span>
-                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 2" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600"}`}>
+                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 2" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600 bg-slate-100"}`}>
                               S2: {selectedRefObj.stock2 || 0}
                             </span>
-                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 3" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600"}`}>
+                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 3" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600 bg-slate-100"}`}>
                               S3: {selectedRefObj.stock3 || 0}
                             </span>
                           </div>
@@ -521,12 +638,12 @@ export default function ScrapWorkspace({
                 {submitting ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Saving...</span>
+                    <span>Recording Scrap...</span>
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4" />
-                    <span>CONFIRM SCRAP ({rows.length})</span>
+                    <span>SCRAP ({rows.length})</span>
                   </>
                 )}
               </button>
@@ -584,6 +701,7 @@ export default function ScrapWorkspace({
                     <th className="py-3 px-3 text-right">Qty</th>
                     <th className="py-3 px-3">Invoice #</th>
                     <th className="py-3 px-3">Stock</th>
+                    <th className="py-3 px-3">Cola</th>
                     <th className="py-3 px-3">Operator</th>
                     {(onDeleteScrap || onUpdateScrap) && <th className="py-3 px-3 text-right">Actions</th>}
                   </tr>
@@ -616,6 +734,17 @@ export default function ScrapWorkspace({
                       <td className="py-3 px-3 font-mono text-[11px] whitespace-nowrap text-slate-600">
                         <span className="font-bold text-slate-800">{s.stockDeductedFrom}</span>
                         <span className="text-slate-400 ml-1">({s.stockBefore}➔{s.stockAfter})</span>
+                      </td>
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        {s.cola === "CON_COLA" || s.colaStatus === "CON_COLA" || s.condition === "CON COLA" ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                            CON COLA
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-300">
+                            SIN COLA
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-slate-700 font-medium whitespace-nowrap">
                         {s.supervisorName}
@@ -753,14 +882,15 @@ export default function ScrapWorkspace({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
-                    INVOICE #
+                    INVOICE # <span className="text-rose-600">*</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="Optional"
+                    required
+                    placeholder="e.g. INV-2026-045"
                     value={editInvoiceNumber}
                     onChange={(e) => setEditInvoiceNumber(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all uppercase"
                   />
                 </div>
                 <div>
@@ -773,6 +903,36 @@ export default function ScrapWorkspace({
                     onChange={(e) => setEditDate(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all"
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  COLA STATUS <span className="text-rose-600">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditCola("CON_COLA")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-mono font-extrabold uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      editCola === "CON_COLA"
+                        ? "bg-amber-500 border-amber-600 text-white ring-2 ring-amber-400"
+                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    CON COLA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditCola("SIN_COLA")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-mono font-extrabold uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      editCola === "SIN_COLA"
+                        ? "bg-slate-700 border-slate-800 text-white ring-2 ring-slate-400"
+                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    SIN COLA
+                  </button>
                 </div>
               </div>
 

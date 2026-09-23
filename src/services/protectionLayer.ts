@@ -5,7 +5,8 @@ import {
   runTransaction,
   collection,
   Transaction,
-  getDocs
+  getDocs,
+  serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -714,7 +715,8 @@ export async function executeProtectedScrap(
   scrapInput:
     | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">
     | Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[],
-  operatorName: string
+  operatorName: string,
+  idempotencyKey?: string
 ) {
   const entries = Array.isArray(scrapInput) ? scrapInput : [scrapInput];
   if (entries.length === 0) return;
@@ -725,11 +727,26 @@ export async function executeProtectedScrap(
   const scrapDocs: { id: string; doc: any }[] = [];
 
   entries.forEach((entry, idx) => {
-    const qtyCheck = validateQuantity(entry.quantity, `Scrap quantity for ${entry.reference}`);
-    if (!qtyCheck.valid) throw new Error(qtyCheck.error);
+    const refCode = (entry.reference || "").trim().toUpperCase();
+    if (!refCode) {
+      throw new Error(`Scrap entry #${idx + 1}: Reference is required.`);
+    }
 
-    const refCode = entry.reference.trim().toUpperCase();
+    const cleanInvoice = (entry.invoiceNumber || "").trim().toUpperCase();
+    if (!cleanInvoice) {
+      throw new Error(`Scrap entry for ${refCode}: Invoice Number is required.`);
+    }
+
+    const rawCola = entry.cola || entry.colaStatus || (entry.condition === "CON COLA" ? "CON_COLA" : entry.condition === "SIN COLA" ? "SIN_COLA" : undefined);
+    if (!rawCola || (rawCola !== "CON_COLA" && rawCola !== "SIN_COLA")) {
+      throw new Error(`Scrap entry for ${refCode}: COLA status is required. Choose CON COLA or SIN COLA.`);
+    }
+    const colaStatus: "CON_COLA" | "SIN_COLA" = rawCola;
+
+    const qtyCheck = validateQuantity(entry.quantity, `Scrap quantity for ${refCode}`);
+    if (!qtyCheck.valid) throw new Error(qtyCheck.error);
     const qty = qtyCheck.value;
+
     const stockSource: "Stock 1" | "Stock 2" | "Stock 3" =
       entry.stockDeductedFrom || (entry.condition === "CON COLA" ? "Stock 3" : "Stock 2");
 
@@ -741,17 +758,28 @@ export async function executeProtectedScrap(
       deltas.push({ reference: refCode, delta3: -qty });
     }
 
-    const scrapId = `scrap-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+    const scrapId = (entry as any).id || `scrap-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
     scrapDocs.push({
       id: scrapId,
       doc: {
         ...entry,
         id: scrapId,
+        operationId: scrapId,
+        operationType: "SCRAP / NOK",
         reference: refCode,
         quantity: qty,
+        sourceStock: stockSource,
+        stockDeductedFrom: stockSource,
+        invoiceNumber: cleanInvoice,
+        cola: colaStatus,
+        colaStatus: colaStatus,
+        condition: colaStatus === "CON_COLA" ? "CON COLA" : "SIN COLA",
+        operator: operatorName,
+        operatorName,
         supervisorName: operatorName,
         timestamp,
-        stockDeductedFrom: stockSource
+        serverTimestamp: serverTimestamp(),
+        status: entry.status || "completed"
       }
     });
 
@@ -759,17 +787,21 @@ export async function executeProtectedScrap(
     transactions.push({
       id: transId,
       reference: refCode,
-      movementType: "SCRAP",
+      movementType: colaStatus === "CON_COLA" ? "SCRAP (CON COLA)" : "SCRAP (SIN COLA)",
       stock: stockSource,
       quantity: qty,
       operatorName,
       timestamp,
-      notes: `NOK Scrap (${stockSource}): Date ${entry.date}${entry.invoiceNumber ? ` | Scrap Invoice: ${entry.invoiceNumber}` : ""}`
+      invoiceNumber: cleanInvoice,
+      cola: colaStatus,
+      colaStatus: colaStatus,
+      notes: `SCRAP / NOK (${stockSource}) [${colaStatus === "CON_COLA" ? "CON COLA" : "SIN COLA"}]: Date ${entry.date || ""} | Invoice: ${cleanInvoice}`
     });
   });
 
   await executeProtectedStockOperation({
     operationType: "SCRAP",
+    idempotencyKey,
     deltas,
     operatorName,
     transactions,
@@ -862,6 +894,8 @@ export async function executeProtectedUpdateScrap(
     quantity: number;
     stockDeductedFrom?: "Stock 1" | "Stock 2" | "Stock 3";
     condition?: string;
+    cola?: "CON_COLA" | "SIN_COLA";
+    colaStatus?: "CON_COLA" | "SIN_COLA";
     invoiceNumber?: string;
     date?: string;
   },
@@ -949,13 +983,16 @@ export async function executeProtectedUpdateScrap(
     operatorName,
     transactions,
     additionalWrites: (transaction) => {
+      const updatedCola = updatedData.cola || updatedData.colaStatus || (updatedData.condition === "CON COLA" ? "CON_COLA" : updatedData.condition === "SIN COLA" ? "SIN_COLA" : oldScrap?.cola || oldScrap?.colaStatus);
       transaction.update(
         doc(db, "scraps", scrapId),
         cleanDocData({
           reference: newRefCode,
           quantity: newQty,
-          condition: updatedData.condition || oldScrap?.condition || "",
-          invoiceNumber: updatedData.invoiceNumber || "",
+          condition: updatedCola === "CON_COLA" ? "CON COLA" : updatedCola === "SIN_COLA" ? "SIN COLA" : updatedData.condition || oldScrap?.condition || "",
+          cola: updatedCola,
+          colaStatus: updatedCola,
+          invoiceNumber: updatedData.invoiceNumber !== undefined ? updatedData.invoiceNumber : (oldScrap?.invoiceNumber || ""),
           date: updatedData.date || oldScrap?.date,
           stockDeductedFrom: newStock,
           status: "edited",
