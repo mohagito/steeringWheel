@@ -935,20 +935,10 @@ function ScrapModal({
   );
   const [sourceStock, setSourceStock] = useState<"STOCK 1" | "STOCK 2">("STOCK 1");
   const [quantity, setQuantity] = useState(5);
-  const [reason, setReason] = useState("Broken Clip / Mechanical Damage");
-  const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedRef = references.find((r) => r.code === refCode);
   const availableStock = sourceStock === "STOCK 1" ? selectedRef?.stock1 || 0 : selectedRef?.stock2 || 0;
-
-  const commonReasons = [
-    "Broken Clip / Mechanical Damage",
-    "Surface Scratch / Cosmetic Defect",
-    "Molding Flash / Geometry NOK",
-    "Assembly Misalignment",
-    "Material Discoloration"
-  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -971,10 +961,9 @@ function ScrapModal({
         reference: refCode,
         quantity,
         sourceStock,
-        reason: reason.trim(),
+        reason: "SCRAP / NOK",
         operatorName: currentUser.fullName,
         operatorId: currentUser.id,
-        notes: notes.trim()
       });
       onSuccess(`Scrap recorded: ${quantity} NOK units of ${refCode} removed from ${sourceStock}.`);
       onClose();
@@ -1087,43 +1076,6 @@ function ScrapModal({
               Quantity exceeds available {sourceStock} ({availableStock})
             </p>
           )}
-        </div>
-
-        <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-            Defect / NOK Reason
-          </label>
-          <input
-            type="text"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500 mb-2"
-          />
-          <div className="flex flex-wrap gap-1.5">
-            {commonReasons.map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setReason(r)}
-                className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer border border-slate-200"
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-            Additional Notes (Optional)
-          </label>
-          <input
-            type="text"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. Returned from workstation 4"
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
-          />
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">

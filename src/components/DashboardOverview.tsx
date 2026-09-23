@@ -39,6 +39,7 @@ import { CustomSelect } from "./CustomSelect";
 import { LowStockAlertModal } from "./LowStockAlertModal";
 import Swal from "sweetalert2";
 import { executeProtectedStockOperation } from "../services/protectionLayer";
+import { calculateStockValuation } from "../utils/stockValuation";
 
 interface DashboardOverviewProps {
   boxes: Box[];
@@ -112,6 +113,11 @@ export default function DashboardOverview({
       todaysDeliveries
     };
   }, [references, transactions, todayStr]);
+
+  // Derived Monetary Stock Valuations from authoritative Firestore quantities
+  const stock1Valuation = useMemo(() => calculateStockValuation(references, "stock1"), [references]);
+  const stock2Valuation = useMemo(() => calculateStockValuation(references, "stock2"), [references]);
+  const stock3Valuation = useMemo(() => calculateStockValuation(references, "stock3"), [references]);
 
   // Filter and search references for the main list
   const filteredReferences = useMemo(() => {
@@ -440,35 +446,80 @@ export default function DashboardOverview({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* Card 1: Stock 1 */}
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4 min-h-[96px]">
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4 min-h-[104px]">
           <div className="w-12 h-12 min-w-12 min-h-12 rounded-2xl bg-blue-50/90 border border-blue-100/80 text-blue-600 flex items-center justify-center shrink-0 shadow-xs">
             <Warehouse className="w-6 h-6" strokeWidth={2} />
           </div>
           <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 1</p>
-            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5 truncate">{metrics.totalWarehouseStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5 truncate">
+              {metrics.totalWarehouseStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span>
+            </h3>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
+              <span className="text-xs font-semibold font-mono text-slate-600">
+                {stock1Valuation.formattedValue}
+              </span>
+              {stock1Valuation.missingPriceCount > 0 && (
+                <span 
+                  className="text-[10px] text-amber-600 font-medium"
+                  title={`Missing price for: ${stock1Valuation.missingPriceRefs.join(", ")}`}
+                >
+                  +{stock1Valuation.missingPriceCount} {stock1Valuation.missingPriceCount === 1 ? "reference" : "references"} without price
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Card 2: Stock 2 */}
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4 min-h-[96px]">
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4 min-h-[104px]">
           <div className="w-12 h-12 min-w-12 min-h-12 rounded-2xl bg-amber-50/90 border border-amber-100/80 text-amber-600 flex items-center justify-center shrink-0 shadow-xs">
             <Factory className="w-6 h-6" strokeWidth={2} />
           </div>
           <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 2</p>
-            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5 truncate">{metrics.totalProductionStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5 truncate">
+              {metrics.totalProductionStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span>
+            </h3>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
+              <span className="text-xs font-semibold font-mono text-slate-600">
+                {stock2Valuation.formattedValue}
+              </span>
+              {stock2Valuation.missingPriceCount > 0 && (
+                <span 
+                  className="text-[10px] text-amber-600 font-medium"
+                  title={`Missing price for: ${stock2Valuation.missingPriceRefs.join(", ")}`}
+                >
+                  +{stock2Valuation.missingPriceCount} {stock2Valuation.missingPriceCount === 1 ? "reference" : "references"} without price
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Card 3: Stock 3 */}
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4 min-h-[96px]">
+        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xl shadow-slate-200/40 relative overflow-hidden flex items-center gap-4 min-h-[104px]">
           <div className="w-12 h-12 min-w-12 min-h-12 rounded-2xl bg-emerald-50/90 border border-emerald-100/80 text-emerald-600 flex items-center justify-center shrink-0 shadow-xs">
             <SteeringWheelIcon className="w-6 h-6" />
           </div>
           <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Stock 3</p>
-            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5 truncate">{metrics.totalFinishedStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span></h3>
+            <h3 className="text-xl font-extrabold text-slate-900 mt-0.5 truncate">
+              {metrics.totalFinishedStock.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span>
+            </h3>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
+              <span className="text-xs font-semibold font-mono text-slate-600">
+                {stock3Valuation.formattedValue}
+              </span>
+              {stock3Valuation.missingPriceCount > 0 && (
+                <span 
+                  className="text-[10px] text-amber-600 font-medium"
+                  title={`Missing price for: ${stock3Valuation.missingPriceRefs.join(", ")}`}
+                >
+                  +{stock3Valuation.missingPriceCount} {stock3Valuation.missingPriceCount === 1 ? "reference" : "references"} without price
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -541,11 +592,23 @@ export default function DashboardOverview({
               </h4>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-baseline justify-between">
-              <span className="text-2xl font-extrabold font-mono text-slate-900">
-                {metrics.totalWarehouseStock.toLocaleString()}
-              </span>
-              <span className="text-xs font-mono text-slate-400">PCS</span>
+            <div className="mt-4 pt-3 border-t border-slate-200/60">
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-extrabold font-mono text-slate-900">
+                  {metrics.totalWarehouseStock.toLocaleString()}
+                </span>
+                <span className="text-xs font-mono text-slate-400">PCS</span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between">
+                <span className="text-xs font-semibold font-mono text-slate-500">
+                  {stock1Valuation.formattedValue}
+                </span>
+                {stock1Valuation.missingPriceCount > 0 && (
+                  <span className="text-[10px] text-amber-600 font-medium" title={`Missing price for: ${stock1Valuation.missingPriceRefs.join(", ")}`}>
+                    +{stock1Valuation.missingPriceCount} without price
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -577,11 +640,23 @@ export default function DashboardOverview({
               </h4>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-amber-200/60 flex items-baseline justify-between">
-              <span className="text-2xl font-extrabold font-mono text-amber-700">
-                {metrics.totalProductionStock.toLocaleString()}
-              </span>
-              <span className="text-xs font-mono text-slate-400">PCS</span>
+            <div className="mt-4 pt-3 border-t border-amber-200/60">
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-extrabold font-mono text-amber-700">
+                  {metrics.totalProductionStock.toLocaleString()}
+                </span>
+                <span className="text-xs font-mono text-slate-400">PCS</span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between">
+                <span className="text-xs font-semibold font-mono text-slate-500">
+                  {stock2Valuation.formattedValue}
+                </span>
+                {stock2Valuation.missingPriceCount > 0 && (
+                  <span className="text-[10px] text-amber-600 font-medium" title={`Missing price for: ${stock2Valuation.missingPriceRefs.join(", ")}`}>
+                    +{stock2Valuation.missingPriceCount} without price
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -613,11 +688,23 @@ export default function DashboardOverview({
               </h4>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-emerald-200/60 flex items-baseline justify-between">
-              <span className="text-2xl font-extrabold font-mono text-emerald-700">
-                {metrics.totalFinishedStock.toLocaleString()}
-              </span>
-              <span className="text-xs font-mono text-slate-400">PCS</span>
+            <div className="mt-4 pt-3 border-t border-emerald-200/60">
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-extrabold font-mono text-emerald-700">
+                  {metrics.totalFinishedStock.toLocaleString()}
+                </span>
+                <span className="text-xs font-mono text-slate-400">PCS</span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between">
+                <span className="text-xs font-semibold font-mono text-slate-500">
+                  {stock3Valuation.formattedValue}
+                </span>
+                {stock3Valuation.missingPriceCount > 0 && (
+                  <span className="text-[10px] text-amber-600 font-medium" title={`Missing price for: ${stock3Valuation.missingPriceRefs.join(", ")}`}>
+                    +{stock3Valuation.missingPriceCount} without price
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
