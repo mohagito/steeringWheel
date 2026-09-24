@@ -84,8 +84,17 @@ export default function DashboardOverview({
   const [modalRef, setModalRef] = useState("");
   const [modalQty, setModalQty] = useState("");
   const [modalNote, setModalNote] = useState("");
+  const [modalInvoiceNumber, setModalInvoiceNumber] = useState("");
+  const [incomingDestStock, setIncomingDestStock] = useState<"Stock 1" | "Stock 2" | "Stock 3">("Stock 1");
+  const [modalShiftOrLine, setModalShiftOrLine] = useState("Shift A");
+  const [modalDestination, setModalDestination] = useState("Villanova");
+  const [modalReasonType, setModalReasonType] = useState("Correction of input error");
   const [modalSubmitting, setModalSubmitting] = useState(false);
   const [modalFeedback, setModalFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const selectedModalRef = useMemo(() => {
+    return references.find(r => r.code.toUpperCase() === (modalRef || "").trim().toUpperCase());
+  }, [references, modalRef]);
 
   // Format today's date prefix in Morocco (Africa/Casablanca)
   const todayStr = useMemo(() => {
@@ -334,35 +343,60 @@ export default function DashboardOverview({
       let successMsg = "";
 
       if (activeModal === "incoming") {
+        const invNum = modalInvoiceNumber.trim().toUpperCase();
+        if (!invNum) {
+          setModalFeedback({ type: "error", message: "Please enter an invoice or delivery note number." });
+          setModalSubmitting(false);
+          return;
+        }
+
         await executeProtectedStockOperation({
           operationType: "INCOMING_RECEIPT",
           referenceCode: modalRef,
           operatorName,
-          reason: `Incoming Truck: ${modalNote || "Standard Receipt"}`,
+          reason: `Incoming Truck: ${invNum} -> ${incomingDestStock}${modalNote ? ` (${modalNote})` : ""}`,
           execute: async (refData, transaction) => {
-            const s1 = refData.stock1 || 0;
-            const newS1 = s1 + qty;
-            const newTotal = newS1 + (refData.stock2 || 0) + (refData.stock3 || 0);
+            let s1 = refData.stock1 || 0;
+            let s2 = refData.stock2 || 0;
+            let s3 = refData.stock3 || 0;
+            let moveType: "STOCK 1 IN" | "STOCK 2 IN" | "STOCK 3 IN" = "STOCK 1 IN";
+
+            if (incomingDestStock === "Stock 1") {
+              s1 += qty;
+              moveType = "STOCK 1 IN";
+            } else if (incomingDestStock === "Stock 2") {
+              s2 += qty;
+              moveType = "STOCK 2 IN";
+            } else {
+              s3 += qty;
+              moveType = "STOCK 3 IN";
+            }
+
+            const newTotal = s1 + s2 + s3;
             const transId = `trans-inc-${Date.now()}`;
             const now = new Date().toISOString();
 
             transaction.set(doc(db, "transactions", transId), {
               id: transId,
               reference: modalRef,
-              movementType: "STOCK 1 IN",
-              stock: "Stock 1",
+              movementType: moveType,
+              stock: incomingDestStock,
+              destinationStock: incomingDestStock,
+              invoiceNumber: invNum,
               quantity: qty,
+              expectedQty: qty,
+              actualQty: qty,
               operatorName,
               timestamp: now,
-              notes: `Incoming Truck: ${modalNote || "Standard Receipt"}`
+              notes: `Received via Invoice ${invNum} -> ${incomingDestStock}${modalNote ? ` (${modalNote})` : ""}`
             });
 
             return {
-              stockChanges: [{ referenceCode: modalRef, newStock1: newS1, newStock2: refData.stock2 || 0, newStock3: refData.stock3 || 0, newTotal }]
+              stockChanges: [{ referenceCode: modalRef, newStock1: s1, newStock2: s2, newStock3: s3, newTotal }]
             };
           }
         });
-        successMsg = `Successfully added ${qty} pcs to Stock 1 (Warehouse Raw Material).`;
+        successMsg = `Successfully added ${qty} pcs to ${incomingDestStock} via Invoice ${invNum}.`;
       } else if (activeModal === "mallas") {
         await executeProtectedStockOperation({
           operationType: "TRANSFER_S1_S2",
@@ -386,9 +420,11 @@ export default function DashboardOverview({
               movementType: "TRANSFER S1->S2",
               stock: "Stock 1 -> Stock 2",
               quantity: qty,
+              expectedQty: qty,
+              actualQty: qty,
               operatorName,
               timestamp: now,
-              notes: `Sent to Gluing/Processing: ${modalNote || "Mallas Pegadas"}`
+              notes: `Mallas Pegadas / Gluing Transfer: ${modalNote || "Sent to Gluing/Processing - Stock 1 -> Stock 2"}`
             });
 
             return {
@@ -398,11 +434,12 @@ export default function DashboardOverview({
         });
         successMsg = `Successfully transferred ${qty} pcs to Stock 2 (Mallas Pegadas).`;
       } else if (activeModal === "production") {
+        const shift = modalShiftOrLine.trim() || "Shift A";
         await executeProtectedStockOperation({
           operationType: "PRODUCTION_OUT",
           referenceCode: modalRef,
           operatorName,
-          reason: `Montaje Steering Wheel Assembly: ${modalNote || "Daily Production"}`,
+          reason: `Montaje Steering Wheel Assembly (${shift}): ${modalNote || "Daily Production"}`,
           execute: async (refData, transaction) => {
             const s2 = refData.stock2 || 0;
             if (qty > s2) {
@@ -420,9 +457,11 @@ export default function DashboardOverview({
               movementType: "STOCK 2 OUT / STOCK 3 IN",
               stock: "Stock 2 -> Stock 3",
               quantity: qty,
+              expectedQty: qty,
+              actualQty: qty,
               operatorName,
               timestamp: now,
-              notes: `Montaje Steering Wheel Assembly: ${modalNote || "Daily Production"}`
+              notes: `Production Output (${shift}): ${modalNote || "None"}`
             });
 
             return {
@@ -430,13 +469,14 @@ export default function DashboardOverview({
             };
           }
         });
-        successMsg = `Successfully assembled ${qty} Steering Wheels into Stock 3.`;
+        successMsg = `Successfully assembled ${qty} Steering Wheels into Stock 3 (${shift}).`;
       } else if (activeModal === "precosido") {
+        const invNum = modalInvoiceNumber.trim().toUpperCase() || "PRECOSIDO";
         await executeProtectedStockOperation({
           operationType: "DELIVERY_OUT",
           referenceCode: modalRef,
           operatorName,
-          reason: `Precosido Invoice Dispatch: ${modalNote || "Precosido Invoice"}`,
+          reason: `Precosido Invoice Dispatch: ${invNum}${modalNote ? ` - ${modalNote}` : ""}`,
           execute: async (refData, transaction) => {
             const s2 = refData.stock2 || 0;
             if (qty > s2) {
@@ -452,10 +492,13 @@ export default function DashboardOverview({
               reference: modalRef,
               movementType: "STOCK 2 OUT",
               stock: "Stock 2",
+              invoiceNumber: invNum,
               quantity: qty,
+              expectedQty: qty,
+              actualQty: qty,
               operatorName,
               timestamp: now,
-              notes: `Precosido Invoice Dispatch: ${modalNote || "Precosido Invoice"}`
+              notes: `Precosido Invoice Dispatch: ${invNum}${modalNote ? ` - ${modalNote}` : ""}`
             });
 
             return {
@@ -463,13 +506,15 @@ export default function DashboardOverview({
             };
           }
         });
-        successMsg = `Successfully dispatched ${qty} pcs Precosido from Stock 2.`;
+        successMsg = `Successfully dispatched ${qty} pcs Precosido from Stock 2 (Invoice: ${invNum}).`;
       } else if (activeModal === "villanova") {
+        const invNum = modalInvoiceNumber.trim().toUpperCase() || "DELIVERY";
+        const destination = modalDestination.trim() || "Villanova";
         await executeProtectedStockOperation({
           operationType: "DELIVERY_OUT",
           referenceCode: modalRef,
           operatorName,
-          reason: `Villanova SW Delivery: ${modalNote || "Villanova Dispatch"}`,
+          reason: `Delivery to ${destination}: Invoice ${invNum}${modalNote ? ` - ${modalNote}` : ""}`,
           execute: async (refData, transaction) => {
             const s3 = refData.stock3 || 0;
             if (qty > s3) {
@@ -485,10 +530,14 @@ export default function DashboardOverview({
               reference: modalRef,
               movementType: "STOCK 3 OUT",
               stock: "Stock 3",
+              invoiceNumber: invNum,
+              customer: destination,
               quantity: qty,
+              expectedQty: qty,
+              actualQty: qty,
               operatorName,
               timestamp: now,
-              notes: `Villanova SW Delivery: ${modalNote || "Villanova Dispatch"}`
+              notes: `Delivery (${destination}): Invoice ${invNum}${modalNote ? ` - ${modalNote}` : ""}`
             });
 
             return {
@@ -496,14 +545,15 @@ export default function DashboardOverview({
             };
           }
         });
-        successMsg = `Successfully shipped ${qty} Steering Wheels to Villanova from Stock 3.`;
+        successMsg = `Successfully shipped ${qty} Steering Wheels to ${destination} via Invoice ${invNum}.`;
       } else if (activeModal === "remove") {
-        let stageName = "Stock 1 (Warehouse)";
+        let stageName = "Stock 1";
+        const reasonText = modalReasonType ? `${modalReasonType}${modalNote ? ` - ${modalNote}` : ""}` : (modalNote || "Removed by user");
         await executeProtectedStockOperation({
           operationType: "STOCK_ADJUSTMENT",
           referenceCode: modalRef,
           operatorName,
-          reason: `Stock Deduction: ${modalNote || "Removed by user"}`,
+          reason: `Stock Deduction: ${reasonText}`,
           execute: async (refData, transaction) => {
             let s1 = refData.stock1 || 0;
             let s2 = refData.stock2 || 0;
@@ -512,15 +562,15 @@ export default function DashboardOverview({
             if (removeStockStage === "stock1") {
               if (qty > s1) throw new Error(`Insufficient Stock 1! Available: ${s1} pcs, requested: ${qty} pcs.`);
               s1 = s1 - qty;
-              stageName = "Stock 1 (Warehouse)";
+              stageName = "Stock 1";
             } else if (removeStockStage === "stock2") {
               if (qty > s2) throw new Error(`Insufficient Stock 2! Available: ${s2} pcs, requested: ${qty} pcs.`);
               s2 = s2 - qty;
-              stageName = "Stock 2 (Gluing WIP)";
+              stageName = "Stock 2";
             } else if (removeStockStage === "stock3") {
               if (qty > s3) throw new Error(`Insufficient Stock 3! Available: ${s3} pcs, requested: ${qty} pcs.`);
               s3 = s3 - qty;
-              stageName = "Stock 3 (Finished Wheels)";
+              stageName = "Stock 3";
             }
 
             const newTotal = s1 + s2 + s3;
@@ -533,9 +583,11 @@ export default function DashboardOverview({
               movementType: "STOCK REMOVED",
               stock: stageName,
               quantity: qty,
+              expectedQty: qty,
+              actualQty: qty,
               operatorName,
               timestamp: now,
-              notes: `Stock Deduction (${stageName}): ${modalNote || "Removed by user"}`
+              notes: `Stock Deduction (${stageName}): ${reasonText}`
             });
 
             return {
@@ -548,6 +600,7 @@ export default function DashboardOverview({
 
       setModalQty("");
       setModalNote("");
+      setModalInvoiceNumber("");
       setActiveModal(null);
       setModalFeedback(null);
 
@@ -572,6 +625,11 @@ export default function DashboardOverview({
     setModalFeedback(null);
     setModalQty("");
     setModalNote("");
+    setModalInvoiceNumber("");
+    setIncomingDestStock("Stock 1");
+    setModalShiftOrLine("Shift A");
+    setModalDestination(type === "villanova" ? "Villanova" : type === "precosido" ? "Precosido" : "");
+    setModalReasonType(type === "remove" ? "Correction of input error" : "");
     if (references.length > 0 && !modalRef) {
       setModalRef(references[0].code);
     }
@@ -860,50 +918,68 @@ export default function DashboardOverview({
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => openModal("incoming")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-blue-100 font-mono"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border border-blue-200/60 font-mono shadow-xs"
           >
-            <Truck className="w-4 h-4 text-blue-600" />
-            <span>+ Incoming</span>
+            <div className="flex items-center gap-1.5">
+              <Truck className="w-4 h-4 text-blue-600" />
+              <span>+ Incoming</span>
+            </div>
+            <span className="text-[10px] font-normal text-blue-600/80">Invoice • Stock 1, 2, 3</span>
           </button>
 
           <button
             onClick={() => openModal("mallas")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-amber-200/60 font-mono"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border border-amber-200/60 font-mono shadow-xs"
           >
-            <ArrowLeftRight className="w-4 h-4 text-amber-600" />
-            <span>+ Stock 2</span>
+            <div className="flex items-center gap-1.5">
+              <ArrowLeftRight className="w-4 h-4 text-amber-600" />
+              <span>+ Stock 2</span>
+            </div>
+            <span className="text-[10px] font-normal text-amber-700/80">Transfer S1 → S2</span>
           </button>
 
           <button
             onClick={() => openModal("production")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-emerald-200/60 font-mono"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border border-emerald-200/60 font-mono shadow-xs"
           >
-            <Factory className="w-4 h-4 text-emerald-600" />
-            <span>+ Production</span>
+            <div className="flex items-center gap-1.5">
+              <Factory className="w-4 h-4 text-emerald-600" />
+              <span>+ Production</span>
+            </div>
+            <span className="text-[10px] font-normal text-emerald-700/80">Assembly S2 → S3</span>
           </button>
 
           <button
             onClick={() => openModal("precosido")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-rose-200/60 font-mono"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-800 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border border-rose-200/60 font-mono shadow-xs"
           >
-            <Package className="w-4 h-4 text-rose-600" />
-            <span>+ Precosido</span>
+            <div className="flex items-center gap-1.5">
+              <Package className="w-4 h-4 text-rose-600" />
+              <span>+ Precosido</span>
+            </div>
+            <span className="text-[10px] font-normal text-rose-700/80">Invoice • S2 OUT</span>
           </button>
 
           <button
             onClick={() => openModal("villanova")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-purple-200/60 font-mono"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border border-purple-200/60 font-mono shadow-xs"
           >
-            <Send className="w-4 h-4 text-purple-600" />
-            <span>+ Delivery</span>
+            <div className="flex items-center gap-1.5">
+              <Send className="w-4 h-4 text-purple-600" />
+              <span>+ Delivery</span>
+            </div>
+            <span className="text-[10px] font-normal text-purple-700/80">Invoice • S3 OUT</span>
           </button>
 
           <button
             onClick={() => openModal("remove")}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-300/80 font-mono"
+            className="w-full sm:flex-1 min-w-[150px] px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border border-slate-300/80 font-mono shadow-xs"
           >
-            <X className="w-4 h-4 text-slate-700" />
-            <span>－ Remove</span>
+            <div className="flex items-center gap-1.5">
+              <X className="w-4 h-4 text-slate-700" />
+              <span>－ Remove</span>
+            </div>
+            <span className="text-[10px] font-normal text-slate-600">Deduct S1, S2, S3</span>
           </button>
         </div>
       </div>
@@ -1472,14 +1548,16 @@ export default function DashboardOverview({
                   {activeModal === "villanova" && "🚚"}
                   {activeModal === "remove" && "🗑️"}
                 </span>
-                <h3 className="text-sm font-extrabold text-slate-900">
-                  {activeModal === "incoming" && "Incoming (Stock 1 IN)"}
-                  {activeModal === "mallas" && "Transfer (Stock 1 → 2)"}
-                  {activeModal === "production" && "Production (Stock 2 → 3)"}
-                  {activeModal === "precosido" && "Precosido (Stock 2 OUT)"}
-                  {activeModal === "villanova" && "Delivery (Stock 3 OUT)"}
-                  {activeModal === "remove" && "Remove Stock"}
-                </h3>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    {activeModal === "incoming" && "Incoming Receipt (Stock IN)"}
+                    {activeModal === "mallas" && "Transfer to Gluing (Stock 1 → 2)"}
+                    {activeModal === "production" && "Assembly Output (Stock 2 → 3)"}
+                    {activeModal === "precosido" && "Precosido Dispatch (Stock 2 OUT)"}
+                    {activeModal === "villanova" && "Steering Wheels Delivery (Stock 3 OUT)"}
+                    {activeModal === "remove" && "Remove / Deduct Stock"}
+                  </h3>
+                </div>
               </div>
               <button
                 onClick={() => setActiveModal(null)}
@@ -1502,7 +1580,7 @@ export default function DashboardOverview({
             <form onSubmit={handleExecuteQuickAction} className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-700 font-bold mb-1">
-                  Reference
+                  Reference <span className="text-rose-500">*</span>
                 </label>
                 <CustomReferenceSelect
                   references={references}
@@ -1511,29 +1589,199 @@ export default function DashboardOverview({
                   placeholder="Select reference..."
                   required
                 />
+                {selectedModalRef && (
+                  <div className="mt-2 flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-2xl text-[11px] font-mono">
+                    <span className="text-slate-600 font-medium truncate max-w-[150px]">
+                      {selectedModalRef.description || selectedModalRef.code}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-1.5 py-0.5 rounded-lg ${activeModal === "incoming" && incomingDestStock === "Stock 1" ? "bg-blue-100 font-bold text-blue-800" : "text-slate-600"}`}>
+                        S1: <strong className="text-blue-600">{selectedModalRef.stock1 || 0}</strong>
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className={`px-1.5 py-0.5 rounded-lg ${activeModal === "incoming" && incomingDestStock === "Stock 2" ? "bg-amber-100 font-bold text-amber-800" : "text-slate-600"}`}>
+                        S2: <strong className="text-amber-600">{selectedModalRef.stock2 || 0}</strong>
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className={`px-1.5 py-0.5 rounded-lg ${activeModal === "incoming" && incomingDestStock === "Stock 3" ? "bg-emerald-100 font-bold text-emerald-800" : "text-slate-600"}`}>
+                        S3: <strong className="text-emerald-600">{selectedModalRef.stock3 || 0}</strong>
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {activeModal === "remove" && (
+              {/* SPECIFIC FIELDS PER ACTION TYPE */}
+
+              {/* 1. INCOMING: Destination Stock (STOCK 1 - 2 or 3) & Invoice Number */}
+              {activeModal === "incoming" && (
+                <>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      Destination Stock <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["Stock 1", "Stock 2", "Stock 3"] as const).map((stk) => (
+                        <button
+                          key={stk}
+                          type="button"
+                          onClick={() => setIncomingDestStock(stk)}
+                          className={`py-2 px-2.5 rounded-2xl border text-xs font-mono font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${
+                            incomingDestStock === stk
+                              ? "bg-blue-50 border-blue-500 text-blue-800 ring-2 ring-blue-500/20 shadow-xs"
+                              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="tracking-wide">{stk.toUpperCase()}</span>
+                          <span className="text-[9px] font-normal text-slate-500 mt-0.5">
+                            {stk === "Stock 1" ? "Warehouse Raw" : stk === "Stock 2" ? "Gluing WIP" : "Finished Wheels"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      Invoice / Delivery Note Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. A905220309"
+                      value={modalInvoiceNumber}
+                      onChange={(e) => setModalInvoiceNumber(e.target.value.toUpperCase())}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-900 uppercase tracking-wider"
+                      required
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* 2. PRODUCTION: Shift selection (Shift A, Shift B) */}
+              {activeModal === "production" && (
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">
-                    Stock Stage
+                    Production Shift
                   </label>
-                  <CustomSelect
-                    value={removeStockStage}
-                    onChange={(val: any) => setRemoveStockStage(val)}
-                    options={[
-                      { value: "stock1", label: "Stock 1" },
-                      { value: "stock2", label: "Stock 2" },
-                      { value: "stock3", label: "Stock 3" }
-                    ]}
+                  <div className="grid grid-cols-2 gap-2">
+                    {["Shift A", "Shift B"].map((sh) => (
+                      <button
+                        key={sh}
+                        type="button"
+                        onClick={() => setModalShiftOrLine(sh)}
+                        className={`py-2 px-3 rounded-2xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                          modalShiftOrLine === sh
+                            ? "bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20 shadow-xs"
+                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        {sh}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. PRECOSIDO: Invoice Number */}
+              {activeModal === "precosido" && (
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    Precosido Invoice / Dispatch Note <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PREC-2026-001"
+                    value={modalInvoiceNumber}
+                    onChange={(e) => setModalInvoiceNumber(e.target.value.toUpperCase())}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-rose-500 font-mono font-bold text-slate-900 uppercase tracking-wider"
                     required
                   />
                 </div>
               )}
 
+              {/* 4. DELIVERY / VILLANOVA: Invoice Number & Destination */}
+              {activeModal === "villanova" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      Invoice Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. MPT2325"
+                      value={modalInvoiceNumber}
+                      onChange={(e) => setModalInvoiceNumber(e.target.value.toUpperCase())}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-purple-500 font-mono font-bold text-slate-900 uppercase tracking-wider"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      Destination Customer
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Villanova"
+                      value={modalDestination}
+                      onChange={(e) => setModalDestination(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-purple-500 font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* 5. REMOVE: Stock Stage & Reason */}
+              {activeModal === "remove" && (
+                <>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      Stock Stage to Deduct From <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["stock1", "stock2", "stock3"] as const).map((stage) => {
+                        const label = stage === "stock1" ? "Stock 1" : stage === "stock2" ? "Stock 2" : "Stock 3";
+                        const avail = stage === "stock1" ? selectedModalRef?.stock1 || 0 : stage === "stock2" ? selectedModalRef?.stock2 || 0 : selectedModalRef?.stock3 || 0;
+                        return (
+                          <button
+                            key={stage}
+                            type="button"
+                            onClick={() => setRemoveStockStage(stage)}
+                            className={`py-2 px-2 rounded-2xl border text-xs font-mono font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${
+                              removeStockStage === stage
+                                ? "bg-rose-50 border-rose-500 text-rose-800 ring-2 ring-rose-500/20 shadow-xs"
+                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            <span>{label}</span>
+                            <span className="text-[10px] font-normal text-slate-500 mt-0.5">Avail: {avail}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      Reason for Removal
+                    </label>
+                    <CustomSelect
+                      value={modalReasonType}
+                      onChange={(val: any) => setModalReasonType(val)}
+                      options={[
+                        { value: "Correction of input error", label: "Correction of input error" },
+                        { value: "Physical Count Discrepancy", label: "Physical Count Discrepancy" },
+                        { value: "Damaged / Defective Goods", label: "Damaged / Defective Goods" },
+                        { value: "Scrapped during handling", label: "Scrapped during handling" },
+                        { value: "Other", label: "Other" }
+                      ]}
+                    />
+                  </div>
+                </>
+              )}
+
               <div>
                 <label className="block text-slate-700 font-bold mb-1">
-                  Quantity (PCS)
+                  Quantity (PCS) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -1541,21 +1789,21 @@ export default function DashboardOverview({
                   placeholder="Qty..."
                   value={modalQty}
                   onChange={(e) => setModalQty(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-900"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-900"
                   required
                 />
               </div>
 
               <div>
                 <label className="block text-slate-700 font-bold mb-1">
-                  Notes
+                  Notes (Optional)
                 </label>
                 <input
                   type="text"
-                  placeholder="Notes..."
+                  placeholder="Additional notes..."
                   value={modalNote}
                   onChange={(e) => setModalNote(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500"
                 />
               </div>
 
@@ -1570,7 +1818,14 @@ export default function DashboardOverview({
                 <button
                   type="submit"
                   disabled={modalSubmitting}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold cursor-pointer transition-all disabled:opacity-50 shadow-md shadow-blue-500/20 font-mono"
+                  className={`px-5 py-2.5 text-white rounded-2xl font-bold cursor-pointer transition-all disabled:opacity-50 shadow-md font-mono ${
+                    activeModal === "incoming" ? "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20" :
+                    activeModal === "mallas" ? "bg-amber-600 hover:bg-amber-700 shadow-amber-500/20" :
+                    activeModal === "production" ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20" :
+                    activeModal === "precosido" ? "bg-rose-600 hover:bg-rose-700 shadow-rose-500/20" :
+                    activeModal === "villanova" ? "bg-purple-600 hover:bg-purple-700 shadow-purple-500/20" :
+                    "bg-slate-800 hover:bg-slate-900 shadow-slate-700/20"
+                  }`}
                 >
                   {modalSubmitting ? "Processing..." : "Confirm"}
                 </button>

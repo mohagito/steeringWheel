@@ -968,23 +968,21 @@ export default function App() {
               </div>
             </button>
 
-            {/* Invoices Tab (Supervisor & Admin) */}
-            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
-              <button
-                onClick={() => setActiveTab("invoices")}
-                id="nav-tab-invoices"
-                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
-                  activeTab === "invoices"
-                    ? "text-white font-bold bg-[#0f1e36] border-brand-500"
-                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <FileText className="w-4 h-4 shrink-0" />
-                  <span>Invoices</span>
-                </div>
-              </button>
-            )}
+            {/* Invoices Tab */}
+            <button
+              onClick={() => setActiveTab("invoices")}
+              id="nav-tab-invoices"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "invoices"
+                  ? "text-white font-bold bg-[#0f1e36] border-brand-500"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <FileText className="w-4 h-4 shrink-0" />
+                <span>Invoices</span>
+              </div>
+            </button>
 
 
 
@@ -1274,7 +1272,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === "invoices" && (currentUser.role === "supervisor" || currentUser.role === "admin") && (
+              {activeTab === "invoices" && (
                 <InvoicesWorkspace
                   invoices={invoices}
                   transactions={transactions}
