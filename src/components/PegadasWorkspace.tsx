@@ -53,9 +53,7 @@ export default function PegadasWorkspace({
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("today");
   const [customDate, setCustomDate] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedOperator, setSelectedOperator] = useState<string>(
-    currentUser.role === "operator" ? currentUser.fullName : "ALL"
-  );
+  const [shiftFilter, setShiftFilter] = useState<"ALL" | "SHIFT A" | "SHIFT B">("ALL");
 
   // Accordion state: which groups are expanded
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -106,19 +104,19 @@ export default function PegadasWorkspace({
       // Reversal audit logs themselves have movementType "REVERSAL"
       if (tx.movementType === "REVERSAL") return false;
 
-      // 2. Operator restriction:
-      // Operators see ONLY their own records.
-      if (currentUser.role === "operator") {
-        if (cleanOpName(tx.operatorName) !== cleanOpName(currentUser.fullName)) {
-          return false;
-        }
-      } else {
-        // Supervisor/Admin can filter by operator or see ALL
-        if (selectedOperator !== "ALL") {
-          if (cleanOpName(tx.operatorName) !== cleanOpName(selectedOperator)) {
-            return false;
-          }
-        }
+      // 2. Shift / Operator filter (Shift A or Shift B)
+      if (shiftFilter !== "ALL") {
+        const opName = (tx.operatorName || "").toUpperCase();
+        const filterName = shiftFilter.toUpperCase();
+        const notes = (tx.notes || "").toUpperCase();
+        const isShiftA = filterName === "SHIFT A";
+        const isShiftB = filterName === "SHIFT B";
+
+        const matchShift = opName.includes(filterName) ||
+          (isShiftA && (opName.includes("SHIFTA") || opName.includes("SHIFT_A") || notes.includes("SHIFT A"))) ||
+          (isShiftB && (opName.includes("SHIFTB") || opName.includes("SHIFT_B") || notes.includes("SHIFT B")));
+
+        if (!matchShift) return false;
       }
 
       // 3. Time filter
@@ -156,7 +154,7 @@ export default function PegadasWorkspace({
 
       return true;
     });
-  }, [transactions, currentUser, selectedOperator, timeFilter, customDate, searchQuery, refMap]);
+  }, [transactions, shiftFilter, timeFilter, customDate, searchQuery, refMap]);
 
   // Group by Date + Reference
   const groupedData = useMemo(() => {
@@ -655,8 +653,30 @@ export default function PegadasWorkspace({
             )}
           </div>
 
-          {/* Search Box & Expand Controls */}
-          <div className="flex items-center gap-2">
+          {/* Right Controls: Shift Filter Pills & Search Box */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Shift Filter Pills */}
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 text-xs font-mono font-bold" id="pegadas-shift-filter">
+              <span className="text-[11px] text-slate-500 px-1.5 flex items-center gap-1">
+                <Shield className="w-3 h-3 text-slate-400" />
+                Shift:
+              </span>
+              {(["ALL", "SHIFT A", "SHIFT B"] as const).map(op => (
+                <button
+                  key={op}
+                  onClick={() => setShiftFilter(op)}
+                  id={`pegadas-shift-btn-${op.toLowerCase().replace(/\s+/g, "-")}`}
+                  className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                    shiftFilter === op
+                      ? "bg-white text-slate-900 shadow-2xs font-extrabold"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  {op === "ALL" ? "All" : op.replace("SHIFT ", "")}
+                </button>
+              ))}
+            </div>
+
             <div className="relative flex-1 sm:w-64">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -677,6 +697,29 @@ export default function PegadasWorkspace({
             </div>
           </div>
         </div>
+
+        {/* Active Filter Indicators */}
+        {(searchQuery || customDate || timeFilter !== "today" || shiftFilter !== "ALL") && (
+          <div className="flex items-center gap-2 pt-2.5 mt-2.5 border-t border-slate-100 text-xs text-slate-500">
+            <span className="font-semibold text-slate-600">Active Filters:</span>
+            {shiftFilter !== "ALL" && (
+              <span className="bg-teal-50 text-teal-700 px-2 py-0.5 rounded text-[11px] font-mono font-bold">
+                {shiftFilter}
+              </span>
+            )}
+            <button
+              onClick={() => {
+                setSearchQuery("");
+                setTimeFilter("today");
+                setCustomDate("");
+                setShiftFilter("ALL");
+              }}
+              className="text-teal-600 hover:underline font-semibold ml-auto cursor-pointer"
+            >
+              Reset Filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Grouped Content: Grouped by Date + Reference */}

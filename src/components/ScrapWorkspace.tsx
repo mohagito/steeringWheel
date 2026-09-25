@@ -4,7 +4,8 @@ import {
   getMoroccoTodayDateString, 
   formatSystemDate, 
   formatSystemTime,
-  compareTimestampsDesc 
+  compareTimestampsDesc,
+  getISOWeekCode 
 } from "../utils/timeUtils";
 import { 
   Trash2, Calendar, Hash, AlertTriangle, CheckCircle2, 
@@ -58,9 +59,11 @@ export default function ScrapWorkspace({
 }: ScrapWorkspaceProps) {
   // Get today's date in YYYY-MM-DD (Morocco - Africa/Casablanca)
   const todayStr = getMoroccoTodayDateString();
+  const currentWeekCode = useMemo(() => getISOWeekCode(), []);
+  const WEEK_OPTIONS = useMemo(() => Array.from({ length: 53 }, (_, i) => `W${i + 1}`), []);
 
-  // Form State
-  const [date, setDate] = useState(todayStr);
+  // Form State: Week instead of date (e.g. W39, W40)
+  const [week, setWeek] = useState(currentWeekCode);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   
   // Multi-reference rows
@@ -96,7 +99,8 @@ export default function ScrapWorkspace({
     setEditInvoiceNumber(s.invoiceNumber || "");
     const isCon = s.cola === "CON_COLA" || s.colaStatus === "CON_COLA" || s.condition === "CON COLA";
     setEditCola(isCon ? "CON_COLA" : "SIN_COLA");
-    setEditDate(s.date || todayStr);
+    const initialWeek = s.date?.startsWith("W") ? s.date : (s.date ? getISOWeekCode(s.date) : currentWeekCode);
+    setEditDate(initialWeek);
     setEditReason("");
     setEditError("");
   };
@@ -205,8 +209,8 @@ export default function ScrapWorkspace({
     setErrorMsg("");
     setSuccessMsg("");
 
-    if (!date) {
-      setErrorMsg("Please select a date.");
+    if (!week) {
+      setErrorMsg("Please select a week (W).");
       return;
     }
 
@@ -260,7 +264,7 @@ export default function ScrapWorkspace({
       }
 
       submissions.push({
-        date,
+        date: week,
         reference: cleanRef,
         quantity: qtyVal,
         sourceStock: row.stock,
@@ -278,7 +282,7 @@ export default function ScrapWorkspace({
       const idempotencyKey = `scrap-sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       await onSubmitScrap(submissions, idempotencyKey);
 
-      const msg = `Recorded ${submissions.length} scrap operation(s) for Invoice ${cleanedInvoice} on ${date}.`;
+      const msg = `Recorded ${submissions.length} scrap operation(s) for Invoice ${cleanedInvoice} in ${week}.`;
       setSuccessMsg(msg);
       
       // Reset entry inputs (keep date)
@@ -314,7 +318,8 @@ export default function ScrapWorkspace({
           s.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
           s.supervisorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (s.invoiceNumber && s.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+          (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (s.date && s.date.toLowerCase().includes(searchTerm.toLowerCase()));
         
         return matchesSearch;
       })
@@ -411,19 +416,28 @@ export default function ScrapWorkspace({
             
             {/* Header controls: Date & Scrap Invoice */}
             <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-              {/* DATE */}
+              {/* W (WEEK) */}
               <div className="min-w-0">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
                   <Calendar className="w-3 h-3 text-slate-400" />
-                  <span>Date</span>
+                  <span>W</span>
                 </label>
-                <input
-                  type="date"
-                  required
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold"
-                />
+                <div className="relative">
+                  <select
+                    required
+                    value={week}
+                    onChange={(e) => setWeek(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold cursor-pointer appearance-none pr-7"
+                    id="scrap-week-select"
+                  >
+                    {WEEK_OPTIONS.map((w) => (
+                      <option key={w} value={w}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
               </div>
 
               {/* SCRAP INVOICE NUMBER */}
@@ -696,7 +710,7 @@ export default function ScrapWorkspace({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-3 px-3">Date</th>
+                    <th className="py-3 px-3">W</th>
                     <th className="py-3 px-3">Reference</th>
                     <th className="py-3 px-3 text-right">Qty</th>
                     <th className="py-3 px-3">Invoice #</th>
@@ -710,9 +724,13 @@ export default function ScrapWorkspace({
                   {filteredScraps.map((s) => (
                     <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-3 font-mono text-slate-600 font-semibold whitespace-nowrap">
-                        <div>{s.date ? formatSystemDate(s.date) : "—"}</div>
+                        <div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 font-bold font-mono text-xs border border-rose-200/80">
+                            {s.date?.startsWith("W") ? s.date : (s.date ? getISOWeekCode(s.date) : "—")}
+                          </span>
+                        </div>
                         {s.timestamp && (
-                          <div className="text-[10px] text-slate-400 font-normal">{formatSystemTime(s.timestamp)}</div>
+                          <div className="text-[10px] text-slate-400 font-normal mt-0.5">{formatSystemTime(s.timestamp)}</div>
                         )}
                       </td>
                       <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
@@ -895,14 +913,19 @@ export default function ScrapWorkspace({
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
-                    DATE
+                    W
                   </label>
-                  <input
-                    type="date"
+                  <select
                     value={editDate}
                     onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all"
-                  />
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all cursor-pointer"
+                  >
+                    {WEEK_OPTIONS.map((w) => (
+                      <option key={w} value={w}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

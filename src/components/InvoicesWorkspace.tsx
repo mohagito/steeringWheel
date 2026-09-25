@@ -1,11 +1,11 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { ReceivingInvoice, ScannedInvoiceBox, Reference, InventoryTransaction, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   FileText, Search, Calendar, User as UserIcon, CheckCircle2, 
   Clock, XCircle, Download, Printer, Eye, X, Layers, 
   Boxes, TrendingUp, AlertTriangle, ArrowUpDown, ChevronRight,
-  ShieldCheck, RefreshCw, Hash, PackageCheck, Filter, ArrowUpRight,
+  Shield, ShieldCheck, RefreshCw, Hash, PackageCheck, Filter, ArrowUpRight,
   Trash2, AlertCircle, Pencil, Plus, Save, RotateCcw
 } from "lucide-react";
 import Swal from "sweetalert2";
@@ -17,6 +17,7 @@ import {
   getMoroccoTodayDateString, 
   getMoroccoDateString 
 } from "../utils/timeUtils";
+import { executeProtectedApproveInvoice } from "../services/protectionLayer";
 
 interface InvoicesWorkspaceProps {
   invoices: ReceivingInvoice[];
@@ -26,6 +27,7 @@ interface InvoicesWorkspaceProps {
   onDeleteInvoice?: (invoiceId: string) => Promise<void>;
   onClearAllInvoices?: () => Promise<void>;
   onUpdateInvoice?: (updatedInvoice: ReceivingInvoice, previousInvoice?: ReceivingInvoice) => Promise<void>;
+  onApproveInvoice?: (invoiceId: string) => Promise<void>;
 }
 
 export default function InvoicesWorkspace({
@@ -35,14 +37,172 @@ export default function InvoicesWorkspace({
   currentUser,
   onDeleteInvoice,
   onClearAllInvoices,
-  onUpdateInvoice
+  onUpdateInvoice,
+  onApproveInvoice
 }: InvoicesWorkspaceProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<"all" | "today" | "week" | "month">("all");
+  const [shiftFilter, setShiftFilter] = useState<"ALL" | "SHIFT A" | "SHIFT B">("ALL");
   const [selectedInvoice, setSelectedInvoice] = useState<ReceivingInvoice | null>(null);
   const [sortField, setSortField] = useState<"date" | "invoiceNumber" | "totalQuantity" | "totalBoxes">("date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [isClearing, setIsClearing] = useState(false);
+
+  // Invoice Validation States
+  const [isValidating, setIsValidating] = useState(false);
+  const [validatingInvoiceId, setValidatingInvoiceId] = useState<string | null>(null);
+
+  // Sync selectedInvoice if real-time invoices change
+  useEffect(() => {
+    if (selectedInvoice) {
+      const live = invoices.find(i => i.id === selectedInvoice.id);
+      if (live && (live.status !== selectedInvoice.status || live.totalQuantity !== selectedInvoice.totalQuantity || live.totalBoxes !== selectedInvoice.totalBoxes)) {
+        setSelectedInvoice(live);
+      }
+    }
+  }, [invoices, selectedInvoice]);
+
+  // Check if current user is authorized to validate a pending invoice
+  const canUserValidateInvoice = (inv: ReceivingInvoice | null | undefined): boolean => {
+    if (!inv || inv.status !== "pending") return false;
+    if (!currentUser) return false;
+
+    // 1. Manager / Supervisor / Admin has full authorization
+    if (
+      currentUser.role === "admin" ||
+      currentUser.role === "supervisor" ||
+      currentUser.username?.toLowerCase() === "gonzalo" ||
+      currentUser.fullName?.toUpperCase().includes("MANAGER")
+    ) {
+      return true;
+    }
+
+    // 2. Operator who performed this operation (Shift A or Shift B)
+    if (currentUser.role === "operator") {
+      if (inv.operatorId && inv.operatorId === currentUser.id) {
+        return true;
+      }
+
+      const invOp = (inv.operator || "").toUpperCase().trim();
+      const userFull = (currentUser.fullName || "").toUpperCase().trim();
+      const userName = (currentUser.username || "").toUpperCase().trim();
+
+      // Direct name match or substring match
+      if (invOp && userFull && (invOp === userFull || invOp.includes(userFull) || userFull.includes(invOp))) {
+        return true;
+      }
+      if (invOp && userName && (invOp.includes(userName) || userName.includes(invOp))) {
+        return true;
+      }
+
+      // Check shift matching: Shift A or Shift B
+      const isUserShiftA = userFull.includes("SHIFT A") || userName.includes("SHIFT_A") || userName === "shift_a";
+      const isUserShiftB = userFull.includes("SHIFT B") || userName.includes("SHIFT_B") || userName === "shift_b";
+      const isInvShiftA = invOp.includes("SHIFT A");
+      const isInvShiftB = invOp.includes("SHIFT B");
+
+      if (isUserShiftA && isInvShiftA) return true;
+      if (isUserShiftB && isInvShiftB) return true;
+
+      // Fallback for generic or unspecified operator
+      if (!invOp || invOp === "OPERATOR") {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  // Action: Validate pending invoice and commit scanned boxes directly to stock
+  const handleValidateInvoice = async (inv: ReceivingInvoice) => {
+    if (!inv) return;
+    if (inv.status !== "pending") {
+      Swal.fire({
+        icon: "info",
+        title: "Already Validated",
+        text: "This invoice is already approved and registered in stock."
+      });
+      return;
+    }
+
+    if (!inv.items || inv.items.length === 0) {
+      Swal.fire({
+        icon: "warning",
+        title: "Empty Invoice",
+        text: "This invoice contains no scanned records to validate."
+      });
+      return;
+    }
+
+    const confirmRes = await Swal.fire({
+      title: "Validate & Commit to Stock?",
+      html: `
+        <div style="text-align: left; font-size: 13px; font-family: monospace; line-height: 1.6; background: #f8fafc; padding: 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
+          <p><strong>Invoice Number:</strong> <span style="color: #2563eb; font-weight: bold;">${inv.invoiceNumber}</span></p>
+          <p><strong>Operator:</strong> <span style="color: #334155;">${inv.operator}</span></p>
+          <p><strong>Total Boxes:</strong> <span style="color: #0f172a; font-weight: bold;">${inv.totalBoxes} boxes</span></p>
+          <p><strong>Total Quantity:</strong> <span style="color: #059669; font-weight: bold;">+${inv.totalQuantity.toLocaleString()} PCS</span></p>
+          <p><strong>Destination:</strong> <span style="color: #4f46e5; font-weight: bold;">Warehouse Inventory (Stock 1)</span></p>
+        </div>
+        <p style="margin-top: 12px; font-size: 12px; color: #64748b;">
+          This will change invoice status from <strong style="color: #d97706;">PENDING</strong> to <strong style="color: #059669;">APPROVED</strong> and atomically add all items into the warehouse inventory.
+        </p>
+      `,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#059669",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Yes, Validate & Add to Stock",
+      cancelButtonText: "Cancel"
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
+    setIsValidating(true);
+    setValidatingInvoiceId(inv.id);
+
+    try {
+      if (onApproveInvoice) {
+        await onApproveInvoice(inv.id);
+      } else {
+        await executeProtectedApproveInvoice(inv.id, currentUser.fullName);
+      }
+
+      const timestamp = new Date().toISOString();
+      setSelectedInvoice(prev => prev && prev.id === inv.id ? {
+        ...prev,
+        status: "approved",
+        approvedAt: timestamp,
+        approvedBy: currentUser.fullName
+      } : prev);
+
+      await Swal.fire({
+        icon: "success",
+        title: "INVOICE VALIDATED & COMMITTED",
+        html: `
+          <div style="font-family: monospace; font-size: 13px; text-align: left; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; line-height: 1.6;">
+            <p><strong>Invoice Number:</strong> <span style="color: #2563eb;">${inv.invoiceNumber}</span></p>
+            <p><strong>Total Committed:</strong> <strong style="color: #059669;">+${inv.totalQuantity.toLocaleString()} PCS</strong></p>
+            <p><strong>Validated By:</strong> <strong style="color: #0f172a;">${currentUser.fullName}</strong></p>
+            <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2px 6px; border-radius: 4px;">APPROVED &bull; IN STOCK 1</span></p>
+          </div>
+          <p style="margin-top: 12px; font-size: 12px; color: #64748b;">All items have been committed into inventory with live traceability.</p>
+        `,
+        confirmButtonColor: "#059669",
+        confirmButtonText: "OK"
+      });
+    } catch (err: any) {
+      console.error("Error validating invoice:", err);
+      Swal.fire({
+        icon: "error",
+        title: "Validation Failed",
+        text: err?.message || "An unexpected error occurred while validating the invoice."
+      });
+    } finally {
+      setIsValidating(false);
+      setValidatingInvoiceId(null);
+    }
+  };
 
   // Edit Invoice States
   const [editingInvoice, setEditingInvoice] = useState<ReceivingInvoice | null>(null);
@@ -85,6 +245,21 @@ export default function InvoicesWorkspace({
           if (nowMs - invTime > thirtyDaysMs) return false;
         }
 
+        // Shift filter (Shift A or Shift B)
+        if (shiftFilter !== "ALL") {
+          const invOp = (inv.operator || "").toUpperCase();
+          const filterName = shiftFilter.toUpperCase();
+          const notes = (inv.notes || "").toUpperCase();
+          const isShiftA = filterName === "SHIFT A";
+          const isShiftB = filterName === "SHIFT B";
+
+          const matchesShift = invOp.includes(filterName) ||
+            (isShiftA && (invOp.includes("SHIFTA") || invOp.includes("SHIFT_A") || inv.operatorId === "user_shifta" || notes.includes("SHIFT A"))) ||
+            (isShiftB && (invOp.includes("SHIFTB") || invOp.includes("SHIFT_B") || inv.operatorId === "user_shiftb" || notes.includes("SHIFT B")));
+
+          if (!matchesShift) return false;
+        }
+
         // Search query filter (Invoice #, Operator, Reference codes)
         if (searchQuery.trim()) {
           const query = searchQuery.trim().toLowerCase();
@@ -116,14 +291,26 @@ export default function InvoicesWorkspace({
         }
         return sortDirection === "desc" ? -comp : comp;
       });
-  }, [unifiedInvoices, dateFilter, searchQuery, sortField, sortDirection]);
+  }, [unifiedInvoices, dateFilter, shiftFilter, searchQuery, sortField, sortDirection]);
 
-  // Overall Statistics
+  // Overall Statistics (respects shift filter when active)
   const stats = useMemo(() => {
-    const totalCount = unifiedInvoices.length;
-    const approved = unifiedInvoices.filter(i => i.status === "approved");
-    const pending = unifiedInvoices.filter(i => i.status === "pending");
-    const cancelled = unifiedInvoices.filter(i => i.status === "cancelled");
+    const baseInvoices = shiftFilter === "ALL" 
+      ? unifiedInvoices 
+      : unifiedInvoices.filter(inv => {
+          const invOp = (inv.operator || "").toUpperCase();
+          const isShiftA = shiftFilter === "SHIFT A";
+          const isShiftB = shiftFilter === "SHIFT B";
+          const notes = (inv.notes || "").toUpperCase();
+          return invOp.includes(shiftFilter) ||
+            (isShiftA && (invOp.includes("SHIFTA") || invOp.includes("SHIFT_A") || inv.operatorId === "user_shifta" || notes.includes("SHIFT A"))) ||
+            (isShiftB && (invOp.includes("SHIFTB") || invOp.includes("SHIFT_B") || inv.operatorId === "user_shiftb" || notes.includes("SHIFT B")));
+        });
+
+    const totalCount = baseInvoices.length;
+    const approved = baseInvoices.filter(i => i.status === "approved");
+    const pending = baseInvoices.filter(i => i.status === "pending");
+    const cancelled = baseInvoices.filter(i => i.status === "cancelled");
 
     const totalApprovedQty = approved.reduce((sum, i) => sum + i.totalQuantity, 0);
     const totalBoxesReceived = approved.reduce((sum, i) => sum + i.totalBoxes, 0);
@@ -143,7 +330,7 @@ export default function InvoicesWorkspace({
       totalBoxesReceived,
       uniqueRefsCount: uniqueRefs.size
     };
-  }, [unifiedInvoices]);
+  }, [unifiedInvoices, shiftFilter]);
 
   // Selected Invoice breakdown by Reference
   const selectedInvoiceBreakdown = useMemo(() => {
@@ -621,6 +808,28 @@ export default function InvoicesWorkspace({
           {/* Filters & Actions */}
           <div className="flex flex-wrap items-center gap-2">
             
+            {/* Shift Filter Pills */}
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 text-xs font-mono font-bold" id="invoices-shift-filter">
+              <span className="text-[11px] text-slate-500 px-1.5 flex items-center gap-1">
+                <Shield className="w-3 h-3 text-slate-400" />
+                Shift:
+              </span>
+              {(["ALL", "SHIFT A", "SHIFT B"] as const).map(op => (
+                <button
+                  key={op}
+                  onClick={() => setShiftFilter(op)}
+                  id={`invoices-shift-btn-${op.toLowerCase().replace(/\s+/g, "-")}`}
+                  className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                    shiftFilter === op
+                      ? "bg-white text-slate-900 shadow-2xs font-extrabold"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  {op === "ALL" ? "All" : op.replace("SHIFT ", "")}
+                </button>
+              ))}
+            </div>
+
             {/* Date Filter */}
             <div className="w-36">
               <CustomSelect
@@ -651,16 +860,22 @@ export default function InvoicesWorkspace({
         </div>
 
         {/* Active Filter Indicators */}
-        {(searchQuery || dateFilter !== "all") && (
+        {(searchQuery || dateFilter !== "all" || shiftFilter !== "ALL") && (
           <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
             <span className="font-semibold text-slate-600">Showing:</span>
             <span>{filteredInvoices.length} of {unifiedInvoices.length} invoices</span>
+            {shiftFilter !== "ALL" && (
+              <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[11px] font-mono font-bold">
+                {shiftFilter}
+              </span>
+            )}
             <button
               onClick={() => {
                 setSearchQuery("");
                 setDateFilter("all");
+                setShiftFilter("ALL");
               }}
-              className="text-blue-600 hover:underline font-semibold ml-2"
+              className="text-blue-600 hover:underline font-semibold ml-2 cursor-pointer"
             >
               Reset Filters
             </button>
@@ -982,6 +1197,28 @@ export default function InvoicesWorkspace({
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {selectedInvoice.status === "pending" && canUserValidateInvoice(selectedInvoice) && (
+                    <button
+                      type="button"
+                      onClick={() => handleValidateInvoice(selectedInvoice)}
+                      disabled={isValidating}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                      title="Validate invoice and commit items into stock"
+                      id="btn-validate-invoice-details-header"
+                    >
+                      {isValidating ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Validating...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Validate & Approve</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                   {onUpdateInvoice && (currentUser.role === "admin" || currentUser.role === "supervisor") && (
                     <button
                       onClick={() => handleOpenEditModal(selectedInvoice)}

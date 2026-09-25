@@ -1281,6 +1281,7 @@ export default function App() {
                   onDeleteInvoice={handleDeleteInvoice}
                   onClearAllInvoices={handleClearAllInvoices}
                   onUpdateInvoice={handleUpdateInvoice}
+                  onApproveInvoice={handleApproveInvoice}
                 />
               )}
 

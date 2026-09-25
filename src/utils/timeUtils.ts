@@ -241,6 +241,9 @@ export function formatSystemDateTime(input: any, includeSeconds: boolean = true)
  * Formats as DD/MM/YYYY in Morocco (Africa/Casablanca)
  */
 export function formatSystemDate(input: any): string {
+  if (typeof input === "string" && /^W\d+$/i.test(input.trim())) {
+    return input.trim().toUpperCase();
+  }
   return formatSystemTime(input, { format: "date-only" });
 }
 
@@ -313,4 +316,27 @@ export function compareTimestampsDesc(a: any, b: any): number {
   const timeA = parseTimestampMs(a) || 0;
   const timeB = parseTimestampMs(b) || 0;
   return timeB - timeA;
+}
+
+/**
+ * Calculates the ISO 8601 week number (1 - 53) strictly using Morocco (Africa/Casablanca) time.
+ */
+export function getISOWeekNumber(input?: any): number {
+  const ms = input !== undefined ? parseTimestampMs(input) : Date.now();
+  const d = ms !== null ? new Date(ms) : new Date();
+  const target = new Date(d.getTime());
+  target.setHours(0, 0, 0, 0);
+  target.setDate(target.getDate() + 3 - ((target.getDay() + 6) % 7));
+  const week1 = new Date(target.getFullYear(), 0, 4);
+  return 1 + Math.round(((target.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+}
+
+/**
+ * Returns formatted week code e.g. "W39", "W40"
+ */
+export function getISOWeekCode(input?: any): string {
+  if (typeof input === "string" && /^W\d+$/i.test(input.trim())) {
+    return input.trim().toUpperCase();
+  }
+  return `W${getISOWeekNumber(input)}`;
 }
