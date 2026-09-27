@@ -60,6 +60,7 @@ export interface Delivery {
 
 export interface Production {
   id: string;
+  batchId?: string;
   date: string; // "YYYY-MM-DD" e.g., "2026-07-09"
   reference: string;
   quantity: number;

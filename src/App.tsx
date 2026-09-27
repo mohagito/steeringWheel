@@ -47,7 +47,8 @@ import {
   executeProtectedDeleteOrReverseOperation,
   executeProtectedDeleteBox,
   executeProtectedUpdateBox,
-  executeProtectedValidateToStock3
+  executeProtectedValidateToStock3,
+  executeProtectedDeleteBatch
 } from "./services/protectionLayer";
 
 export default function App() {
@@ -351,10 +352,10 @@ export default function App() {
     await executeProtectedProduction(productionEntries, currentUser.fullName);
   };
 
-  // Action: Direct validation and intake of Daily Production into Stock 3 Finished Goods (Protected)
+  // Action: Direct validation and intake of Daily Production (deducts from Stock 2 WIP and adds to Stock 3 Finished Goods) (Protected)
   const handleValidateToStock3 = async (
     entries: { date: string; reference: string; quantity: number; description?: string; notes?: string }[],
-    mode?: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3"
+    mode: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3" = "TRANSFER_S2_TO_S3"
   ) => {
     if (!currentUser) return;
     await executeProtectedValidateToStock3(entries, currentUser.fullName, mode);
@@ -398,6 +399,12 @@ export default function App() {
   // Action: Delete / Revert a production entry (moves quantity back from Stock 3 Finished Goods to Stock 2 WIP) (Protected)
   const handleDeleteProduction = async (productionId: string, reason?: string) => {
     await executeProtectedDeleteProduction(productionId, currentUser?.fullName || "System", productions, reason);
+  };
+
+  // Action: Delete / Revert an entire batch of production entries from a daily drag intake (Protected)
+  const handleDeleteProductionBatch = async (batchRecords: Production[], reason?: string) => {
+    if (!currentUser) throw new Error("No authenticated user session.");
+    await executeProtectedDeleteBatch(batchRecords, currentUser.fullName, reason);
   };
 
   // Action: Modify an existing production entry (Protected)
@@ -1339,9 +1346,13 @@ export default function App() {
                 <DailyProductionDemo
                   references={references}
                   currentUser={currentUser}
+                  productions={productions}
                   onNavigateToProduction={() => setActiveTab("production")}
                   onSubmitProduction={handleSubmitProduction}
                   onValidateToStock3={handleValidateToStock3}
+                  onDeleteProduction={handleDeleteProduction}
+                  onUpdateProduction={handleUpdateProduction}
+                  onDeleteBatch={handleDeleteProductionBatch}
                 />
               )}
 

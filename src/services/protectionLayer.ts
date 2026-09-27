@@ -116,6 +116,8 @@ export interface ProtectedOperationParams {
   transactions?: Omit<InventoryTransaction, "stock1Before" | "stock1After" | "stock2Before" | "stock2After" | "stock3Before" | "stock3After">[];
   // Additional entity writes to commit inside the same atomic transaction
   additionalWrites?: (transaction: Transaction, timestamp: string) => Promise<void> | void;
+  // If true, any resulting negative stock will be floored/clamped to 0 instead of rejecting (used for production reversals when finished goods were partially dispatched)
+  clampToZeroOnNegative?: boolean;
   // Direct callback execution mode (e.g., used by Dashboard quick actions and OperatorWorkspace)
   execute?: (
     refData: Reference,
@@ -156,7 +158,8 @@ export async function executeProtectedStockOperation(
     source = "application",
     transactions = [],
     additionalWrites,
-    execute
+    execute,
+    clampToZeroOnNegative = false
   } = params;
 
   // 1. Idempotency / Duplicate Check
@@ -200,11 +203,17 @@ export async function executeProtectedStockOperation(
           for (const change of execResult.stockChanges) {
             const code = change.referenceCode.trim().toUpperCase();
             if (change.newStock1 < 0 || change.newStock2 < 0 || change.newStock3 < 0) {
-              const negStockDetails = [];
-              if (change.newStock1 < 0) negStockDetails.push(`Stock 1 would be ${change.newStock1}`);
-              if (change.newStock2 < 0) negStockDetails.push(`Stock 2 would be ${change.newStock2}`);
-              if (change.newStock3 < 0) negStockDetails.push(`Stock 3 would be ${change.newStock3}`);
-              throw new Error(`PROTECTION_NEGATIVE_STOCK:Insufficient stock for Reference "${code}". ${negStockDetails.join(", ")}.`);
+              if (clampToZeroOnNegative) {
+                if (change.newStock1 < 0) change.newStock1 = 0;
+                if (change.newStock2 < 0) change.newStock2 = 0;
+                if (change.newStock3 < 0) change.newStock3 = 0;
+              } else {
+                const negStockDetails = [];
+                if (change.newStock1 < 0) negStockDetails.push(`Stock 1 would be ${change.newStock1}`);
+                if (change.newStock2 < 0) negStockDetails.push(`Stock 2 would be ${change.newStock2}`);
+                if (change.newStock3 < 0) negStockDetails.push(`Stock 3 would be ${change.newStock3}`);
+                throw new Error(`PROTECTION_NEGATIVE_STOCK:Insufficient stock for Reference "${code}". ${negStockDetails.join(", ")}.`);
+              }
             }
 
             const targetDoc = doc(db, "references", code);
@@ -352,13 +361,19 @@ export async function executeProtectedStockOperation(
       for (const code of uniqueRefCodes) {
         const cur = accumulatedChanges[code];
         if (cur.s1After < 0 || cur.s2After < 0 || cur.s3After < 0) {
-          const negStockDetails = [];
-          if (cur.s1After < 0) negStockDetails.push(`Stock 1 would be ${cur.s1After} (available: ${cur.s1Before})`);
-          if (cur.s2After < 0) negStockDetails.push(`Stock 2 would be ${cur.s2After} (available: ${cur.s2Before})`);
-          if (cur.s3After < 0) negStockDetails.push(`Stock 3 would be ${cur.s3After} (available: ${cur.s3Before})`);
+          if (clampToZeroOnNegative) {
+            if (cur.s1After < 0) cur.s1After = 0;
+            if (cur.s2After < 0) cur.s2After = 0;
+            if (cur.s3After < 0) cur.s3After = 0;
+          } else {
+            const negStockDetails = [];
+            if (cur.s1After < 0) negStockDetails.push(`Stock 1 would be ${cur.s1After} (available: ${cur.s1Before})`);
+            if (cur.s2After < 0) negStockDetails.push(`Stock 2 would be ${cur.s2After} (available: ${cur.s2Before})`);
+            if (cur.s3After < 0) negStockDetails.push(`Stock 3 would be ${cur.s3After} (available: ${cur.s3Before})`);
 
-          const rejectionReason = `Insufficient stock for Reference "${code}". ${negStockDetails.join(", ")}.`;
-          throw new Error(`PROTECTION_NEGATIVE_STOCK:${rejectionReason}`);
+            const rejectionReason = `Insufficient stock for Reference "${code}". ${negStockDetails.join(", ")}.`;
+            throw new Error(`PROTECTION_NEGATIVE_STOCK:${rejectionReason}`);
+          }
         }
       }
 
@@ -717,10 +732,10 @@ export async function executeProtectedValidateToStock3(
     reference: string; 
     quantity: number; 
     description?: string; 
-    notes?: string;
+    notes?: string; 
   }[],
   operatorName: string,
-  mode: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3" = "DIRECT_STOCK_3"
+  mode: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3" = "TRANSFER_S2_TO_S3"
 ) {
   if (!entries || entries.length === 0) return;
 
@@ -753,6 +768,7 @@ export async function executeProtectedValidateToStock3(
   }
 
   // 2. Prepare deltas, production logs, and transactions
+  const batchId = `drag-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   entries.forEach((p, idx) => {
     const qtyCheck = validateQuantity(p.quantity, `Stock 3 quantity for ${p.reference}`);
     if (!qtyCheck.valid) throw new Error(qtyCheck.error);
@@ -760,16 +776,16 @@ export async function executeProtectedValidateToStock3(
     const refCode = p.reference.trim().toUpperCase();
     const qty = qtyCheck.value;
 
-    if (mode === "TRANSFER_S2_TO_S3") {
+    if (mode === "DIRECT_STOCK_3") {
       deltas.push({
         reference: refCode,
-        delta2: -qty,
         delta3: qty
       });
     } else {
-      // Default: Direct increment to Stock 3
+      // Standard: Deduct from Stock 2 (WIP) and Add to Stock 3 (Finished Goods)
       deltas.push({
         reference: refCode,
+        delta2: -qty,
         delta3: qty
       });
     }
@@ -779,12 +795,13 @@ export async function executeProtectedValidateToStock3(
       id: prodId,
       doc: {
         id: prodId,
+        batchId,
         reference: refCode,
         quantity: qty,
         date: p.date,
         operatorName,
         timestamp,
-        notes: p.notes || `Validated Daily Production: ${qty} PCS to Stock 3`
+        notes: p.notes || (mode === "DIRECT_STOCK_3" ? `Validated Daily Production: +${qty} PCS to Stock 3` : `Validated Daily Production: ${qty} PCS (Stock 2 -> Stock 3)`)
       }
     });
 
@@ -792,12 +809,12 @@ export async function executeProtectedValidateToStock3(
     transactions.push({
       id: transId,
       reference: refCode,
-      movementType: mode === "TRANSFER_S2_TO_S3" ? "STOCK 2 OUT / STOCK 3 IN" : "STOCK 3 IN",
-      stock: mode === "TRANSFER_S2_TO_S3" ? "Stock 2 -> Stock 3" : "Stock 3",
+      movementType: mode === "DIRECT_STOCK_3" ? "STOCK 3 IN" : "STOCK 2 OUT / STOCK 3 IN",
+      stock: mode === "DIRECT_STOCK_3" ? "Stock 3" : "Stock 2 -> Stock 3",
       quantity: qty,
       operatorName,
       timestamp,
-      notes: `Daily Production (${p.date}): ${mode === "TRANSFER_S2_TO_S3" ? "S2 -> S3" : "+Stock 3"} (${qty} PCS). ${p.notes || ""}`
+      notes: `Daily Production (${p.date}): ${mode === "DIRECT_STOCK_3" ? "+Stock 3" : "Stock 2 -> Stock 3"} (${qty} PCS). ${p.notes || ""}`
     });
   });
 
@@ -807,6 +824,7 @@ export async function executeProtectedValidateToStock3(
     operationType: "DAILY_PRODUCTION_STOCK_3",
     deltas,
     operatorName,
+    clampToZeroOnNegative: true,
     idempotencyKey,
     transactions,
     additionalWrites: (transaction) => {
@@ -1144,25 +1162,27 @@ export async function executeProtectedDeleteProduction(
   const qty = prodData.quantity;
   const timestamp = new Date().toISOString();
 
-  const deltas: ProtectedStockDelta[] = [
-    {
-      reference: refCode,
-      delta2: qty,
-      delta3: -qty
-    }
-  ];
+  const isDirectStock3 = Boolean(
+    (prodData.notes?.includes("DIRECT_STOCK_3") || prodData.notes?.includes("+Stock 3")) &&
+    !prodData.notes?.includes("Stock 2") &&
+    !prodData.notes?.includes("S2")
+  );
+
+  const deltas: ProtectedStockDelta[] = isDirectStock3
+    ? [{ reference: refCode, delta3: -qty }]
+    : [{ reference: refCode, delta2: qty, delta3: -qty }];
 
   const transId = `trans-delprod-${Date.now()}`;
   const transactions: any[] = [
     {
       id: transId,
       reference: refCode,
-      movementType: "STOCK 3 OUT / STOCK 2 IN",
-      stock: "Stock 3 -> Stock 2",
+      movementType: isDirectStock3 ? "STOCK 3 OUT" : "STOCK 3 OUT / STOCK 2 IN",
+      stock: isDirectStock3 ? "Stock 3" : "Stock 3 -> Stock 2",
       quantity: qty,
       operatorName: `${operatorName} (Reversal)`,
       timestamp,
-      notes: `Deleted production entry on ${prodData.date} (${qty} PCS reverted from Stock 3 to Stock 2). ${reason ? `Reason: ${reason}` : ""}`
+      notes: `Deleted production entry on ${prodData.date} (${qty} PCS removed from Stock 3${isDirectStock3 ? "" : ", restored to Stock 2"}). ${reason ? `Reason: ${reason}` : ""}`
     }
   ];
 
@@ -1170,6 +1190,7 @@ export async function executeProtectedDeleteProduction(
     operationType: "PRODUCTION_REVERT",
     deltas,
     operatorName,
+    clampToZeroOnNegative: true,
     transactions,
     additionalWrites: (transaction) => {
       transaction.delete(doc(db, "productions", prodId));
@@ -1205,22 +1226,31 @@ export async function executeProtectedUpdateProduction(
   const newRef = updatedData.reference.trim().toUpperCase();
   const timestamp = new Date().toISOString();
 
+  const isDirectStock3 = oldProd.notes?.includes("Stock 3") || oldProd.id.startsWith("prod-val-") || oldProd.id.startsWith("prod-sheet-");
   const deltas: ProtectedStockDelta[] = [];
 
   if (oldRef === newRef) {
     const delta = newQty - oldQty;
     if (delta !== 0) {
-      deltas.push({
-        reference: newRef,
-        delta2: -delta,
-        delta3: delta
-      });
+      deltas.push(
+        isDirectStock3
+          ? { reference: newRef, delta3: delta }
+          : { reference: newRef, delta2: -delta, delta3: delta }
+      );
     }
   } else {
     // Revert old production
-    deltas.push({ reference: oldRef, delta2: oldQty, delta3: -oldQty });
+    deltas.push(
+      isDirectStock3
+        ? { reference: oldRef, delta3: -oldQty }
+        : { reference: oldRef, delta2: oldQty, delta3: -oldQty }
+    );
     // Apply new production
-    deltas.push({ reference: newRef, delta2: -newQty, delta3: newQty });
+    deltas.push(
+      isDirectStock3
+        ? { reference: newRef, delta3: newQty }
+        : { reference: newRef, delta2: -newQty, delta3: newQty }
+    );
   }
 
   const historyEntry = {
@@ -1253,6 +1283,7 @@ export async function executeProtectedUpdateProduction(
     operationType: "PRODUCTION_UPDATE",
     deltas,
     operatorName,
+    clampToZeroOnNegative: true,
     transactions,
     additionalWrites: (transaction) => {
       transaction.update(
@@ -1266,6 +1297,79 @@ export async function executeProtectedUpdateProduction(
           changeHistory: [...existingHistory, historyEntry]
         })
       );
+    }
+  });
+}
+
+/**
+ * 8c. Delete an Entire Batch of Production Entries (e.g. from a Daily Drag Intake)
+ */
+export async function executeProtectedDeleteBatch(
+  productionsToRevert: Production[],
+  operatorName: string,
+  reason = ""
+) {
+  if (!productionsToRevert || productionsToRevert.length === 0) return;
+
+  // If there are many records (e.g. bulk reset), process in chunks of 40 to stay well within Firestore limits
+  const CHUNK_SIZE = 40;
+  if (productionsToRevert.length > CHUNK_SIZE) {
+    for (let i = 0; i < productionsToRevert.length; i += CHUNK_SIZE) {
+      const chunk = productionsToRevert.slice(i, i + CHUNK_SIZE);
+      await executeProtectedDeleteBatch(chunk, operatorName, `${reason} (Part ${Math.floor(i / CHUNK_SIZE) + 1})`);
+    }
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  const deltas: ProtectedStockDelta[] = [];
+  const transactions: any[] = [];
+  const idsToDelete: string[] = [];
+
+  for (let idx = 0; idx < productionsToRevert.length; idx++) {
+    const p = productionsToRevert[idx];
+    const refCode = p.reference.trim().toUpperCase();
+    const qty = p.quantity;
+    const isDirectStock3 = Boolean(
+      (p.notes?.includes("DIRECT_STOCK_3") || p.notes?.includes("+Stock 3")) &&
+      !p.notes?.includes("Stock 2") &&
+      !p.notes?.includes("S2")
+    );
+
+    if (isDirectStock3) {
+      deltas.push({ reference: refCode, delta3: -qty });
+    } else {
+      deltas.push({ reference: refCode, delta2: qty, delta3: -qty });
+    }
+
+    idsToDelete.push(p.id);
+
+    const transId = `trans-delbatch-${Date.now()}-${idx}`;
+    transactions.push({
+      id: transId,
+      reference: refCode,
+      movementType: isDirectStock3 ? "STOCK 3 OUT" : "STOCK 3 OUT / STOCK 2 IN",
+      stock: isDirectStock3 ? "Stock 3" : "Stock 3 -> Stock 2",
+      quantity: qty,
+      operatorName: `${operatorName} (Batch Reversal)`,
+      timestamp,
+      notes: `Batch Reversal for ${p.date} (${qty} PCS removed from Stock 3). ${reason || ""}`
+    });
+  }
+
+  const idempotencyKey = `del-batch-${operatorName}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  await executeProtectedStockOperation({
+    operationType: "PRODUCTION_BATCH_REVERT",
+    deltas,
+    operatorName,
+    idempotencyKey,
+    clampToZeroOnNegative: true,
+    transactions,
+    additionalWrites: (transaction) => {
+      for (const id of idsToDelete) {
+        transaction.delete(doc(db, "productions", id));
+      }
     }
   });
 }

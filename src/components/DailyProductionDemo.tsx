@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from "react";
-import { Reference, User } from "../types";
+import { Reference, User, Production } from "../types";
 import { 
   DailyProductionRow, 
   INITIAL_DEMO_CSV, 
@@ -32,29 +32,57 @@ import {
   X,
   Save,
   HelpCircle,
-  Factory
+  Factory,
+  History,
+  Calendar,
+  Filter,
+  Eye,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
-import { getMoroccoTodayDateString } from "../utils/timeUtils";
+import { getMoroccoTodayDateString, formatSystemTime, parseTimestampMs } from "../utils/timeUtils";
+
+export interface DailyProductionBatch {
+  id: string;
+  date: string;
+  recordedTime: string;
+  timestamp: any;
+  records: Production[];
+  totalQty: number;
+  uniqueReferencesCount: number;
+}
 
 interface DailyProductionDemoProps {
   references: Reference[];
   currentUser: User;
+  productions?: Production[];
   onNavigateToProduction?: (stagedRows?: { reference: string; quantity: number; notes?: string }[]) => void;
   onSubmitProduction?: (productionEntries: { date: string; reference: string; quantity: number; notes?: string }[]) => Promise<void>;
   onValidateToStock3?: (
     entries: { date: string; reference: string; quantity: number; description?: string; notes?: string }[],
     mode?: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3"
   ) => Promise<void>;
+  onDeleteProduction?: (productionId: string, reason?: string) => Promise<void>;
+  onUpdateProduction?: (
+    productionId: string,
+    updatedData: { date: string; reference: string; quantity: number; notes?: string },
+    reason?: string
+  ) => Promise<void>;
+  onDeleteBatch?: (batchRecords: Production[], reason?: string) => Promise<void>;
 }
 
 export default function DailyProductionDemo({
   references = [],
   currentUser,
+  productions = [],
   onNavigateToProduction,
   onSubmitProduction,
-  onValidateToStock3
+  onValidateToStock3,
+  onDeleteProduction,
+  onUpdateProduction,
+  onDeleteBatch
 }: DailyProductionDemoProps) {
   // Catalog map for fast matching
   const refMap = useMemo(() => {
@@ -87,15 +115,50 @@ export default function DailyProductionDemo({
     });
   };
 
-  // State: Loaded rows
-  const [rows, setRows] = useState<DailyProductionRow[]>(() => enrichRows(INITIAL_DEMO_ROWS));
-  const [currentSource, setCurrentSource] = useState<string>("Preloaded Daily Production Intake");
+  // State: Loaded rows (Starts empty at point zero)
+  const [rows, setRows] = useState<DailyProductionRow[]>([]);
+  const [currentSource, setCurrentSource] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isParsing, setIsParsing] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [productionDate, setProductionDate] = useState<string>(getMoroccoTodayDateString());
   const [copiedStatus, setCopiedStatus] = useState<string | null>(null);
+
+  // Clear staged rows back to point zero
+  const handleClearStagedRows = () => {
+    setRows([]);
+    setCurrentSource("");
+  };
+
+  // Validated records filtering & history state
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [historyDateFilter, setHistoryDateFilter] = useState("");
+
+  // Batch details & expandable state
+  const [selectedBatchDetails, setSelectedBatchDetails] = useState<DailyProductionBatch | null>(null);
+  const [expandedBatchIds, setExpandedBatchIds] = useState<Set<string>>(new Set());
+
+  const toggleBatchExpand = (batchId: string) => {
+    setExpandedBatchIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(batchId)) {
+        next.delete(batchId);
+      } else {
+        next.add(batchId);
+      }
+      return next;
+    });
+  };
+
+  // Edit validated production state
+  const [editingProduction, setEditingProduction] = useState<Production | null>(null);
+  const [editProdDate, setEditProdDate] = useState("");
+  const [editProdRef, setEditProdRef] = useState("");
+  const [editProdQty, setEditProdQty] = useState("");
+  const [editProdNotes, setEditProdNotes] = useState("");
+  const [editProdReason, setEditProdReason] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Re-match catalog when references change
   useEffect(() => {
@@ -140,6 +203,93 @@ export default function DailyProductionDemo({
         r.matchedReference?.customer?.toLowerCase().includes(q)
     );
   }, [rows, searchQuery]);
+
+  // Group all database productions into Drag Batches (one record per drag intake)
+  const dragBatches = useMemo(() => {
+    // Sort all records descending first (most recent first)
+    const sorted = [...productions].sort((a, b) => {
+      const msA = parseTimestampMs(a.timestamp) || 0;
+      const msB = parseTimestampMs(b.timestamp) || 0;
+      return msB - msA;
+    });
+
+    const batches: DailyProductionBatch[] = [];
+
+    // Group by explicit batchId if available, or cluster records from the same intake (same date and timestamp within 2 minutes)
+    for (const p of sorted) {
+      const pBatchId = (p as any).batchId;
+      const pMs = parseTimestampMs(p.timestamp) || 0;
+
+      let matchedBatch: DailyProductionBatch | undefined;
+
+      if (pBatchId) {
+        matchedBatch = batches.find((b) => b.id === pBatchId);
+      } else {
+        matchedBatch = batches.find((b) => {
+          if (b.date !== p.date) return false;
+          const bMs = parseTimestampMs(b.timestamp) || 0;
+          if (pMs > 0 && bMs > 0) {
+            return Math.abs(bMs - pMs) <= 120000; // Within 2 minutes from same intake
+          }
+          // If neither has timestamp, match on same date
+          return pMs === 0 && bMs === 0;
+        });
+      }
+
+      if (matchedBatch) {
+        matchedBatch.records.push(p);
+        matchedBatch.totalQty += p.quantity || 0;
+        matchedBatch.uniqueReferencesCount = new Set(
+          matchedBatch.records.map((r) => r.reference.toUpperCase().trim())
+        ).size;
+      } else {
+        const baseId = pBatchId || (pMs > 0 ? `drag-batch-${p.date}-${pMs}` : `drag-batch-${p.date}`);
+        let uniqueId = baseId;
+        let counter = 1;
+        while (batches.some((b) => b.id === uniqueId)) {
+          uniqueId = `${baseId}-${counter++}`;
+        }
+
+        batches.push({
+          id: uniqueId,
+          date: p.date || "",
+          recordedTime: formatSystemTime(p.timestamp),
+          timestamp: p.timestamp,
+          records: [p],
+          totalQty: p.quantity || 0,
+          uniqueReferencesCount: 1
+        });
+      }
+    }
+
+    return batches;
+  }, [productions]);
+
+  const filteredBatches = useMemo(() => {
+    return dragBatches.filter((b) => {
+      if (historyDateFilter && b.date !== historyDateFilter) return false;
+      if (historySearchQuery) {
+        const q = historySearchQuery.toLowerCase().trim();
+        const dateMatch = b.date.toLowerCase().includes(q);
+        const timeMatch = b.recordedTime.toLowerCase().includes(q);
+        const refMatch = b.records.some(
+          (r) =>
+            r.reference.toLowerCase().includes(q) ||
+            (refMap.get(r.reference.toUpperCase().trim())?.description || "").toLowerCase().includes(q) ||
+            (refMap.get(r.reference.toUpperCase().trim())?.customer || "").toLowerCase().includes(q)
+        );
+        if (!dateMatch && !timeMatch && !refMatch) return false;
+      }
+      return true;
+    });
+  }, [dragBatches, historyDateFilter, historySearchQuery, refMap]);
+
+  const batchStats = useMemo(() => {
+    const totalBatches = filteredBatches.length;
+    const totalRecords = filteredBatches.reduce((sum, b) => sum + b.records.length, 0);
+    const totalQty = filteredBatches.reduce((sum, b) => sum + b.totalQty, 0);
+    return { totalBatches, totalRecords, totalQty };
+  }, [filteredBatches]);
 
   // Handle Drag Events
   const handleDragOver = (e: React.DragEvent) => {
@@ -449,23 +599,22 @@ export default function DailyProductionDemo({
     const newRefs = rows.filter((r) => !refMap.has(r.refMaille.toUpperCase().trim()));
 
     const confirmResult = await Swal.fire({
-      title: "Validate & Add to Stock 3",
+      title: "Validate Daily Production (S2 → S3)",
       html: `
         <div style="text-align: left; font-family: monospace; font-size: 13px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; line-height: 1.6;">
           <p><strong>Total References:</strong> ${rows.length} items</p>
-          <p><strong>Total Stock 3 Addition:</strong> <span style="color: #059669; font-weight: 800; font-size: 15px;">+${totalQty.toLocaleString()} PCS</span></p>
-          <p><strong>Target Stock:</strong> <span style="color: #2563eb; font-weight: bold;">Stock 3 (Finished Goods)</span></p>
+          <p><strong>Total Production Quantity:</strong> <span style="color: #059669; font-weight: 800; font-size: 15px;">${totalQty.toLocaleString()} PCS</span></p>
+          <p><strong>Stock Movement:</strong> <span style="color: #2563eb; font-weight: bold;">Deduct Stock 2 (WIP) &rarr; Add to Stock 3 (Finished Goods)</span></p>
           <p><strong>Effective Date:</strong> ${dateToday}</p>
-          <p><strong>Operator:</strong> ${currentUser.fullName}</p>
           ${newRefs.length > 0 ? `<p style="color: #d97706; margin-top: 8px; font-size: 11px;">⚠️ <strong>Note:</strong> ${newRefs.length} new reference(s) will be automatically registered in the catalog.</p>` : ""}
         </div>
         <p style="font-size: 12px; color: #475569; margin-top: 12px; text-align: left;">
-          Clicking confirm will commit the transactions and increase Finished Goods Stock 3 for all listed references.
+          Clicking confirm will commit the transactions: deduct ${totalQty.toLocaleString()} PCS from Stock 2 and add them to Finished Goods Stock 3.
         </p>
       `,
       icon: "question",
       showCancelButton: true,
-      confirmButtonText: "Validate & Add to Stock 3",
+      confirmButtonText: "Validate (S2 → S3)",
       confirmButtonColor: "#059669",
       cancelButtonText: "Cancel"
     });
@@ -479,21 +628,22 @@ export default function DailyProductionDemo({
         reference: r.refMaille.toUpperCase().trim(),
         quantity: r.qtyConsommes,
         description: r.libelle || "",
-        notes: `Validated Daily Production: ${r.libelle || ""}`
+        notes: `Validated Daily Production: ${r.libelle || ""} (Stock 2 -> Stock 3)`
       }));
 
       if (onValidateToStock3) {
-        await onValidateToStock3(payload, "DIRECT_STOCK_3");
+        await onValidateToStock3(payload, "TRANSFER_S2_TO_S3");
       } else if (onSubmitProduction) {
         await onSubmitProduction(payload);
       }
 
       await Swal.fire({
         icon: "success",
-        title: "Successfully Added to Stock 3!",
+        title: "Validated & Transferred to Stock 3!",
         html: `
           <div style="font-family: monospace; font-size: 13px; text-align: left; padding: 12px; background: #ecfdf5; border-radius: 8px; border: 1px solid #a7f3d0; line-height: 1.6;">
             <p><strong>Validated Records:</strong> ${rows.length} references</p>
+            <p><strong>Deducted from Stock 2:</strong> <span style="color: #2563eb; font-weight: bold;">-${totalQty.toLocaleString()} PCS</span></p>
             <p><strong>Added to Stock 3:</strong> <span style="color: #059669; font-weight: bold;">+${totalQty.toLocaleString()} PCS</span></p>
             <p><strong>Effective Date:</strong> ${dateToday}</p>
             <p><strong>Status:</strong> Committed to Inventory & Logged in Production</p>
@@ -501,11 +651,15 @@ export default function DailyProductionDemo({
         `,
         confirmButtonColor: "#059669"
       });
+
+      // Reset staged rows back to point zero after successful validation
+      setRows([]);
+      setCurrentSource("");
     } catch (err: any) {
       console.error("Failed to validate records to Stock 3:", err);
       Swal.fire({
         icon: "error",
-        title: "Stock 3 Validation Failed",
+        title: "Stock Validation Failed",
         text: err?.message || "An error occurred while validating records to Stock 3."
       });
     } finally {
@@ -516,6 +670,208 @@ export default function DailyProductionDemo({
   // Stage / Transfer converted rows to Daily Production
   const handleCommitToProduction = async () => {
     await handleValidateToStock3();
+  };
+
+  // Action handlers for database-linked validated production records
+  const handleStartEditProduction = (p: Production) => {
+    setEditingProduction(p);
+    setEditProdDate(p.date);
+    setEditProdRef(p.reference);
+    setEditProdQty(p.quantity.toString());
+    setEditProdNotes(p.notes || "");
+    setEditProdReason("");
+  };
+
+  const handleSaveProductionEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduction || !onUpdateProduction) return;
+
+    const q = parseInt(editProdQty, 10);
+    if (isNaN(q) || q <= 0) {
+      Swal.fire("Invalid Quantity", "Please enter a positive quantity.", "warning");
+      return;
+    }
+    if (!editProdReason.trim()) {
+      Swal.fire("Reason Required", "Please provide an audit reason for modifying this production record in the database.", "warning");
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      await onUpdateProduction(
+        editingProduction.id,
+        {
+          date: editProdDate,
+          reference: editProdRef.trim().toUpperCase(),
+          quantity: q,
+          notes: editProdNotes.trim() || undefined
+        },
+        editProdReason.trim()
+      );
+
+      Swal.fire({
+        icon: "success",
+        title: "Record Updated in Database",
+        text: `Successfully updated ${editProdRef} to ${q.toLocaleString()} PCS. Stock 3 has been adjusted accordingly.`,
+        timer: 1800,
+        showConfirmButton: false
+      });
+      setEditingProduction(null);
+    } catch (err: any) {
+      console.error("Failed to update production:", err);
+      Swal.fire("Update Failed", err?.message || "Failed to update record in database.", "error");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteProductionRecord = async (p: Production) => {
+    if (!onDeleteProduction) return;
+
+    const result = await Swal.fire({
+      title: "Delete & Revert from Stock 3?",
+      html: `
+        <div style="font-family: monospace; font-size: 13px; text-align: left; padding: 12px; background: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; line-height: 1.6;">
+          <p><strong>Reference:</strong> ${p.reference}</p>
+          <p><strong>Quantity:</strong> <span style="color: #e11d48; font-weight: bold;">-${p.quantity.toLocaleString()} PCS</span></p>
+          <p><strong>Date:</strong> ${p.date}</p>
+        </div>
+        <p style="font-size: 12px; color: #64748b; margin-top: 10px; text-align: left;">
+          This will permanently delete the production entry from the database and remove <strong>${p.quantity.toLocaleString()} PCS</strong> from Finished Goods Stock 3.
+        </p>
+      `,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, Delete & Revert Stock 3",
+      confirmButtonColor: "#e11d48",
+      cancelButtonText: "Cancel"
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await onDeleteProduction(p.id, "Operator deleted record from Daily Production workspace");
+      Swal.fire({
+        icon: "success",
+        title: "Record Deleted",
+        text: `Successfully removed ${p.reference} (${p.quantity} PCS) from the database and reverted Stock 3.`,
+        timer: 1800,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      console.error("Failed to delete record:", err);
+      Swal.fire("Delete Failed", err?.message || "Failed to delete record from database.", "error");
+    }
+  };
+
+  const handleDeleteBatchRecord = async (batch: DailyProductionBatch) => {
+    const result = await Swal.fire({
+      title: "Revert Entire Drag Intake?",
+      html: `
+        <div style="font-family: monospace; font-size: 13px; text-align: left; padding: 12px; background: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; line-height: 1.6;">
+          <p><strong>Intake Date:</strong> ${batch.date}</p>
+          <p><strong>Recorded Time:</strong> ${batch.recordedTime}</p>
+          <p><strong>Total References:</strong> ${batch.records.length} items</p>
+          <p><strong>Stock 3 Deduction:</strong> <span style="color: #e11d48; font-weight: bold;">-${batch.totalQty.toLocaleString()} PCS</span></p>
+        </div>
+        <p style="font-size: 12px; color: #64748b; margin-top: 10px; text-align: left;">
+          This will permanently delete all <strong>${batch.records.length}</strong> production entries in this drag from the database and remove <strong>${batch.totalQty.toLocaleString()} PCS</strong> from Finished Goods Stock 3.
+        </p>
+      `,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, Revert Entire Drag",
+      confirmButtonColor: "#e11d48",
+      cancelButtonText: "Cancel"
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      if (onDeleteBatch) {
+        await onDeleteBatch(batch.records, `Reverted drag intake from ${batch.date} (${batch.recordedTime})`);
+      } else if (onDeleteProduction) {
+        for (const r of batch.records) {
+          await onDeleteProduction(r.id, `Reverted drag intake record`);
+        }
+      }
+      Swal.fire({
+        icon: "success",
+        title: "Drag Intake Reverted",
+        text: `Successfully deleted ${batch.records.length} production entries and reverted ${batch.totalQty.toLocaleString()} PCS from Stock 3.`,
+        timer: 1800,
+        showConfirmButton: false
+      });
+      if (selectedBatchDetails?.id === batch.id) {
+        setSelectedBatchDetails(null);
+      }
+    } catch (err: any) {
+      console.error("Failed to delete batch:", err);
+      Swal.fire("Batch Reversal Failed", err?.message || "Failed to revert drag intake from database.", "error");
+    }
+  };
+
+  const handleResetAllHistoryToZero = async () => {
+    if (!onDeleteBatch || !productions || productions.length === 0) return;
+
+    const result = await Swal.fire({
+      title: "Reset Daily Production to Point Zero?",
+      html: `
+        <div style="font-family: monospace; font-size: 13px; text-align: left; padding: 12px; background: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; line-height: 1.6;">
+          <p><strong>Total Production Records:</strong> ${productions.length} entries</p>
+          <p><strong>Total Drag Batches:</strong> ${dragBatches.length} intake(s)</p>
+          <p><strong>Action:</strong> Revert Stock 3 and restore Stock 2 (WIP) for all records, clearing the entire daily production log.</p>
+        </div>
+        <p style="font-size: 12px; color: #e11d48; margin-top: 10px; font-weight: bold; text-align: left;">
+          ⚠️ This will completely revert all Daily Production records to start fresh at point zero.
+        </p>
+      `,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, Reset Everything to Zero",
+      confirmButtonColor: "#e11d48",
+      cancelButtonText: "Cancel"
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await onDeleteBatch(productions, "Reset Daily Production to Point Zero");
+      Swal.fire({
+        icon: "success",
+        title: "Daily Production at Point Zero",
+        text: "All production entries have been reverted and the workspace is now completely reset.",
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      console.error("Failed to reset daily production:", err);
+      Swal.fire("Reset Failed", err?.message || "Failed to reset daily production to zero.", "error");
+    }
+  };
+
+  const handleExportValidatedExcel = () => {
+    if (filteredBatches.length === 0) return;
+    const sheetData: any[] = [];
+    filteredBatches.forEach((b, bIdx) => {
+      b.records.forEach((p) => {
+        const refObj = refMap.get(p.reference.toUpperCase().trim());
+        sheetData.push({
+          "Drag Batch #": bIdx + 1,
+          "Production Date": b.date,
+          "Recorded Time": b.recordedTime,
+          "Reference": p.reference,
+          "Customer": refObj?.customer || "",
+          "Description": refObj?.description || "",
+          "Quantity (Stock 3)": p.quantity
+        });
+      });
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(sheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Validated Drag Intakes");
+    XLSX.writeFile(workbook, `validated_drag_intakes_${getMoroccoTodayDateString()}.xlsx`);
   };
 
   return (
@@ -608,7 +964,7 @@ export default function DailyProductionDemo({
               <div>
                 <div className="text-[11px] text-slate-500 font-medium">Source / Origin:</div>
                 <div className="text-xs font-mono font-bold text-slate-800 break-all mt-0.5">
-                  {currentSource}
+                  {currentSource || "No files loaded (Point Zero — Ready for Intake)"}
                 </div>
               </div>
 
@@ -651,7 +1007,7 @@ export default function DailyProductionDemo({
               className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-98 disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-100" />
-              <span>Validate to Stock 3</span>
+              <span>Validate & Transfer (S2 → S3)</span>
               <ArrowRight className="w-3.5 h-3.5 ml-auto text-emerald-200" />
             </button>
           </div>
@@ -674,9 +1030,6 @@ export default function DailyProductionDemo({
               <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider font-mono">
                 Converted Daily Data ({filteredRows.length} {filteredRows.length === 1 ? "reference" : "references"})
               </h2>
-              <p className="text-xs text-slate-500">
-                Data extracted directly from Google Sheets file format ready for daily operations
-              </p>
             </div>
           </div>
 
@@ -701,6 +1054,30 @@ export default function DailyProductionDemo({
                 </button>
               )}
             </div>
+
+            {/* Clear Intake button when rows > 0 */}
+            {rows.length > 0 && (
+              <button
+                onClick={handleClearStagedRows}
+                className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold font-mono flex items-center gap-1.5 border border-rose-200 cursor-pointer"
+                title="Clear all staged rows and reset intake to zero"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                <span>Clear Staged (Reset to 0)</span>
+              </button>
+            )}
+
+            {/* Optional Load Sample Template button when rows === 0 */}
+            {rows.length === 0 && (
+              <button
+                onClick={handleResetToUserDemo}
+                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold font-mono flex items-center gap-1.5 border border-slate-200 cursor-pointer"
+                title="Optionally load sample template rows for testing"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
+                <span>Load Sample Template</span>
+              </button>
+            )}
 
             {/* Add row manually */}
             <button
@@ -817,8 +1194,7 @@ export default function DailyProductionDemo({
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
                     <FileSpreadsheet className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                    <p className="font-bold text-slate-600">No rows to display</p>
-                    <p className="text-xs mt-1">Drag and drop a Google Sheets file or click "Load User Sample".</p>
+                    <p className="font-bold text-slate-700">Daily Intake at Point Zero (Ready)</p>
                   </td>
                 </tr>
               ) : (
@@ -981,20 +1357,20 @@ export default function DailyProductionDemo({
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              Direct Stock 3 Intake
+              Stock 2 &rarr; Stock 3 Transfer
             </span>
             <span className="text-xs text-slate-400 font-mono">
               &bull; {rows.length} records ready
             </span>
           </div>
           <h3 className="text-lg sm:text-xl font-black tracking-tight text-white flex items-center gap-2">
-            <span>Commit Validated Records to Stock 3</span>
+            <span>Commit Validated Records (Removed from S2 &rarr; Added to S3)</span>
           </h3>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
           <div className="bg-white/10 rounded-xl px-4 py-2.5 border border-white/15 text-left min-w-[150px]">
-            <div className="text-[10px] text-slate-400 font-mono uppercase font-bold">Total Finished Goods</div>
+            <div className="text-[10px] text-slate-400 font-mono uppercase font-bold">Transfer to Stock 3</div>
             <div className="text-xl font-black font-mono text-emerald-400 mt-0.5">
               +{stats.totalPcs.toLocaleString()} PCS
             </div>
@@ -1009,12 +1385,12 @@ export default function DailyProductionDemo({
             {isValidating ? (
               <>
                 <RotateCcw className="w-4 h-4 animate-spin text-white" />
-                <span>Validating & Adding to Stock 3...</span>
+                <span>Validating & Transferring (S2 &rarr; S3)...</span>
               </>
             ) : (
               <>
                 <CheckCircle2 className="w-5 h-5 text-white" />
-                <span>VALIDATE TO STOCK 3</span>
+                <span>VALIDATE & TRANSFER (S2 &rarr; S3)</span>
                 <ArrowRight className="w-4 h-4 text-emerald-200" />
               </>
             )}
@@ -1023,7 +1399,533 @@ export default function DailyProductionDemo({
       </div>
 
       {/* ---------------------------------------------------- */}
-      {/* 5. MODAL: PASTE GOOGLE SHEETS CONTENT */}
+      {/* 5. DATABASE LINKED: VALIDATED PRODUCTION RECORDS & TRACEABILITY */}
+      {/* ---------------------------------------------------- */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden" id="daily-production-validated-history-card">
+        
+        {/* Header Toolbar */}
+        <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-100 text-emerald-800 rounded-xl shadow-2xs">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm sm:text-base font-bold text-slate-900 uppercase tracking-wider font-mono">
+                  Validated Production Records & History
+                </h2>
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold border border-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                  DATABASE LINKED
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Filters & Controls */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Search Filter */}
+            <div className="relative w-full sm:w-56">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search ref, date, or drag intake..."
+                value={historySearchQuery}
+                onChange={(e) => setHistorySearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+              />
+              {historySearchQuery && (
+                <button
+                  onClick={() => setHistorySearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Date Filter */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs shadow-2xs">
+              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+              <input
+                type="date"
+                value={historyDateFilter}
+                onChange={(e) => setHistoryDateFilter(e.target.value)}
+                className="text-xs bg-transparent focus:outline-none font-mono text-slate-700"
+              />
+              {historyDateFilter && (
+                <button
+                  onClick={() => setHistoryDateFilter("")}
+                  className="text-slate-400 hover:text-slate-600 text-xs ml-1"
+                  title="Clear date filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Export Validated */}
+            <button
+              onClick={handleExportValidatedExcel}
+              disabled={filteredBatches.length === 0}
+              className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+              title="Export validated production records"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export History</span>
+            </button>
+
+            {/* Reset History to Point Zero */}
+            {onDeleteBatch && productions.length > 0 && (
+              <button
+                onClick={handleResetAllHistoryToZero}
+                className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold font-mono flex items-center gap-1.5 border border-rose-200 cursor-pointer shadow-2xs"
+                title="Revert all recorded productions and return daily production to point zero"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                <span>Reset History to Zero ({productions.length})</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Stats Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50/80 border-b border-slate-200 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500 font-mono text-[11px]">Validated Drags:</span>
+            <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
+              {batchStats.totalBatches} {batchStats.totalBatches === 1 ? "drag" : "drags"} ({batchStats.totalRecords} refs)
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500 font-mono text-[11px]">Total Stock 3 Output:</span>
+            <span className="font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              +{batchStats.totalQty.toLocaleString()} PCS
+            </span>
+          </div>
+          <div className="hidden sm:flex items-center justify-end text-[11px] text-slate-400 font-mono">
+            {historyDateFilter ? `Filtered for ${historyDateFilter}` : "All Recorded Drags"}
+          </div>
+        </div>
+
+        {/* Table of Validated Drag Intake Batches */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse" id="validated-daily-production-table">
+            <thead>
+              <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 font-mono">
+                <th className="py-3 px-4 w-12 text-center">#</th>
+                <th className="py-3 px-4">Production Date</th>
+                <th className="py-3 px-4">Drag Intake Summary</th>
+                <th className="py-3 px-4 text-right">Total Stock 3 Added</th>
+                <th className="py-3 px-4">Recorded Time (Morocco)</th>
+                <th className="py-3 px-4 text-center">Details & Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs font-sans">
+              {filteredBatches.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-14 text-center">
+                    {productions.length === 0 ? (
+                      <div className="max-w-md mx-auto space-y-2">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-100 shadow-2xs">
+                          <CheckCircle2 className="w-6 h-6" />
+                        </div>
+                        <p className="text-sm font-bold text-slate-800 font-mono">Workspace at Point Zero &bull; Ready for Real Production</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <History className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                        <p className="font-bold text-slate-600">No validated drag intakes match the filter criteria</p>
+                        <p className="text-xs text-slate-400">Try clearing the search query or date filter above.</p>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ) : (
+                filteredBatches.map((batch, idx) => {
+                  const isExpanded = expandedBatchIds.has(batch.id);
+                  return (
+                    <React.Fragment key={`${batch.id}-${idx}`}>
+                      <tr 
+                        onClick={() => setSelectedBatchDetails(batch)}
+                        className="hover:bg-emerald-50/40 transition-colors group cursor-pointer"
+                        title="Click to view all records in this drag intake"
+                      >
+                        <td className="py-3.5 px-4 text-center font-mono text-slate-400 text-[11px]">
+                          {idx + 1}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
+                          {batch.date}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-800 font-mono text-xs">
+                              Drag Intake #{filteredBatches.length - idx}
+                            </span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-mono text-[10px] font-bold border border-blue-200">
+                              {batch.records.length} {batch.records.length === 1 ? "reference" : "references"}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 font-sans mt-0.5 truncate max-w-sm">
+                            {batch.records.slice(0, 3).map((r) => r.reference).join(", ")}
+                            {batch.records.length > 3 ? ` +${batch.records.length - 3} more` : ""}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-black text-slate-900 whitespace-nowrap">
+                          <span className="inline-block px-3 py-1 rounded-lg bg-emerald-100 text-emerald-950 border border-emerald-300 font-mono text-xs">
+                            +{batch.totalQty.toLocaleString()} <span className="text-[10px] font-semibold text-emerald-700">PCS</span>
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                          {batch.recordedTime}
+                        </td>
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => setSelectedBatchDetails(batch)}
+                              id={`drag-details-btn-${idx}`}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold font-mono flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98"
+                              title="View all records inside this drag"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-white" />
+                              <span>Details ({batch.records.length})</span>
+                            </button>
+
+                            <button
+                              onClick={() => toggleBatchExpand(batch.id)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                              title={isExpanded ? "Collapse inline preview" : "Expand inline preview"}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="w-4 h-4 text-slate-600" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-slate-600" />
+                              )}
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteBatchRecord(batch)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Revert this entire drag intake from Stock 3"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expandable Inline Row */}
+                      {isExpanded && (
+                        <tr className="bg-slate-50/60 border-t border-b border-slate-200">
+                          <td colSpan={6} className="p-4 sm:p-5">
+                            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3">
+                              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <div className="text-xs font-mono font-bold text-slate-800 flex items-center gap-2">
+                                  <Layers className="w-4 h-4 text-blue-600" />
+                                  <span>Drag Breakdown ({batch.records.length} items &bull; +{batch.totalQty.toLocaleString()} PCS)</span>
+                                </div>
+                                <button
+                                  onClick={() => setSelectedBatchDetails(batch)}
+                                  className="text-xs text-blue-600 hover:underline font-bold font-mono flex items-center gap-1 cursor-pointer"
+                                >
+                                  Open Full Details Modal &rarr;
+                                </button>
+                              </div>
+
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                  <thead>
+                                    <tr className="text-[10px] uppercase font-mono font-bold text-slate-400 border-b border-slate-100 pb-1">
+                                      <th className="py-1.5 px-2">Reference</th>
+                                      <th className="py-1.5 px-2">Customer</th>
+                                      <th className="py-1.5 px-2">Description</th>
+                                      <th className="py-1.5 px-2 text-right">Quantity</th>
+                                      <th className="py-1.5 px-2 text-center">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {batch.records.map((r, rIdx) => {
+                                      const refObj = refMap.get(r.reference.toUpperCase().trim());
+                                      return (
+                                        <tr key={r.id ? `${r.id}-${rIdx}` : `batch-rec-${batch.id}-${rIdx}`} className="hover:bg-slate-50">
+                                          <td className="py-2 px-2 font-mono font-bold text-slate-800">
+                                            {r.reference}
+                                          </td>
+                                          <td className="py-2 px-2 font-mono text-[11px] text-slate-500">
+                                            {refObj?.customer || "—"}
+                                          </td>
+                                          <td className="py-2 px-2 text-slate-600 truncate max-w-xs">
+                                            {refObj?.description || "—"}
+                                          </td>
+                                          <td className="py-2 px-2 text-right font-mono font-bold text-emerald-800">
+                                            +{r.quantity.toLocaleString()} PCS
+                                          </td>
+                                          <td className="py-2 px-2 text-center whitespace-nowrap">
+                                            <div className="inline-flex items-center gap-1">
+                                              <button
+                                                onClick={() => handleStartEditProduction(r)}
+                                                className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                                title="Edit record"
+                                              >
+                                                <Edit2 className="w-3 h-3" />
+                                              </button>
+                                              <button
+                                                onClick={() => handleDeleteProductionRecord(r)}
+                                                className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                                title="Delete record"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ---------------------------------------------------- */}
+      {/* 6. MODAL: DRAG INTAKE DETAILS */}
+      {/* ---------------------------------------------------- */}
+      {selectedBatchDetails && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
+                  <Eye className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 font-mono">
+                    Drag Intake Details &bull; {selectedBatchDetails.date}
+                  </h3>
+                  <div className="text-xs text-slate-500 font-mono mt-0.5">
+                    Recorded at {selectedBatchDetails.recordedTime} &bull; {selectedBatchDetails.records.length} references
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedBatchDetails(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Total output summary banner */}
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between shrink-0">
+              <div className="text-xs text-emerald-900 font-medium">
+                Total finished goods validated to Stock 3:
+              </div>
+              <div className="text-lg font-black font-mono text-emerald-800">
+                +{selectedBatchDetails.totalQty.toLocaleString()} PCS
+              </div>
+            </div>
+
+            {/* Table of references inside this drag */}
+            <div className="overflow-y-auto flex-1 border border-slate-200 rounded-xl">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                  <tr className="text-[10px] font-mono font-bold uppercase text-slate-500">
+                    <th className="py-2.5 px-3 w-10 text-center">#</th>
+                    <th className="py-2.5 px-3">Reference</th>
+                    <th className="py-2.5 px-3">Customer</th>
+                    <th className="py-2.5 px-3">Description</th>
+                    <th className="py-2.5 px-3 text-right">Qty (Stock 3)</th>
+                    <th className="py-2.5 px-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-sans">
+                  {selectedBatchDetails.records.map((r, idx) => {
+                    const refObj = refMap.get(r.reference.toUpperCase().trim());
+                    return (
+                      <tr key={r.id ? `${r.id}-${idx}` : `modal-rec-${idx}`} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3 text-center font-mono text-slate-400 text-[11px]">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                          {r.reference}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                          {refObj?.customer || "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 truncate max-w-xs">
+                          {refObj?.description || "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800 whitespace-nowrap">
+                          +{r.quantity.toLocaleString()} PCS
+                        </td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => handleStartEditProduction(r)}
+                              className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                              title="Edit record"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                await handleDeleteProductionRecord(r);
+                                // Refresh selected batch records
+                                setSelectedBatchDetails((prev) => {
+                                  if (!prev) return null;
+                                  const updated = prev.records.filter((rec) => rec.id !== r.id);
+                                  if (updated.length === 0) return null;
+                                  return {
+                                    ...prev,
+                                    records: updated,
+                                    totalQty: updated.reduce((sum, item) => sum + item.quantity, 0)
+                                  };
+                                });
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Delete record"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100 shrink-0">
+              <button
+                onClick={() => handleDeleteBatchRecord(selectedBatchDetails)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Revert Entire Drag (-{selectedBatchDetails.totalQty.toLocaleString()} PCS)</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedBatchDetails(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 cursor-pointer"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* 6. MODAL: EDIT VALIDATED PRODUCTION RECORD IN DATABASE */}
+      {/* ---------------------------------------------------- */}
+      {editingProduction && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-slate-800 font-bold text-base">
+                <Edit2 className="w-5 h-5 text-blue-600" />
+                <span>Edit Production Record</span>
+              </div>
+              <button
+                onClick={() => setEditingProduction(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProductionEdit} className="space-y-3.5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  Reference Code *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editProdRef}
+                  onChange={(e) => setEditProdRef(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl font-mono uppercase font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                    Production Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editProdDate}
+                    onChange={(e) => setEditProdDate(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                    Quantity (PCS) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={editProdQty}
+                    onChange={(e) => setEditProdQty(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
+                  Audit Reason for Modification *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Corrected quantity from daily tally sheet"
+                  value={editProdReason}
+                  onChange={(e) => setEditProdReason(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-blue-300 rounded-xl text-slate-800 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingProduction(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSavingEdit ? "Saving to Database..." : "Save to Database"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* 7. MODAL: PASTE GOOGLE SHEETS CONTENT */}
       {/* ---------------------------------------------------- */}
       {showPasteModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
