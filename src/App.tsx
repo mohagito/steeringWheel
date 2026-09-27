@@ -21,12 +21,13 @@ import RecordsWorkspace from "./components/RecordsWorkspace";
 import PegadasWorkspace from "./components/PegadasWorkspace";
 import ModuleSelection from "./components/ModuleSelection";
 import BezelWorkspace from "./components/BezelWorkspace";
+import DailyProductionDemo from "./components/DailyProductionDemo";
 import { LowStockAlertModal } from "./components/LowStockAlertModal";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
   RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2, FolderTree, FileText,
-  AlertTriangle, History, Layers, ArrowLeft
+  AlertTriangle, History, Layers, ArrowLeft, FileSpreadsheet
 } from "lucide-react";
 import {
   executeProtectedDeliveries,
@@ -45,7 +46,8 @@ import {
   executeProtectedEditOperation,
   executeProtectedDeleteOrReverseOperation,
   executeProtectedDeleteBox,
-  executeProtectedUpdateBox
+  executeProtectedUpdateBox,
+  executeProtectedValidateToStock3
 } from "./services/protectionLayer";
 
 export default function App() {
@@ -67,7 +69,7 @@ export default function App() {
   const [invoices, setInvoices] = useState<ReceivingInvoice[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "scrap" | "manage-references">(() => {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "scrap" | "manage-references">(() => {
     try {
       const savedUser = sessionStorage.getItem("epp_current_user");
       const savedTab = sessionStorage.getItem("epp_active_tab") as any;
@@ -347,6 +349,15 @@ export default function App() {
   const handleSubmitProduction = async (productionEntries: { date: string; reference: string; quantity: number; notes?: string }[]) => {
     if (!currentUser) return;
     await executeProtectedProduction(productionEntries, currentUser.fullName);
+  };
+
+  // Action: Direct validation and intake of Daily Production into Stock 3 Finished Goods (Protected)
+  const handleValidateToStock3 = async (
+    entries: { date: string; reference: string; quantity: number; description?: string; notes?: string }[],
+    mode?: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3"
+  ) => {
+    if (!currentUser) return;
+    await executeProtectedValidateToStock3(entries, currentUser.fullName, mode);
   };
 
   // Action: Supervisor logs NOK / Scrap Mesh entry (Single or Batch) (Protected)
@@ -1018,6 +1029,20 @@ export default function App() {
               </div>
             </button>
 
+            {/* Daily Production Tab */}
+            <button
+              onClick={() => setActiveTab("daily-production-demo")}
+              id="nav-tab-daily-production-demo"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "daily-production-demo"
+                  ? "text-emerald-400 font-bold bg-[#0f1e36] border-emerald-400"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span>Daily Production</span>
+            </button>
+
             {/* SCRAP Tab */}
             <button
               onClick={() => setActiveTab("scrap")}
@@ -1198,6 +1223,7 @@ export default function App() {
               {activeTab === "invoices" && "Stock 1 Incoming Invoices & Verification"}
               {activeTab === "deliveries" && "Customer Deliveries & Dispatches"}
               {activeTab === "production" && "Daily Production Consumption"}
+              {activeTab === "daily-production-demo" && "Daily Production — Sheets Intake & Stock 3 Validation"}
               {activeTab === "scrap" && "SCRAP & NOK Mesh Management"}
               {activeTab === "manage-references" && "Manage References Catalog"}
               {activeTab === "operator" && "Inventory Count Workspace"}
@@ -1306,6 +1332,16 @@ export default function App() {
                   onSubmitProduction={handleSubmitProduction}
                   onDeleteProduction={handleDeleteProduction}
                   onUpdateProduction={handleUpdateProduction}
+                />
+              )}
+
+              {activeTab === "daily-production-demo" && (
+                <DailyProductionDemo
+                  references={references}
+                  currentUser={currentUser}
+                  onNavigateToProduction={() => setActiveTab("production")}
+                  onSubmitProduction={handleSubmitProduction}
+                  onValidateToStock3={handleValidateToStock3}
                 />
               )}
 

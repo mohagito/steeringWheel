@@ -709,6 +709,115 @@ export async function executeProtectedProduction(
 }
 
 /**
+ * 4b. Daily Production Sheet Validation: Adds validated quantities directly to Stock 3 Finished Goods
+ */
+export async function executeProtectedValidateToStock3(
+  entries: { 
+    date: string; 
+    reference: string; 
+    quantity: number; 
+    description?: string; 
+    notes?: string;
+  }[],
+  operatorName: string,
+  mode: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3" = "DIRECT_STOCK_3"
+) {
+  if (!entries || entries.length === 0) return;
+
+  const timestamp = new Date().toISOString();
+  const deltas: ProtectedStockDelta[] = [];
+  const transactions: any[] = [];
+  const prodDocs: { id: string; doc: Production }[] = [];
+
+  // 1. Ensure any missing reference documents exist in the catalog before the transaction
+  for (const p of entries) {
+    const refCode = p.reference.trim().toUpperCase();
+    const refDocRef = doc(db, "references", refCode);
+    const snap = await getDoc(refDocRef);
+    if (!snap.exists()) {
+      await setDoc(refDocRef, cleanDocData({
+        id: refCode,
+        code: refCode,
+        description: p.description?.trim() || "Imported Daily Production Reference",
+        materialType: "Mesh",
+        currentStock: 0,
+        stock1: 0,
+        stock2: 0,
+        stock3: 0,
+        active: true,
+        createdAt: timestamp,
+        createdBy: operatorName,
+        lastUpdate: timestamp
+      }));
+    }
+  }
+
+  // 2. Prepare deltas, production logs, and transactions
+  entries.forEach((p, idx) => {
+    const qtyCheck = validateQuantity(p.quantity, `Stock 3 quantity for ${p.reference}`);
+    if (!qtyCheck.valid) throw new Error(qtyCheck.error);
+
+    const refCode = p.reference.trim().toUpperCase();
+    const qty = qtyCheck.value;
+
+    if (mode === "TRANSFER_S2_TO_S3") {
+      deltas.push({
+        reference: refCode,
+        delta2: -qty,
+        delta3: qty
+      });
+    } else {
+      // Default: Direct increment to Stock 3
+      deltas.push({
+        reference: refCode,
+        delta3: qty
+      });
+    }
+
+    const prodId = `prod-val-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+    prodDocs.push({
+      id: prodId,
+      doc: {
+        id: prodId,
+        reference: refCode,
+        quantity: qty,
+        date: p.date,
+        operatorName,
+        timestamp,
+        notes: p.notes || `Validated Daily Production: ${qty} PCS to Stock 3`
+      }
+    });
+
+    const transId = `trans-val3-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 5)}`;
+    transactions.push({
+      id: transId,
+      reference: refCode,
+      movementType: mode === "TRANSFER_S2_TO_S3" ? "STOCK 2 OUT / STOCK 3 IN" : "STOCK 3 IN",
+      stock: mode === "TRANSFER_S2_TO_S3" ? "Stock 2 -> Stock 3" : "Stock 3",
+      quantity: qty,
+      operatorName,
+      timestamp,
+      notes: `Daily Production (${p.date}): ${mode === "TRANSFER_S2_TO_S3" ? "S2 -> S3" : "+Stock 3"} (${qty} PCS). ${p.notes || ""}`
+    });
+  });
+
+  const idempotencyKey = `daily-val-stock3-${operatorName}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  await executeProtectedStockOperation({
+    operationType: "DAILY_PRODUCTION_STOCK_3",
+    deltas,
+    operatorName,
+    idempotencyKey,
+    transactions,
+    additionalWrites: (transaction) => {
+      for (const item of prodDocs) {
+        transaction.set(doc(db, "productions", item.id), cleanDocData(item.doc));
+      }
+    }
+  });
+}
+
+/**
  * 5. Scrap Entry (Deducts NOK pieces from Stock 1, Stock 2, or Stock 3)
  */
 export async function executeProtectedScrap(
