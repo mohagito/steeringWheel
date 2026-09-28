@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
+import ScrapConColaCostDiagram from "./ScrapConColaCostDiagram";
 
 interface ScrapRow {
   referenceCode: string;
@@ -828,6 +829,9 @@ export default function ScrapWorkspace({
         </div>
 
       </div>
+
+      {/* DIAGRAM: Cost Scrap Con Cola per Weeks */}
+      <ScrapConColaCostDiagram scraps={scraps} references={references} />
 
       {/* Edit Scrap Modal */}
       {editingScrap && (

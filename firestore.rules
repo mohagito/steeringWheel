@@ -30,6 +30,10 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /daily_productions/{dailyProductionId} {
+      allow read, write: if true;
+    }
+
     match /scraps/{scrapId} {
       allow read, write: if true;
     }

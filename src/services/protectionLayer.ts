@@ -2,6 +2,9 @@ import {
   doc,
   getDoc,
   setDoc,
+  updateDoc,
+  deleteDoc,
+  writeBatch,
   runTransaction,
   collection,
   Transaction,
@@ -735,7 +738,8 @@ export async function executeProtectedValidateToStock3(
     notes?: string; 
   }[],
   operatorName: string,
-  mode: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3" = "TRANSFER_S2_TO_S3"
+  mode: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3" = "TRANSFER_S2_TO_S3",
+  targetCollection: "productions" | "daily_productions" = "daily_productions"
 ) {
   if (!entries || entries.length === 0) return;
 
@@ -829,7 +833,7 @@ export async function executeProtectedValidateToStock3(
     transactions,
     additionalWrites: (transaction) => {
       for (const item of prodDocs) {
-        transaction.set(doc(db, "productions", item.id), cleanDocData(item.doc));
+        transaction.set(doc(db, targetCollection, item.id), cleanDocData(item.doc));
       }
     }
   });
@@ -1371,6 +1375,125 @@ export async function executeProtectedDeleteBatch(
         transaction.delete(doc(db, "productions", id));
       }
     }
+  });
+}
+
+/**
+ * 8d. Delete / Revert an Entire Batch of Daily Production Entries (Isolated to daily_productions collection)
+ */
+export async function executeProtectedDeleteDailyProductionBatch(
+  productionsToRevert: Production[],
+  operatorName: string,
+  reason = "",
+  revertStock = false
+) {
+  if (!productionsToRevert || productionsToRevert.length === 0) return;
+
+  const CHUNK_SIZE = 40;
+  if (productionsToRevert.length > CHUNK_SIZE) {
+    for (let i = 0; i < productionsToRevert.length; i += CHUNK_SIZE) {
+      const chunk = productionsToRevert.slice(i, i + CHUNK_SIZE);
+      await executeProtectedDeleteDailyProductionBatch(chunk, operatorName, `${reason} (Part ${Math.floor(i / CHUNK_SIZE) + 1})`, revertStock);
+    }
+    return;
+  }
+
+  const idsToDelete = productionsToRevert.map(p => p.id);
+
+  if (revertStock) {
+    const timestamp = new Date().toISOString();
+    const deltas: ProtectedStockDelta[] = [];
+    const transactions: any[] = [];
+
+    for (let idx = 0; idx < productionsToRevert.length; idx++) {
+      const p = productionsToRevert[idx];
+      const refCode = p.reference.trim().toUpperCase();
+      const qty = p.quantity;
+      deltas.push({ reference: refCode, delta2: qty, delta3: -qty });
+
+      const transId = `trans-deldailybatch-${Date.now()}-${idx}`;
+      transactions.push({
+        id: transId,
+        reference: refCode,
+        movementType: "DAILY PRODUCTION REVERT",
+        stock: "Stock 3 -> Stock 2",
+        quantity: qty,
+        operatorName: `${operatorName} (Daily Reversal)`,
+        timestamp,
+        notes: `Daily Intake Reversal for ${p.date} (${qty} PCS reverted). ${reason || ""}`
+      });
+    }
+
+    await executeProtectedStockOperation({
+      operationType: "DAILY_PRODUCTION_BATCH_REVERT",
+      deltas,
+      operatorName,
+      clampToZeroOnNegative: true,
+      transactions,
+      additionalWrites: (transaction) => {
+        for (const id of idsToDelete) {
+          transaction.delete(doc(db, "daily_productions", id));
+        }
+      }
+    });
+  } else {
+    // Pure removal of daily intake records without altering official stock or main production entries
+    const batch = writeBatch(db);
+    for (const id of idsToDelete) {
+      batch.delete(doc(db, "daily_productions", id));
+    }
+    await batch.commit();
+  }
+}
+
+/**
+ * 8e. Delete a Single Daily Production Entry (Isolated to daily_productions collection)
+ */
+export async function executeProtectedDeleteDailyProduction(
+  productionId: string,
+  operatorName: string,
+  reason = "",
+  revertStock = false
+) {
+  if (!productionId) return;
+  if (revertStock) {
+    const docRef = doc(db, "daily_productions", productionId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return;
+    const p = snap.data() as Production;
+    const refCode = p.reference.trim().toUpperCase();
+    await executeProtectedStockOperation({
+      operationType: "DAILY_PRODUCTION_REVERT",
+      deltas: [{ reference: refCode, delta2: p.quantity, delta3: -p.quantity }],
+      operatorName,
+      clampToZeroOnNegative: true,
+      additionalWrites: (transaction) => {
+        transaction.delete(doc(db, "daily_productions", productionId));
+      }
+    });
+  } else {
+    await deleteDoc(doc(db, "daily_productions", productionId));
+  }
+}
+
+/**
+ * 8f. Modify an existing Daily Production Entry (Isolated to daily_productions collection)
+ */
+export async function executeProtectedUpdateDailyProduction(
+  productionId: string,
+  updatedData: { date: string; reference: string; quantity: number; notes?: string },
+  operatorName: string,
+  reason = ""
+) {
+  const docRef = doc(db, "daily_productions", productionId);
+  await updateDoc(docRef, {
+    date: updatedData.date,
+    reference: updatedData.reference.trim().toUpperCase(),
+    quantity: updatedData.quantity,
+    notes: updatedData.notes || "",
+    status: "edited",
+    updatedAt: new Date().toISOString(),
+    updatedBy: operatorName
   });
 }
 

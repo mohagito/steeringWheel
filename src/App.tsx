@@ -48,7 +48,10 @@ import {
   executeProtectedDeleteBox,
   executeProtectedUpdateBox,
   executeProtectedValidateToStock3,
-  executeProtectedDeleteBatch
+  executeProtectedDeleteBatch,
+  executeProtectedDeleteDailyProductionBatch,
+  executeProtectedDeleteDailyProduction,
+  executeProtectedUpdateDailyProduction
 } from "./services/protectionLayer";
 
 export default function App() {
@@ -65,6 +68,7 @@ export default function App() {
   const [references, setReferences] = useState<Reference[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [productions, setProductions] = useState<Production[]>([]);
+  const [dailyProductions, setDailyProductions] = useState<Production[]>([]);
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [scraps, setScraps] = useState<ScrapEntry[]>([]);
   const [invoices, setInvoices] = useState<ReceivingInvoice[]>([]);
@@ -146,6 +150,7 @@ export default function App() {
     let unsubUsers: (() => void) | null = null;
     let unsubDeliveries: (() => void) | null = null;
     let unsubProductions: (() => void) | null = null;
+    let unsubDailyProductions: (() => void) | null = null;
     let unsubTransactions: (() => void) | null = null;
     let unsubScraps: (() => void) | null = null;
     let unsubInvoices: (() => void) | null = null;
@@ -246,6 +251,26 @@ export default function App() {
         }
       );
 
+      // Subscribing to Daily Productions collection (Isolated workspace)
+      unsubDailyProductions = onSnapshot(
+        collection(db, "daily_productions"),
+        (snapshot) => {
+          const dList: Production[] = [];
+          snapshot.forEach((doc) => {
+            dList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as Production);
+          });
+          dList.sort((a, b) => {
+            const dateDiff = compareTimestampsDesc(a.date, b.date);
+            if (dateDiff !== 0) return dateDiff;
+            return compareTimestampsDesc(a.timestamp, b.timestamp);
+          });
+          setDailyProductions(dList);
+        },
+        (error) => {
+          console.error("Error subscribing to daily_productions:", error);
+        }
+      );
+
       unsubTransactions = onSnapshot(
         collection(db, "transactions"),
         (snapshot) => {
@@ -316,6 +341,7 @@ export default function App() {
       if (unsubReferences) unsubReferences();
       if (unsubDeliveries) unsubDeliveries();
       if (unsubProductions) unsubProductions();
+      if (unsubDailyProductions) unsubDailyProductions();
       if (unsubTransactions) unsubTransactions();
       if (unsubScraps) unsubScraps();
       if (unsubInvoices) unsubInvoices();
@@ -415,6 +441,34 @@ export default function App() {
   ) => {
     if (!currentUser) throw new Error("No authenticated user session.");
     await executeProtectedUpdateProduction(productionId, updatedData, currentUser.fullName, reason);
+  };
+
+  // Dedicated Daily Production handlers (Isolated to daily_productions collection)
+  const handleValidateDailyProductionToStock3 = async (
+    entries: { date: string; reference: string; quantity: number; description?: string; notes?: string }[],
+    mode: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3" = "TRANSFER_S2_TO_S3"
+  ) => {
+    if (!currentUser) return;
+    await executeProtectedValidateToStock3(entries, currentUser.fullName, mode, "daily_productions");
+  };
+
+  const handleDeleteDailyProductionBatch = async (batchRecords: Production[], reason?: string) => {
+    if (!currentUser) throw new Error("No authenticated user session.");
+    await executeProtectedDeleteDailyProductionBatch(batchRecords, currentUser.fullName, reason, false);
+  };
+
+  const handleDeleteDailyProduction = async (productionId: string, reason?: string) => {
+    if (!currentUser) return;
+    await executeProtectedDeleteDailyProduction(productionId, currentUser.fullName, reason, false);
+  };
+
+  const handleUpdateDailyProduction = async (
+    productionId: string,
+    updatedData: { date: string; reference: string; quantity: number; notes?: string },
+    reason?: string
+  ) => {
+    if (!currentUser) throw new Error("No authenticated user session.");
+    await executeProtectedUpdateDailyProduction(productionId, updatedData, currentUser.fullName, reason);
   };
 
   // Action: Delete / Revert a delivery entry (Protected)
@@ -1030,10 +1084,8 @@ export default function App() {
                   : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
               }`}
             >
-              <div className="flex items-center gap-3">
-                <Factory className="w-4 h-4 shrink-0" />
-                <span>Production</span>
-              </div>
+              <Factory className="w-4 h-4 shrink-0" />
+              <span>Production</span>
             </button>
 
             {/* Daily Production Tab */}
@@ -1346,13 +1398,13 @@ export default function App() {
                 <DailyProductionDemo
                   references={references}
                   currentUser={currentUser}
-                  productions={productions}
+                  productions={dailyProductions}
                   onNavigateToProduction={() => setActiveTab("production")}
                   onSubmitProduction={handleSubmitProduction}
-                  onValidateToStock3={handleValidateToStock3}
-                  onDeleteProduction={handleDeleteProduction}
-                  onUpdateProduction={handleUpdateProduction}
-                  onDeleteBatch={handleDeleteProductionBatch}
+                  onValidateToStock3={handleValidateDailyProductionToStock3}
+                  onDeleteProduction={handleDeleteDailyProduction}
+                  onUpdateProduction={handleUpdateDailyProduction}
+                  onDeleteBatch={handleDeleteDailyProductionBatch}
                 />
               )}
 
