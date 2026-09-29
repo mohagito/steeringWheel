@@ -183,11 +183,11 @@ export default function RecordsWorkspace({
     const stock = (tx.stock || "").toUpperCase();
     const notes = (tx.notes || "").toUpperCase();
     const id = (tx.id || "").toLowerCase();
-    const delType = (tx.deliveryType || "").toUpperCase();
+    const delType: string = String(tx.deliveryType || "").toUpperCase();
 
     // 1. Check deliveries FIRST, because deliveries frequently have invoice numbers (e.g., "Invoice MPT2330")
     if (
-      delType !== "" ||
+      Boolean(tx.deliveryType) ||
       type === "DELIVERY" ||
       type.includes("DELIVERY") ||
       notes.startsWith("DELIVERY") ||

@@ -9,6 +9,8 @@ import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
 import { AddEditReferenceModal } from "./AddEditReferenceModal";
 import { formatSystemTime, getMoroccoTodayDateString, getMoroccoDateString } from "../utils/timeUtils";
+import { exportStockAuditExcel, exportStockAuditCSV, getStockReportDateStrings } from "../utils/stockReportExport";
+import { MESHES_PRICE_LIST } from "../utils/stockValuation";
 
 interface StockWorkspaceProps {
   boxes: Box[];
@@ -103,7 +105,7 @@ export default function StockWorkspace({
   // -------------------------------------------------------------
   // REPORTS SUITE STATES
   // -------------------------------------------------------------
-  const [reportType, setReportType] = useState<"history" | "received" | "transfers" | "deliveries" | "s1_stock" | "s2_stock" | "s3_stock">("history");
+  const [reportType, setReportType] = useState<"history" | "received" | "transfers" | "deliveries" | "s1_stock" | "s2_stock" | "s3_stock" | "all_stock">("history");
   const [repRefFilter, setRepRefFilter] = useState("All");
   const [repDateFilter, setRepDateFilter] = useState("");
   const [repOperatorFilter, setRepOperatorFilter] = useState("All");
@@ -171,6 +173,21 @@ export default function StockWorkspace({
         operatorName: "System",
         timestamp: r.lastUpdate
       }));
+    } else if (reportType === "all_stock") {
+      baseData = references.map(r => ({
+        id: r.id,
+        reference: r.code,
+        description: r.description,
+        materialType: r.materialType,
+        stock1: r.stock1 || 0,
+        stock2: r.stock2 || 0,
+        stock3: r.stock3 || 0,
+        quantity: (r.stock1 || 0) + (r.stock2 || 0) + (r.stock3 || 0),
+        unitPrice: MESHES_PRICE_LIST[(r.code || "").toUpperCase()],
+        movementType: "STOCK AUDIT (S1, S2, S3)",
+        operatorName: "System",
+        timestamp: r.lastUpdate
+      }));
     }
 
     return baseData.filter(item => {
@@ -190,6 +207,11 @@ export default function StockWorkspace({
 
   // Export formatted Excel (.xls) with custom Medium table styling
   const handleExportExcel = (styleTheme: "green" | "blue" | "dark" = "green") => {
+    if (reportType === "all_stock") {
+      exportStockAuditExcel(references);
+      return;
+    }
+
     if (reportData.length === 0) {
       Swal.fire({
         title: "No Data",
@@ -325,8 +347,8 @@ export default function StockWorkspace({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    const dateStr = getMoroccoTodayDateString();
-    link.download = `MES_Report_${reportType}_${dateStr}.xls`;
+    const { filenameDate } = getStockReportDateStrings();
+    link.download = `stock report ${reportType} ${filenameDate}.xls`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -335,6 +357,11 @@ export default function StockWorkspace({
 
   // Export filtered report to CSV
   const handleExportCSV = () => {
+    if (reportType === "all_stock") {
+      exportStockAuditCSV(references);
+      return;
+    }
+
     if (reportData.length === 0) {
       Swal.fire({
         title: "No Data",
@@ -381,7 +408,8 @@ export default function StockWorkspace({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    const filename = `MES_Report_${reportType}_${getMoroccoTodayDateString()}.csv`;
+    const { filenameDate } = getStockReportDateStrings();
+    const filename = `stock report ${reportType} ${filenameDate}.csv`;
     link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
@@ -1336,6 +1364,7 @@ export default function StockWorkspace({
                   onChange={(val) => setReportType(val as any)}
                   options={[
                     { value: "history", label: "Full Transaction History" },
+                    { value: "all_stock", label: "Multi-Stock Audit (S1, S2, S3)" },
                     { value: "received", label: "Material Received (S1 IN)" },
                     { value: "transfers", label: "Warehouse-Production Transfers" },
                     { value: "deliveries", label: "Customer Deliveries (S3 OUT)" },
@@ -1414,6 +1443,14 @@ export default function StockWorkspace({
               </span>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => exportStockAuditExcel(references)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase rounded-xl shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all cursor-pointer font-mono"
+                  title="Export Multi-Stock Audit Report (S1, S2, S3) directly to Excel"
+                >
+                  <Layers className="w-4 h-4" />
+                  <span>Audit Report (S1, S2, S3)</span>
+                </button>
+                <button
                   onClick={() => handleExportExcel("green")}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all cursor-pointer"
                   title="Export Formatted Excel Spreadsheet (.xls) with Medium Green Table Styling"
@@ -1444,7 +1481,78 @@ export default function StockWorkspace({
             </div>
 
             <div className="overflow-x-auto">
-              {reportType === "s1_stock" || reportType === "s2_stock" || reportType === "s3_stock" ? (
+              {reportType === "all_stock" ? (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
+                      <th className="py-3 px-4 font-mono">Reference</th>
+                      <th className="py-3 px-4 font-sans">Description</th>
+                      <th className="py-3 px-3 text-right">Unit Price</th>
+                      <th className="py-3 px-4 text-right">Stock 1</th>
+                      <th className="py-3 px-4 text-right">Stock 2</th>
+                      <th className="py-3 px-4 text-right">Stock 3</th>
+                      <th className="py-3 px-4 text-right font-bold text-slate-900">Total</th>
+                      <th className="py-3 px-3 text-center bg-amber-50/60 text-amber-800 border-l border-amber-200">Manual S1</th>
+                      <th className="py-3 px-3 text-center bg-amber-50/60 text-amber-800">Manual S2</th>
+                      <th className="py-3 px-3 text-center bg-amber-50/60 text-amber-800">Manual S3</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-mono">
+                    {reportData.map((row, index) => {
+                      const up = MESHES_PRICE_LIST[(row.reference || "").toUpperCase()];
+                      return (
+                        <tr key={index} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-4 font-bold text-slate-900">{row.reference}</td>
+                          <td className="py-3 px-4 font-sans text-slate-600 truncate max-w-xs">{row.description}</td>
+                          <td className="py-3 px-3 text-right font-bold text-slate-700">
+                            {up !== undefined ? `€ ${up.toFixed(2)}` : "—"}
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-900 font-semibold">{row.stock1}</td>
+                          <td className="py-3 px-4 text-right text-slate-900 font-semibold">{row.stock2}</td>
+                          <td className="py-3 px-4 text-right text-slate-900 font-semibold">{row.stock3}</td>
+                          <td className="py-3 px-4 text-right font-extrabold text-emerald-700 bg-emerald-50/30">{row.quantity}</td>
+                          <td className="py-3 px-3 text-center bg-amber-50/20 border-l border-amber-100">
+                            <span className="inline-block w-14 h-6 border border-dashed border-amber-300 rounded bg-white text-slate-300 text-[10px] leading-6">
+                              [ _ _ _ ]
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center bg-amber-50/20">
+                            <span className="inline-block w-14 h-6 border border-dashed border-amber-300 rounded bg-white text-slate-300 text-[10px] leading-6">
+                              [ _ _ _ ]
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center bg-amber-50/20">
+                            <span className="inline-block w-14 h-6 border border-dashed border-amber-300 rounded bg-white text-slate-300 text-[10px] leading-6">
+                              [ _ _ _ ]
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {/* 3 Empty rows for manual validation */}
+                    {[1, 2, 3].map((num) => (
+                      <tr key={`empty-row-${num}`} className="bg-slate-50/30">
+                        <td className="py-3 px-4 italic text-slate-400 font-normal">[Manual Ref #{num}]</td>
+                        <td className="py-3 px-4 italic text-slate-400 font-normal">Physical recount row</td>
+                        <td className="py-3 px-3 text-right text-slate-300">—</td>
+                        <td className="py-3 px-4 text-right text-slate-300">____</td>
+                        <td className="py-3 px-4 text-right text-slate-300">____</td>
+                        <td className="py-3 px-4 text-right text-slate-300">____</td>
+                        <td className="py-3 px-4 text-right text-slate-300">____</td>
+                        <td className="py-3 px-3 text-center bg-amber-50/20 border-l border-amber-100">
+                          <span className="inline-block w-14 h-6 border border-dashed border-amber-300 rounded bg-white"></span>
+                        </td>
+                        <td className="py-3 px-3 text-center bg-amber-50/20">
+                          <span className="inline-block w-14 h-6 border border-dashed border-amber-300 rounded bg-white"></span>
+                        </td>
+                        <td className="py-3 px-3 text-center bg-amber-50/20">
+                          <span className="inline-block w-14 h-6 border border-dashed border-amber-300 rounded bg-white"></span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : reportType === "s1_stock" || reportType === "s2_stock" || reportType === "s3_stock" ? (
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">

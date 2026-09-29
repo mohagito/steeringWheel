@@ -7,9 +7,11 @@ import {
 import { 
   Package, ArrowRight, Truck, AlertTriangle, Search, 
   Warehouse, Factory, X, Layers, Send, ArrowLeftRight, ShieldAlert, Eye,
-  Trash2, FileText, CheckCircle2, ChevronRight, Calendar, Filter
+  Trash2, FileText, CheckCircle2, ChevronRight, Calendar, Filter,
+  FileSpreadsheet, Download
 } from "lucide-react";
 import { formatSystemTime, getMoroccoTodayDateString, getMoroccoDateString } from "../utils/timeUtils";
+import { exportStockAuditExcel } from "../utils/stockReportExport";
 
 // Lucide-styled 3-spoke automotive Steering Wheel Icon
 export function SteeringWheelIcon({ className = "w-6 h-6", size }: { className?: string; size?: number }) {
@@ -997,6 +999,9 @@ export default function DashboardOverview({
               <Layers className="w-5 h-5 text-slate-800" />
               Inventory
             </h3>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              Live stock levels across Warehouse (S1), Mallas Pegadas (S2), and Finished Goods (S3)
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
@@ -1034,6 +1039,18 @@ export default function DashboardOverview({
               className="w-36"
               size="sm"
             />
+
+            {/* Download Stock Report (Stock 1, 2, 3) */}
+            <button
+              type="button"
+              id="btn-download-stock-report"
+              onClick={() => exportStockAuditExcel(references)}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-2xl text-xs font-bold font-mono flex items-center gap-2 shadow-xs shadow-emerald-600/20 transition-all cursor-pointer shrink-0"
+              title="Download Stock Report for Stock 1, 2, 3 directly to Excel"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Download Stock Report</span>
+            </button>
           </div>
         </div>
 
@@ -1042,7 +1059,7 @@ export default function DashboardOverview({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-[11px] uppercase font-mono font-bold tracking-wider">
-                <th className="py-3 px-4">Reference</th>
+                <th className="py-3 px-4 font-mono">Reference</th>
                 <th className="py-3 px-4">Description</th>
                 <th className="py-3 px-3 text-right">Unit Price</th>
                 <th className="py-3 px-3 text-center">Type</th>
