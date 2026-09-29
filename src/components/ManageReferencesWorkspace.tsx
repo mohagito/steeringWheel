@@ -63,11 +63,11 @@ export default function ManageReferencesWorkspace({
   // Filtered references calculation
   const filteredReferences = useMemo(() => {
     return references.filter((ref) => {
-      const q = searchQuery.toLowerCase().trim();
+      const q = (searchQuery || "").toLowerCase().trim();
       const matchesSearch =
         !q ||
-        ref.code.toLowerCase().includes(q) ||
-        ref.description.toLowerCase().includes(q) ||
+        (ref.code || "").toLowerCase().includes(q) ||
+        (ref.description || "").toLowerCase().includes(q) ||
         (ref.customer && ref.customer.toLowerCase().includes(q)) ||
         (ref.materialType && ref.materialType.toLowerCase().includes(q));
 

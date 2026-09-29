@@ -313,14 +313,17 @@ export default function ScrapWorkspace({
 
   // Filtered Scraps List
   const filteredScraps = useMemo(() => {
+    const q = (searchTerm || "").toLowerCase().trim();
     return scraps
       .filter(s => {
+        if (!q) return true;
         const matchesSearch = 
-          s.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          s.supervisorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (s.invoiceNumber && s.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (s.date && s.date.toLowerCase().includes(searchTerm.toLowerCase()));
+          (s.reference || "").toLowerCase().includes(q) ||
+          (s.supervisorName || "").toLowerCase().includes(q) ||
+          (s.operatorName || "").toLowerCase().includes(q) ||
+          (s.invoiceNumber || "").toLowerCase().includes(q) ||
+          (s.notes || "").toLowerCase().includes(q) ||
+          (s.date || "").toLowerCase().includes(q);
         
         return matchesSearch;
       })
@@ -474,7 +477,7 @@ export default function ScrapWorkspace({
 
               <div className="space-y-3.5 overflow-visible">
                 {rows.map((row, index) => {
-                  const selectedRefObj = references.find((r) => r.code.toUpperCase() === row.referenceCode.trim().toUpperCase());
+                  const selectedRefObj = references.find((r) => (r.code || "").toUpperCase() === (row.referenceCode || "").trim().toUpperCase());
 
                   return (
                     <div key={index} className="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl relative space-y-3 overflow-visible shadow-2xs">

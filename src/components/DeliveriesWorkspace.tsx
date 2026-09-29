@@ -324,14 +324,16 @@ export default function DeliveriesWorkspace({
   // Pre-filtered deliveries list sorted by system timestamp descending
   const filteredDeliveries = useMemo(() => {
     return deliveries.filter((d) => {
-      const q = searchQuery.toLowerCase().trim();
+      const q = (searchQuery || "").toLowerCase().trim();
       const matchesSearch = !q ? true : (
-        d.invoiceNumber.toLowerCase().includes(q) ||
-        d.reference.toLowerCase().includes(q) ||
-        d.customer.toLowerCase().includes(q) ||
-        (d.deliveryType && d.deliveryType.toLowerCase().includes(q))
+        (d.invoiceNumber || "").toLowerCase().includes(q) ||
+        (d.reference || "").toLowerCase().includes(q) ||
+        (d.customer || "").toLowerCase().includes(q) ||
+        (d.deliveryType || "").toLowerCase().includes(q) ||
+        (d.notes || "").toLowerCase().includes(q) ||
+        (d.operatorName || "").toLowerCase().includes(q)
       );
-      const matchesCustomer = customerFilter === "All" || d.customer === customerFilter;
+      const matchesCustomer = customerFilter === "All" || (d.customer || "") === customerFilter;
       return matchesSearch && matchesCustomer;
     }).sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
   }, [deliveries, searchQuery, customerFilter]);

@@ -16,11 +16,14 @@ export default function BezelStockTable({
   const [sortField, setSortField] = useState<"code" | "description" | "client" | "stock1" | "stock2" | "totalStock">("code");
   const [sortAsc, setSortAsc] = useState(true);
 
+  const q = (searchTerm || "").toLowerCase().trim();
   const filtered = references.filter(
     (r) =>
-      r.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.client && r.client.toLowerCase().includes(searchTerm.toLowerCase()))
+      !q ? true : (
+        (r.code || "").toLowerCase().includes(q) ||
+        (r.description || "").toLowerCase().includes(q) ||
+        (r.client && (r.client || "").toLowerCase().includes(q))
+      )
   );
 
   const sorted = [...filtered].sort((a, b) => {

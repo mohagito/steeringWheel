@@ -39,12 +39,14 @@ export default function BezelHistoryTable({
   const isManager = userRole === "admin" || userRole === "supervisor";
 
   const filtered = operations.filter((op) => {
-    const matchesSearch =
-      op.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      op.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      op.operatorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (op.invoiceNumber && op.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (op.reason && op.reason.toLowerCase().includes(searchTerm.toLowerCase()));
+    const q = (searchTerm || "").toLowerCase().trim();
+    const matchesSearch = !q ? true : (
+      (op.reference || "").toLowerCase().includes(q) ||
+      (op.id || "").toLowerCase().includes(q) ||
+      (op.operatorName || "").toLowerCase().includes(q) ||
+      (op.invoiceNumber && (op.invoiceNumber || "").toLowerCase().includes(q)) ||
+      (op.reason && (op.reason || "").toLowerCase().includes(q))
+    );
 
     const matchesType = selectedType === "ALL" || op.operationType === selectedType;
 

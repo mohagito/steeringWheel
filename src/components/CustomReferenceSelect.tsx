@@ -33,7 +33,7 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedRef = references.find(
-    (r) => r.code.toUpperCase() === value.trim().toUpperCase()
+    (r) => (r.code || "").toUpperCase() === (value || "").trim().toUpperCase()
   );
 
   // Close when clicking outside
@@ -60,15 +60,15 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
 
   const filteredReferences = references.filter((r) => {
     // By default, exclude inactive references unless includeInactive is true or it's currently selected
-    const isSelected = r.code.toUpperCase() === value.trim().toUpperCase();
+    const isSelected = (r.code || "").toUpperCase() === (value || "").trim().toUpperCase();
     if (!includeInactive && r.active === false && !isSelected) {
       return false;
     }
 
     if (!searchTerm.trim()) return true;
-    const q = searchTerm.toLowerCase();
+    const q = (searchTerm || "").toLowerCase().trim();
     return (
-      r.code.toLowerCase().includes(q) ||
+      (r.code || "").toLowerCase().includes(q) ||
       (r.description && r.description.toLowerCase().includes(q)) ||
       (r.customer && r.customer.toLowerCase().includes(q)) ||
       (r.id && r.id.toLowerCase().includes(q))

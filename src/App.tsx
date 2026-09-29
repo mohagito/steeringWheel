@@ -620,7 +620,12 @@ export default function App() {
   };
 
   // Supervisor/Manager/Operator Action: Delete / Reverse operation and safely adjust stock (Protected)
-  const handleDeleteOrReverseOperation = async (opId: string, category: string, reason: string) => {
+  const handleDeleteOrReverseOperation = async (
+    opId: string, 
+    category: string, 
+    reason: string, 
+    mode: "delete" | "reverse" = "delete"
+  ) => {
     if (!currentUser) return;
     if (currentUser.role !== "supervisor" && currentUser.role !== "admin" && currentUser.role !== "operator") {
       throw new Error("Unauthorized: Insufficient permissions to delete or reverse operations.");
@@ -639,7 +644,7 @@ export default function App() {
         }
       }
     }
-    await executeProtectedDeleteOrReverseOperation(opId, category, reason, currentUser.fullName);
+    await executeProtectedDeleteOrReverseOperation(opId, category, reason, currentUser.fullName, mode);
   };
 
   // Action: Admin registers a box
@@ -1488,8 +1493,8 @@ export default function App() {
                   onApproveAdjustment={handleApproveAdjustment}
                   onRejectAdjustment={handleRejectAdjustment}
                   onEditOperation={handleEditOperation}
-                  onDeleteOperation={handleDeleteOrReverseOperation}
-                  onReverseOperation={handleDeleteOrReverseOperation}
+                  onDeleteOperation={(opId, cat, reason) => handleDeleteOrReverseOperation(opId, cat, reason, "delete")}
+                  onReverseOperation={(opId, cat, reason) => handleDeleteOrReverseOperation(opId, cat, reason, "reverse")}
                 />
               )}
 

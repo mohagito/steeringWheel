@@ -2043,6 +2043,39 @@ export async function executeProtectedUpdateInvoice(
 }
 
 /**
+ * Resiliently finds a document in a collection across various ID prefix formats
+ */
+async function findFirestoreDoc(collectionName: string, id: string) {
+  if (!id) return null;
+  const candidates = new Set<string>();
+  candidates.add(id);
+
+  const prefixes = ["prod-", "del-", "scrap-", "inv-", "adj-", "tx-", "trans-", "batch-trf-"];
+  for (const p of prefixes) {
+    if (id.startsWith(p + p)) {
+      candidates.add(id.slice(p.length));
+      candidates.add(id.slice(p.length * 2));
+    } else if (id.startsWith(p)) {
+      candidates.add(id.slice(p.length));
+      candidates.add(p + id);
+    }
+  }
+
+  for (const cand of candidates) {
+    if (!cand) continue;
+    try {
+      const snap = await getDoc(doc(db, collectionName, cand));
+      if (snap.exists()) {
+        return snap;
+      }
+    } catch {
+      // Continue searching
+    }
+  }
+  return null;
+}
+
+/**
  * 13. Supervisor / Manager Action: Edit operation quantity & record audit history
  */
 export async function executeProtectedEditOperation(
@@ -2056,14 +2089,26 @@ export async function executeProtectedEditOperation(
     throw new Error("A reason for correction is required.");
   }
 
+  const cleanOpId = opId.startsWith("prod-prod-")
+    ? opId.replace("prod-", "")
+    : opId.startsWith("del-del-")
+    ? opId.replace("del-", "")
+    : opId.startsWith("scrap-scrap-")
+    ? opId.replace("scrap-", "")
+    : opId.startsWith("inv-inv-")
+    ? opId.replace("inv-", "")
+    : opId.startsWith("adj-adj-")
+    ? opId.replace("adj-", "")
+    : opId;
+
   const timestamp = new Date().toISOString();
   const deltas: ProtectedStockDelta[] = [];
   const transactions: any[] = [];
   let additionalWrites: ((transaction: Transaction) => void) | undefined;
 
   if (category === "adjustment") {
-    const adjSnap = await getDoc(doc(db, "adjustments", opId));
-    if (!adjSnap.exists()) throw new Error("Adjustment record not found");
+    const adjSnap = await findFirestoreDoc("adjustments", opId);
+    if (!adjSnap || !adjSnap.exists()) throw new Error("Adjustment record not found");
     const adjData = adjSnap.data() as Adjustment;
     const oldQty = adjData.actualQty;
     const delta = newQty - oldQty;
@@ -2096,7 +2141,7 @@ export async function executeProtectedEditOperation(
 
     additionalWrites = (transaction) => {
       transaction.update(
-        doc(db, "adjustments", opId),
+        doc(db, "adjustments", adjSnap.id),
         cleanDocData({
           actualQty: newQty,
           difference: newQty - adjData.expectedQty,
@@ -2107,8 +2152,8 @@ export async function executeProtectedEditOperation(
       );
     };
   } else if (category === "delivery") {
-    const delSnap = await getDoc(doc(db, "deliveries", opId));
-    if (!delSnap.exists()) throw new Error("Delivery record not found");
+    const delSnap = await findFirestoreDoc("deliveries", opId);
+    if (!delSnap || !delSnap.exists()) throw new Error("Delivery record not found");
     const delData = delSnap.data() as Delivery;
     const oldQty = delData.quantity;
     const delta = newQty - oldQty;
@@ -2145,7 +2190,7 @@ export async function executeProtectedEditOperation(
 
     additionalWrites = (transaction) => {
       transaction.update(
-        doc(db, "deliveries", opId),
+        doc(db, "deliveries", delSnap.id),
         cleanDocData({
           quantity: newQty,
           status: "edited",
@@ -2154,8 +2199,17 @@ export async function executeProtectedEditOperation(
       );
     };
   } else if (category === "production") {
-    const prodSnap = await getDoc(doc(db, "productions", opId));
-    if (!prodSnap.exists()) throw new Error("Production record not found");
+    let targetColl = "productions";
+    let prodSnap = await findFirestoreDoc("productions", opId);
+    if (!prodSnap || !prodSnap.exists()) {
+      prodSnap = await findFirestoreDoc("daily_productions", opId);
+      if (prodSnap && prodSnap.exists()) {
+        targetColl = "daily_productions";
+      }
+    }
+    if (!prodSnap || !prodSnap.exists()) {
+      throw new Error("Production record not found");
+    }
     const prodData = prodSnap.data() as Production;
     const oldQty = prodData.quantity;
     const delta = newQty - oldQty;
@@ -2192,7 +2246,7 @@ export async function executeProtectedEditOperation(
 
     additionalWrites = (transaction) => {
       transaction.update(
-        doc(db, "productions", opId),
+        doc(db, targetColl, prodSnap.id),
         cleanDocData({
           quantity: newQty,
           status: "edited",
@@ -2201,8 +2255,8 @@ export async function executeProtectedEditOperation(
       );
     };
   } else if (category === "scrap") {
-    const scrapSnap = await getDoc(doc(db, "scraps", opId));
-    if (!scrapSnap.exists()) throw new Error("Scrap record not found");
+    const scrapSnap = await findFirestoreDoc("scraps", opId);
+    if (!scrapSnap || !scrapSnap.exists()) throw new Error("Scrap record not found");
     const scrapData = scrapSnap.data() as ScrapEntry;
     const oldQty = scrapData.quantity;
     const delta = newQty - oldQty;
@@ -2241,7 +2295,7 @@ export async function executeProtectedEditOperation(
 
     additionalWrites = (transaction) => {
       transaction.update(
-        doc(db, "scraps", opId),
+        doc(db, "scraps", scrapSnap.id),
         cleanDocData({
           quantity: newQty,
           status: "edited",
@@ -2249,14 +2303,40 @@ export async function executeProtectedEditOperation(
         })
       );
     };
+  } else if (category === "invoice") {
+    const invSnap = await findFirestoreDoc("invoices", opId);
+    if (!invSnap || !invSnap.exists()) throw new Error("Invoice record not found");
+    const invData = invSnap.data() as ReceivingInvoice;
+    const oldQty = invData.totalQuantity || 0;
+    const delta = newQty - oldQty;
+
+    if (invData.items && invData.items.length === 1) {
+      const item = invData.items[0];
+      const refCode = item.reference.trim().toUpperCase();
+      if (item.destinationStock === "Stock 3") {
+        deltas.push({ reference: refCode, delta3: delta });
+      } else if (item.destinationStock === "Stock 2") {
+        deltas.push({ reference: refCode, delta2: delta });
+      } else {
+        deltas.push({ reference: refCode, delta1: delta });
+      }
+
+      additionalWrites = (transaction) => {
+        transaction.update(
+          doc(db, "invoices", invSnap.id),
+          cleanDocData({
+            totalQuantity: newQty,
+            status: "edited",
+            items: [{ ...item, quantity: newQty }]
+          })
+        );
+      };
+    } else {
+      throw new Error("Multi-item invoices must be edited directly in the Invoices workspace.");
+    }
   } else if (category === "transfer" || category === "return" || category === "transaction") {
-    const txId = opId.startsWith("tx-")
-      ? opId.replace("tx-", "")
-      : opId.startsWith("batch-trf-")
-      ? opId.replace("batch-trf-", "")
-      : opId;
-    const txSnap = await getDoc(doc(db, "transactions", txId));
-    if (!txSnap.exists()) throw new Error("Transaction record not found");
+    const txSnap = await findFirestoreDoc("transactions", opId);
+    if (!txSnap || !txSnap.exists()) throw new Error("Transaction record not found");
     const txData = txSnap.data();
 
     if (txData.status === "REVERSED") {
@@ -2309,7 +2389,7 @@ export async function executeProtectedEditOperation(
 
     additionalWrites = (transaction) => {
       transaction.update(
-        doc(db, "transactions", txId),
+        doc(db, "transactions", txSnap.id),
         cleanDocData({
           quantity: newQty,
           originalQuantity: txData.originalQuantity !== undefined ? txData.originalQuantity : oldQty,
@@ -2328,7 +2408,8 @@ export async function executeProtectedEditOperation(
     deltas,
     operatorName,
     transactions,
-    additionalWrites
+    additionalWrites,
+    clampToZeroOnNegative: true
   });
 }
 
@@ -2339,11 +2420,24 @@ export async function executeProtectedDeleteOrReverseOperation(
   opId: string,
   category: string,
   reason: string,
-  operatorName: string
+  operatorName: string,
+  mode: "delete" | "reverse" = "delete"
 ) {
   if (!reason || reason.trim() === "") {
-    throw new Error("A reason for deletion is required.");
+    throw new Error("A reason for deletion or reversal is required.");
   }
+
+  const cleanOpId = opId.startsWith("prod-prod-")
+    ? opId.replace("prod-", "")
+    : opId.startsWith("del-del-")
+    ? opId.replace("del-", "")
+    : opId.startsWith("scrap-scrap-")
+    ? opId.replace("scrap-", "")
+    : opId.startsWith("inv-inv-")
+    ? opId.replace("inv-", "")
+    : opId.startsWith("adj-adj-")
+    ? opId.replace("adj-", "")
+    : opId;
 
   const timestamp = new Date().toISOString();
   const deltas: ProtectedStockDelta[] = [];
@@ -2351,8 +2445,8 @@ export async function executeProtectedDeleteOrReverseOperation(
   let additionalWrites: ((transaction: Transaction) => void) | undefined;
 
   if (category === "adjustment") {
-    const adjSnap = await getDoc(doc(db, "adjustments", opId));
-    if (!adjSnap.exists()) throw new Error("Adjustment record not found");
+    const adjSnap = await findFirestoreDoc("adjustments", opId);
+    if (!adjSnap || !adjSnap.exists()) throw new Error("Adjustment record not found");
     const adjData = adjSnap.data() as Adjustment;
     const refCode = adjData.reference.trim().toUpperCase();
     const stockAdded = adjData.stockAdded || 0;
@@ -2368,15 +2462,29 @@ export async function executeProtectedDeleteOrReverseOperation(
       quantity: Math.abs(stockAdded),
       operatorName: `${operatorName} (Reversal)`,
       timestamp,
-      notes: `Deleted operation reversal. Reason: ${reason}`
+      notes: `${mode === "delete" ? "Deleted" : "Reversed"} operation. Reason: ${reason}`
     });
 
-    additionalWrites = (transaction) => {
-      transaction.delete(doc(db, "adjustments", opId));
-    };
+    if (mode === "reverse") {
+      additionalWrites = (transaction) => {
+        transaction.update(
+          doc(db, "adjustments", adjSnap.id),
+          cleanDocData({
+            status: "reversed",
+            reversedAt: timestamp,
+            reversedBy: operatorName,
+            reversalReason: reason
+          })
+        );
+      };
+    } else {
+      additionalWrites = (transaction) => {
+        transaction.delete(doc(db, "adjustments", adjSnap.id));
+      };
+    }
   } else if (category === "delivery") {
-    const delSnap = await getDoc(doc(db, "deliveries", opId));
-    if (!delSnap.exists()) throw new Error("Delivery record not found");
+    const delSnap = await findFirestoreDoc("deliveries", opId);
+    if (!delSnap || !delSnap.exists()) throw new Error("Delivery record not found");
     const delData = delSnap.data() as Delivery;
     const refCode = delData.reference.trim().toUpperCase();
     const isPrecosido = delData.deliveryType === "PRECOSIDO";
@@ -2396,15 +2504,39 @@ export async function executeProtectedDeleteOrReverseOperation(
       quantity: delData.quantity,
       operatorName: `${operatorName} (Reversal)`,
       timestamp,
-      notes: `Deleted delivery reversal. Reason: ${reason}`
+      notes: `${mode === "delete" ? "Deleted" : "Reversed"} delivery. Reason: ${reason}`
     });
 
-    additionalWrites = (transaction) => {
-      transaction.delete(doc(db, "deliveries", opId));
-    };
+    if (mode === "reverse") {
+      additionalWrites = (transaction) => {
+        transaction.update(
+          doc(db, "deliveries", delSnap.id),
+          cleanDocData({
+            status: "reversed",
+            reversedAt: timestamp,
+            reversedBy: operatorName,
+            reversalReason: reason,
+            notes: `${delData.notes || ""} | REVERSED on ${timestamp} by ${operatorName}. Reason: ${reason}`
+          })
+        );
+      };
+    } else {
+      additionalWrites = (transaction) => {
+        transaction.delete(doc(db, "deliveries", delSnap.id));
+      };
+    }
   } else if (category === "production") {
-    const prodSnap = await getDoc(doc(db, "productions", opId));
-    if (!prodSnap.exists()) throw new Error("Production record not found");
+    let targetColl = "productions";
+    let prodSnap = await findFirestoreDoc("productions", opId);
+    if (!prodSnap || !prodSnap.exists()) {
+      prodSnap = await findFirestoreDoc("daily_productions", opId);
+      if (prodSnap && prodSnap.exists()) {
+        targetColl = "daily_productions";
+      }
+    }
+    if (!prodSnap || !prodSnap.exists()) {
+      throw new Error("Production record not found");
+    }
     const prodData = prodSnap.data() as Production;
     const refCode = prodData.reference.trim().toUpperCase();
 
@@ -2423,15 +2555,30 @@ export async function executeProtectedDeleteOrReverseOperation(
       quantity: prodData.quantity,
       operatorName: `${operatorName} (Reversal)`,
       timestamp,
-      notes: `Deleted production reversal. Reason: ${reason}`
+      notes: `${mode === "delete" ? "Deleted" : "Reversed"} production. Reason: ${reason}`
     });
 
-    additionalWrites = (transaction) => {
-      transaction.delete(doc(db, "productions", opId));
-    };
+    if (mode === "reverse") {
+      additionalWrites = (transaction) => {
+        transaction.update(
+          doc(db, targetColl, prodSnap.id),
+          cleanDocData({
+            status: "reversed",
+            reversedAt: timestamp,
+            reversedBy: operatorName,
+            reversalReason: reason,
+            notes: `${prodData.notes || ""} | REVERSED on ${timestamp} by ${operatorName}. Reason: ${reason}`
+          })
+        );
+      };
+    } else {
+      additionalWrites = (transaction) => {
+        transaction.delete(doc(db, targetColl, prodSnap.id));
+      };
+    }
   } else if (category === "scrap") {
-    const scrapSnap = await getDoc(doc(db, "scraps", opId));
-    if (!scrapSnap.exists()) throw new Error("Scrap record not found");
+    const scrapSnap = await findFirestoreDoc("scraps", opId);
+    if (!scrapSnap || !scrapSnap.exists()) throw new Error("Scrap record not found");
     const scrapData = scrapSnap.data() as ScrapEntry;
     const refCode = scrapData.reference.trim().toUpperCase();
 
@@ -2452,15 +2599,30 @@ export async function executeProtectedDeleteOrReverseOperation(
       quantity: scrapData.quantity,
       operatorName: `${operatorName} (Reversal)`,
       timestamp,
-      notes: `Deleted scrap reversal. Reason: ${reason}`
+      notes: `${mode === "delete" ? "Deleted" : "Reversed"} scrap. Reason: ${reason}`
     });
 
-    additionalWrites = (transaction) => {
-      transaction.delete(doc(db, "scraps", opId));
-    };
+    if (mode === "reverse") {
+      additionalWrites = (transaction) => {
+        transaction.update(
+          doc(db, "scraps", scrapSnap.id),
+          cleanDocData({
+            status: "reversed",
+            reversedAt: timestamp,
+            reversedBy: operatorName,
+            reversalReason: reason,
+            notes: `${scrapData.notes || ""} | REVERSED on ${timestamp} by ${operatorName}. Reason: ${reason}`
+          })
+        );
+      };
+    } else {
+      additionalWrites = (transaction) => {
+        transaction.delete(doc(db, "scraps", scrapSnap.id));
+      };
+    }
   } else if (category === "invoice") {
-    const invSnap = await getDoc(doc(db, "invoices", opId));
-    if (!invSnap.exists()) throw new Error("Invoice record not found");
+    const invSnap = await findFirestoreDoc("invoices", opId);
+    if (!invSnap || !invSnap.exists()) throw new Error("Invoice record not found");
     const invData = invSnap.data() as ReceivingInvoice;
 
     if (invData.status === "approved" && invData.items) {
@@ -2485,20 +2647,29 @@ export async function executeProtectedDeleteOrReverseOperation(
       quantity: invData.totalQuantity || 0,
       operatorName: `${operatorName} (Reversal)`,
       timestamp,
-      notes: `Deleted invoice intake #${invData.invoiceNumber} reversal. Reason: ${reason}`
+      notes: `${mode === "delete" ? "Deleted" : "Reversed"} invoice intake #${invData.invoiceNumber}. Reason: ${reason}`
     });
 
-    additionalWrites = (transaction) => {
-      transaction.delete(doc(db, "invoices", opId));
-    };
+    if (mode === "reverse") {
+      additionalWrites = (transaction) => {
+        transaction.update(
+          doc(db, "invoices", invSnap.id),
+          cleanDocData({
+            status: "reversed",
+            reversedAt: timestamp,
+            reversedBy: operatorName,
+            reversalReason: reason
+          })
+        );
+      };
+    } else {
+      additionalWrites = (transaction) => {
+        transaction.delete(doc(db, "invoices", invSnap.id));
+      };
+    }
   } else if (category === "transfer" || category === "return" || category === "transaction") {
-    const txId = opId.startsWith("tx-")
-      ? opId.replace("tx-", "")
-      : opId.startsWith("batch-trf-")
-      ? opId.replace("batch-trf-", "")
-      : opId;
-    const txSnap = await getDoc(doc(db, "transactions", txId));
-    if (!txSnap.exists()) throw new Error("Transaction record not found");
+    const txSnap = await findFirestoreDoc("transactions", opId);
+    if (!txSnap || !txSnap.exists()) throw new Error("Transaction record not found");
     const txData = txSnap.data();
 
     if (txData.status === "REVERSED") {
@@ -2535,13 +2706,13 @@ export async function executeProtectedDeleteOrReverseOperation(
       quantity: txData.quantity || 0,
       operatorName: `${operatorName} (Reversal)`,
       timestamp,
-      notes: `Deleted operation (${txData.movementType}) reversal. Reason: ${reason}`
+      notes: `${mode === "delete" ? "Deleted" : "Reversed"} operation (${txData.movementType}). Reason: ${reason}`
     });
 
-    if (category === "transfer" || txData.movementType === "TRANSFER S1->S2" || txData.movementType === "TRANSFER") {
+    if (mode === "reverse" || category === "transfer" || txData.movementType === "TRANSFER S1->S2" || txData.movementType === "TRANSFER") {
       additionalWrites = (transaction) => {
         transaction.update(
-          doc(db, "transactions", txId),
+          doc(db, "transactions", txSnap.id),
           cleanDocData({
             status: "REVERSED",
             reversedAt: timestamp,
@@ -2553,7 +2724,7 @@ export async function executeProtectedDeleteOrReverseOperation(
       };
     } else {
       additionalWrites = (transaction) => {
-        transaction.delete(doc(db, "transactions", txId));
+        transaction.delete(doc(db, "transactions", txSnap.id));
       };
     }
   }
@@ -2563,7 +2734,8 @@ export async function executeProtectedDeleteOrReverseOperation(
     deltas,
     operatorName,
     transactions,
-    additionalWrites
+    additionalWrites,
+    clampToZeroOnNegative: true
   });
 }
 

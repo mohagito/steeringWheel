@@ -33,9 +33,9 @@ export function LowStockAlertModal({ isOpen, onClose, references }: LowStockAler
     const q = search.toLowerCase();
     return lowStockList.filter(
       (r) =>
-        r.code.toLowerCase().includes(q) ||
-        (r.description && r.description.toLowerCase().includes(q)) ||
-        (r.customer && r.customer.toLowerCase().includes(q))
+        (r.code || "").toLowerCase().includes(q) ||
+        (r.description && (r.description || "").toLowerCase().includes(q)) ||
+        (r.customer && (r.customer || "").toLowerCase().includes(q))
     );
   }, [lowStockList, search]);
 

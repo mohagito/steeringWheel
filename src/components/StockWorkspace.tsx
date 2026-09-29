@@ -131,7 +131,13 @@ export default function StockWorkspace({
     } else if (reportType === "transfers") {
       baseData = transactions.filter(t => t.movementType === "TRANSFER" || t.movementType === "TRANSFER S1->S2");
     } else if (reportType === "deliveries") {
-      baseData = transactions.filter(t => t.movementType === "STOCK 3 OUT" || t.movementType === "DELIVERY");
+      baseData = transactions.filter(t => 
+        t.movementType === "STOCK 3 OUT" || 
+        t.movementType === "DELIVERY" || 
+        t.deliveryType !== undefined || 
+        t.id?.startsWith("trans-del-") || 
+        (t.movementType === "STOCK 2 OUT" && (t.notes?.toLowerCase().includes("delivery") || (t.notes || "").toUpperCase().includes("PRECOSIDO")))
+      );
     } else if (reportType === "s1_stock") {
       baseData = references.map(r => ({
         id: r.id,
@@ -454,10 +460,12 @@ export default function StockWorkspace({
 
   const filteredReferences = useMemo(() => {
     return references.filter(ref => {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = ref.code.toLowerCase().includes(q) || 
-                            ref.description.toLowerCase().includes(q) ||
-                            (ref.customer && ref.customer.toLowerCase().includes(q));
+      const q = (searchQuery || "").toLowerCase().trim();
+      const matchesSearch = !q ? true : (
+        (ref.code || "").toLowerCase().includes(q) || 
+        (ref.description || "").toLowerCase().includes(q) ||
+        (ref.customer && ref.customer.toLowerCase().includes(q))
+      );
       const matchesMaterial = materialFilter === "All" || ref.materialType === materialFilter;
       
       return matchesSearch && matchesMaterial;

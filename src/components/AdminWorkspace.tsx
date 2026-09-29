@@ -145,7 +145,7 @@ export default function AdminWorkspace({
     }
 
     // Check if username already exists
-    if (users.some(u => u.username.toLowerCase() === newUsername.toLowerCase().trim())) {
+    if (users.some(u => (u.username || "").toLowerCase() === (newUsername || "").toLowerCase().trim())) {
       setUserError("This username already exists.");
       return;
     }

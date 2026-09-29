@@ -328,7 +328,13 @@ export default function SupervisorWorkspace({
 
     transactions.forEach(tx => {
       // Eliminate duplicate transactions that were spawned by Delivery, Production, Scrap, Invoice, or Adjustment writes
-      if (tx.movementType === "DELIVERY" || tx.id.startsWith("trans-del-del-")) {
+      if (
+        tx.movementType === "DELIVERY" || 
+        tx.id.startsWith("trans-del-del-") ||
+        (tx.id.startsWith("trans-del-") && !tx.notes?.toLowerCase().includes("reversal")) ||
+        tx.deliveryType ||
+        (tx.notes?.toLowerCase().includes("delivery (") && !tx.notes?.toLowerCase().includes("reversal"))
+      ) {
         return;
       }
       if (tx.movementType === "STOCK 2 OUT / STOCK 3 IN" || tx.id.startsWith("trans-del-prod-") || tx.id.startsWith("trans-edit-prod-")) {
@@ -456,14 +462,16 @@ export default function SupervisorWorkspace({
   }, [invoices, deliveries, productions, scraps, adjustments, transactions]);
 
   const filteredOperations = useMemo(() => {
+    const q = (operationsSearch || "").toLowerCase().trim();
     return allOperations.filter(op => {
-      const matchesSearch = 
-        op.reference.toLowerCase().includes(operationsSearch.toLowerCase()) ||
-        op.operator.toLowerCase().includes(operationsSearch.toLowerCase()) ||
-        op.type.toLowerCase().includes(operationsSearch.toLowerCase()) ||
-        op.details.toLowerCase().includes(operationsSearch.toLowerCase()) ||
-        (op.invoiceNumber && op.invoiceNumber.toLowerCase().includes(operationsSearch.toLowerCase())) ||
-        (op.customer && op.customer.toLowerCase().includes(operationsSearch.toLowerCase()));
+      const matchesSearch = !q ? true : (
+        (op.reference || "").toLowerCase().includes(q) ||
+        (op.operator || "").toLowerCase().includes(q) ||
+        (op.type || "").toLowerCase().includes(q) ||
+        (op.details || "").toLowerCase().includes(q) ||
+        (op.invoiceNumber && (op.invoiceNumber || "").toLowerCase().includes(q)) ||
+        (op.customer && (op.customer || "").toLowerCase().includes(q))
+      );
 
       const matchesType = 
         operationsTypeFilter === "all" ||

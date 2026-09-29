@@ -263,12 +263,12 @@ export default function InvoicesWorkspace({
         // Search query filter (Invoice #, Operator, Reference codes)
         if (searchQuery.trim()) {
           const query = searchQuery.trim().toLowerCase();
-          const matchesInv = inv.invoiceNumber.toLowerCase().includes(query);
-          const matchesOp = inv.operator.toLowerCase().includes(query);
+          const matchesInv = (inv.invoiceNumber || "").toLowerCase().includes(query);
+          const matchesOp = (inv.operator || "").toLowerCase().includes(query);
           const matchesNotes = (inv.notes || "").toLowerCase().includes(query);
           const matchesRef = inv.items?.some(it => 
-            it.reference.toLowerCase().includes(query) || 
-            (it.boxBarcode && it.boxBarcode.toLowerCase().includes(query))
+            (it.reference || "").toLowerCase().includes(query) || 
+            (it.boxBarcode && (it.boxBarcode || "").toLowerCase().includes(query))
           );
 
           if (!matchesInv && !matchesOp && !matchesNotes && !matchesRef) {

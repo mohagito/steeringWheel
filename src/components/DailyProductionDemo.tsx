@@ -198,9 +198,9 @@ export default function DailyProductionDemo({
     const q = searchQuery.toLowerCase().trim();
     return rows.filter(
       (r) =>
-        r.refMaille.toLowerCase().includes(q) ||
-        r.libelle.toLowerCase().includes(q) ||
-        r.matchedReference?.customer?.toLowerCase().includes(q)
+        (r.refMaille || "").toLowerCase().includes(q) ||
+        (r.libelle || "").toLowerCase().includes(q) ||
+        (r.matchedReference?.customer || "").toLowerCase().includes(q)
     );
   }, [rows, searchQuery]);
 
@@ -269,14 +269,14 @@ export default function DailyProductionDemo({
     return dragBatches.filter((b) => {
       if (historyDateFilter && b.date !== historyDateFilter) return false;
       if (historySearchQuery) {
-        const q = historySearchQuery.toLowerCase().trim();
-        const dateMatch = b.date.toLowerCase().includes(q);
-        const timeMatch = b.recordedTime.toLowerCase().includes(q);
+        const q = (historySearchQuery || "").toLowerCase().trim();
+        const dateMatch = (b.date || "").toLowerCase().includes(q);
+        const timeMatch = (b.recordedTime || "").toLowerCase().includes(q);
         const refMatch = b.records.some(
           (r) =>
-            r.reference.toLowerCase().includes(q) ||
-            (refMap.get(r.reference.toUpperCase().trim())?.description || "").toLowerCase().includes(q) ||
-            (refMap.get(r.reference.toUpperCase().trim())?.customer || "").toLowerCase().includes(q)
+            (r.reference || "").toLowerCase().includes(q) ||
+            (refMap.get((r.reference || "").toUpperCase().trim())?.description || "").toLowerCase().includes(q) ||
+            (refMap.get((r.reference || "").toUpperCase().trim())?.customer || "").toLowerCase().includes(q)
         );
         if (!dateMatch && !timeMatch && !refMatch) return false;
       }

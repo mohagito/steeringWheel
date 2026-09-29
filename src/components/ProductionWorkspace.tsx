@@ -344,12 +344,12 @@ export default function ProductionWorkspace({
   // Pre-filtered productions list sorted by system timestamp descending
   const filteredProductions = useMemo(() => {
     return productions.filter((p) => {
-      const q = searchQuery.toLowerCase().trim();
+      const q = (searchQuery || "").toLowerCase().trim();
       const matchesSearch = !q ? true : (
-        p.reference.toLowerCase().includes(q) ||
-        p.operatorName.toLowerCase().includes(q) ||
-        p.date.toLowerCase().includes(q) ||
-        (p.notes && p.notes.toLowerCase().includes(q))
+        (p.reference || "").toLowerCase().includes(q) ||
+        (p.operatorName || "").toLowerCase().includes(q) ||
+        (p.date || "").toLowerCase().includes(q) ||
+        (p.notes || "").toLowerCase().includes(q)
       );
       const matchesDate = !dateFilter ? true : p.date === dateFilter;
       return matchesSearch && matchesDate;

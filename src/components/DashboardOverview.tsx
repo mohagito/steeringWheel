@@ -268,9 +268,12 @@ export default function DashboardOverview({
 
   // Filter and search references for the main list
   const filteredReferences = useMemo(() => {
+    const q = (searchQuery || "").toLowerCase().trim();
     return references.filter(ref => {
-      const matchesSearch = ref.code.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            ref.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = !q ? true : (
+        (ref.code || "").toLowerCase().includes(q) || 
+        (ref.description || "").toLowerCase().includes(q)
+      );
       const matchesMaterial = materialFilter === "All" || ref.materialType === materialFilter;
       
       const s1PlusS2 = (ref.stock1 || 0) + (ref.stock2 || 0);

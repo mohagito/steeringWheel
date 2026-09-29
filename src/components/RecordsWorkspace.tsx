@@ -182,22 +182,73 @@ export default function RecordsWorkspace({
     const type = (tx.movementType || "").toUpperCase();
     const stock = (tx.stock || "").toUpperCase();
     const notes = (tx.notes || "").toUpperCase();
+    const id = (tx.id || "").toLowerCase();
+    const delType = (tx.deliveryType || "").toUpperCase();
 
-    if (type.includes("STOCK 1 IN") || type.includes("INVOICE") || notes.includes("INVOICE") || notes.includes("TRUCK")) {
-      return "truck";
-    }
-    if (type.includes("TRANSFER") || type.includes("S1->S2") || stock.includes("STOCK 1 -> STOCK 2") || notes.includes("PEGADAS")) {
-      return "pegadas";
-    }
-    if (type.includes("RETURN") || type.includes("S2->S1") || stock.includes("STOCK 2 -> STOCK 1") || notes.includes("RETURN")) {
-      return "return";
-    }
-    if (type.includes("DELIVERY") || tx.deliveryType || notes.includes("DELIVERY") || notes.includes("DISPATCH")) {
+    // 1. Check deliveries FIRST, because deliveries frequently have invoice numbers (e.g., "Invoice MPT2330")
+    if (
+      delType !== "" ||
+      type === "DELIVERY" ||
+      type.includes("DELIVERY") ||
+      notes.startsWith("DELIVERY") ||
+      notes.includes("DELIVERY (") ||
+      notes.includes("PRECOSIDO") ||
+      notes.includes("DISPATCH") ||
+      id.startsWith("trans-del-") ||
+      (type === "STOCK 2 OUT" && !type.includes("STOCK 3 IN") && (notes.includes("INVOICE") || delType === "PRECOSIDO" || id.startsWith("trans-del-"))) ||
+      (type === "STOCK 3 OUT" && (notes.includes("INVOICE") || notes.includes("DISPATCH") || id.startsWith("trans-del-")))
+    ) {
       return "delivery";
     }
-    if (type.includes("STOCK 2 OUT / STOCK 3 IN") || type.includes("SCRAP") || notes.includes("PRODUCTION") || notes.includes("NOK")) {
+
+    // 2. Production & Scrap (Stock 2 -> Stock 3, or Scrap NOK)
+    if (
+      type.includes("STOCK 2 OUT / STOCK 3 IN") ||
+      type.includes("SCRAP") ||
+      notes.includes("PRODUCTION") ||
+      notes.includes("NOK MESH") ||
+      id.startsWith("trans-prod-") ||
+      id.startsWith("trans-scrap-")
+    ) {
       return "production_scrap";
     }
+
+    // 3. Pegadas Transfer (Stock 1 -> Stock 2)
+    if (
+      type.includes("TRANSFER") ||
+      type.includes("S1->S2") ||
+      stock.includes("STOCK 1 -> STOCK 2") ||
+      notes.includes("PEGADAS") ||
+      notes.includes("TRANSFER")
+    ) {
+      return "pegadas";
+    }
+
+    // 4. Stock Returns (Stock 2 -> Stock 1)
+    if (
+      type.includes("RETURN") ||
+      type.includes("S2->S1") ||
+      stock.includes("STOCK 2 -> STOCK 1") ||
+      notes.includes("RETURN")
+    ) {
+      return "return";
+    }
+
+    // 5. Truck / Raw Material Intake (Stock 1 IN)
+    if (
+      type.includes("STOCK 1 IN") ||
+      type.includes("TRUCK") ||
+      notes.includes("TRUCK") ||
+      notes.includes("STOCK 1 IN") ||
+      notes.includes("NEW TRUCK") ||
+      id.startsWith("trans-s1in-") ||
+      id.startsWith("trans-truck-") ||
+      id.startsWith("trans-inv-") ||
+      (type.includes("INVOICE") && !notes.includes("DELIVERY"))
+    ) {
+      return "truck";
+    }
+
     return "other";
   };
 
@@ -392,15 +443,30 @@ export default function RecordsWorkspace({
           qtyColor: "text-amber-700",
           prefix: "↩"
         };
-      case "delivery":
+      case "delivery": {
+        const isPrecosido = (tx.deliveryType || "").toUpperCase() === "PRECOSIDO" || 
+                            (tx.notes || "").toUpperCase().includes("PRECOSIDO") || 
+                            tx.stock === "Stock 2" || 
+                            (tx.movementType || "").toUpperCase() === "STOCK 2 OUT";
+        if (isPrecosido) {
+          return {
+            badgeBg: "bg-amber-50 text-amber-800 border-amber-300",
+            icon: <Truck className="w-4 h-4 text-amber-600 shrink-0" />,
+            label: "PRECOSIDO DELIVERY (STOCK 2 OUT)",
+            accentColor: "border-l-amber-500",
+            qtyColor: "text-rose-700",
+            prefix: "−"
+          };
+        }
         return {
           badgeBg: "bg-purple-50 text-purple-700 border-purple-300",
           icon: <ArrowUpRight className="w-4 h-4 text-purple-600 shrink-0" />,
-          label: "CUSTOMER DISPATCH",
+          label: "CUSTOMER DISPATCH (STOCK 3 OUT)",
           accentColor: "border-l-purple-500",
           qtyColor: "text-purple-700",
-          prefix: "📤"
+          prefix: "−"
         };
+      }
       case "production_scrap":
         if ((tx.movementType || "").includes("SCRAP")) {
           return {
@@ -473,7 +539,7 @@ export default function RecordsWorkspace({
       {/* ---------------------------------------------------- */}
       {/* 1. KPI SUMMARY METRICS FOR SELECTED OPERATOR & TIME */}
       {/* ---------------------------------------------------- */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5" id="records-kpi-grid">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5" id="records-kpi-grid">
         {/* KPI 1: New Stock / Truck Intake */}
         <div 
           onClick={() => setCategoryFilter(categoryFilter === "truck" ? "all" : "truck")}
@@ -512,7 +578,26 @@ export default function RecordsWorkspace({
           </div>
         </div>
 
-        {/* KPI 3: Stock Returns (S2 -> S1) */}
+        {/* KPI 3: Precosido & Customer Deliveries */}
+        <div 
+          onClick={() => setCategoryFilter(categoryFilter === "delivery" ? "all" : "delivery")}
+          className={`bg-white p-4 rounded-xl border transition-all cursor-pointer shadow-2xs hover:shadow-sm ${
+            categoryFilter === "delivery" ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/10" : "border-slate-200"
+          }`}
+          id="kpi-card-delivery"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-2 bg-amber-100 text-amber-800 rounded-lg">
+              <ArrowUpRight className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">Deliveries</span>
+          </div>
+          <div className="text-2xl font-black font-mono text-rose-700 tracking-tight">
+            −{stats.totalDeliveryPcs.toLocaleString()}
+          </div>
+        </div>
+
+        {/* KPI 4: Stock Returns (S2 -> S1) */}
         <div 
           onClick={() => setCategoryFilter(categoryFilter === "return" ? "all" : "return")}
           className={`bg-white p-4 rounded-xl border transition-all cursor-pointer shadow-2xs hover:shadow-sm ${
@@ -531,7 +616,7 @@ export default function RecordsWorkspace({
           </div>
         </div>
 
-        {/* KPI 4: Total Activity */}
+        {/* KPI 5: Total Activity */}
         <div 
           onClick={() => setCategoryFilter("all")}
           className={`bg-white p-4 rounded-xl border transition-all cursor-pointer shadow-2xs hover:shadow-sm ${
