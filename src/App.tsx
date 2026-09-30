@@ -739,7 +739,7 @@ export default function App() {
       const s1 = updatedFields.stock1 !== undefined ? updatedFields.stock1 : (currentData.stock1 || 0);
       const s2 = updatedFields.stock2 !== undefined ? updatedFields.stock2 : (currentData.stock2 || 0);
       const s3 = updatedFields.stock3 !== undefined ? updatedFields.stock3 : (currentData.stock3 || 0);
-      const newTotal = Math.max(0, s1 + s2 + s3);
+      const newTotal = s1 + s2 + s3;
 
       const isStockChange =
         updatedFields.stock1 !== undefined ||
@@ -761,9 +761,9 @@ export default function App() {
 
       const updatePayload: Record<string, any> = {
         ...updatedFields,
-        stock1: Math.max(0, s1),
-        stock2: Math.max(0, s2),
-        stock3: Math.max(0, s3),
+        stock1: s1,
+        stock2: s2,
+        stock3: s3,
         currentStock: newTotal,
         lastUpdate: timestamp,
         updatedAt: timestamp,
@@ -847,7 +847,7 @@ export default function App() {
       const s2 = typeof data.stock2 === "number" ? data.stock2 : 0;
       const s3 = typeof data.stock3 === "number" ? data.stock3 : 0;
 
-      const expectedTotal = Math.max(0, s1 + s2 + s3);
+      const expectedTotal = s1 + s2 + s3;
 
       let needsFix = false;
       const patch: any = {};

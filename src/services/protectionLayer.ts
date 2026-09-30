@@ -121,6 +121,8 @@ export interface ProtectedOperationParams {
   additionalWrites?: (transaction: Transaction, timestamp: string) => Promise<void> | void;
   // If true, any resulting negative stock will be floored/clamped to 0 instead of rejecting (used for production reversals when finished goods were partially dispatched)
   clampToZeroOnNegative?: boolean;
+  // If true, negative resulting stock is allowed and will NOT throw PROTECTION_NEGATIVE_STOCK (e.g. for customer deliveries)
+  allowNegativeStock?: boolean;
   // Direct callback execution mode (e.g., used by Dashboard quick actions and OperatorWorkspace)
   execute?: (
     refData: Reference,
@@ -162,7 +164,8 @@ export async function executeProtectedStockOperation(
     transactions = [],
     additionalWrites,
     execute,
-    clampToZeroOnNegative = false
+    clampToZeroOnNegative = false,
+    allowNegativeStock = false
   } = params;
 
   // 1. Idempotency / Duplicate Check
@@ -206,7 +209,9 @@ export async function executeProtectedStockOperation(
           for (const change of execResult.stockChanges) {
             const code = change.referenceCode.trim().toUpperCase();
             if (change.newStock1 < 0 || change.newStock2 < 0 || change.newStock3 < 0) {
-              if (clampToZeroOnNegative) {
+              if (allowNegativeStock || operationType === "DELIVERY" || operationType === "DELIVERY_UPDATE") {
+                // Negative stock allowed (e.g. customer deliveries)
+              } else if (clampToZeroOnNegative) {
                 if (change.newStock1 < 0) change.newStock1 = 0;
                 if (change.newStock2 < 0) change.newStock2 = 0;
                 if (change.newStock3 < 0) change.newStock3 = 0;
@@ -360,22 +365,24 @@ export async function executeProtectedStockOperation(
         }
       }
 
-      // Step C: Strict Non-Negative Stock Validation
-      for (const code of uniqueRefCodes) {
-        const cur = accumulatedChanges[code];
-        if (cur.s1After < 0 || cur.s2After < 0 || cur.s3After < 0) {
-          if (clampToZeroOnNegative) {
-            if (cur.s1After < 0) cur.s1After = 0;
-            if (cur.s2After < 0) cur.s2After = 0;
-            if (cur.s3After < 0) cur.s3After = 0;
-          } else {
-            const negStockDetails = [];
-            if (cur.s1After < 0) negStockDetails.push(`Stock 1 would be ${cur.s1After} (available: ${cur.s1Before})`);
-            if (cur.s2After < 0) negStockDetails.push(`Stock 2 would be ${cur.s2After} (available: ${cur.s2Before})`);
-            if (cur.s3After < 0) negStockDetails.push(`Stock 3 would be ${cur.s3After} (available: ${cur.s3Before})`);
+      // Step C: Strict Non-Negative Stock Validation (Bypassed for Deliveries to allow negative stock)
+      if (!allowNegativeStock && operationType !== "DELIVERY" && operationType !== "DELIVERY_UPDATE") {
+        for (const code of uniqueRefCodes) {
+          const cur = accumulatedChanges[code];
+          if (cur.s1After < 0 || cur.s2After < 0 || cur.s3After < 0) {
+            if (clampToZeroOnNegative) {
+              if (cur.s1After < 0) cur.s1After = 0;
+              if (cur.s2After < 0) cur.s2After = 0;
+              if (cur.s3After < 0) cur.s3After = 0;
+            } else {
+              const negStockDetails = [];
+              if (cur.s1After < 0) negStockDetails.push(`Stock 1 would be ${cur.s1After} (available: ${cur.s1Before})`);
+              if (cur.s2After < 0) negStockDetails.push(`Stock 2 would be ${cur.s2After} (available: ${cur.s2Before})`);
+              if (cur.s3After < 0) negStockDetails.push(`Stock 3 would be ${cur.s3After} (available: ${cur.s3Before})`);
 
-            const rejectionReason = `Insufficient stock for Reference "${code}". ${negStockDetails.join(", ")}.`;
-            throw new Error(`PROTECTION_NEGATIVE_STOCK:${rejectionReason}`);
+              const rejectionReason = `Insufficient stock for Reference "${code}". ${negStockDetails.join(", ")}.`;
+              throw new Error(`PROTECTION_NEGATIVE_STOCK:${rejectionReason}`);
+            }
           }
         }
       }
@@ -550,6 +557,7 @@ export async function executeProtectedDeliveries(
     operatorName,
     idempotencyKey,
     transactions,
+    allowNegativeStock: true,
     additionalWrites: (transaction) => {
       for (const item of deliveryDocs) {
         transaction.set(doc(db, "deliveries", item.id), cleanDocData(item.doc));
@@ -1656,6 +1664,7 @@ export async function executeProtectedUpdateDelivery(
     deltas,
     operatorName,
     transactions,
+    allowNegativeStock: true,
     additionalWrites: (transaction) => {
       transaction.update(
         doc(db, "deliveries", deliveryId),

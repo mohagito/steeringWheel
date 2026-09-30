@@ -248,18 +248,6 @@ export default function DeliveriesWorkspace({
 
       cumulativeQtyMap[row.referenceCode] = (cumulativeQtyMap[row.referenceCode] || 0) + deliverQty;
 
-      // Check available stock in the relevant tier
-      // PRECOSIDO -> Stock 2; STEERING WHEELS -> Stock 3
-      const availableStock = isPrecosido ? (refObj.stock2 || 0) : (refObj.stock3 || 0);
-      const stockTierName = isPrecosido ? "Stock 2 (Glued Mesh WIP)" : "Stock 3 (Finished Goods)";
-
-      if (cumulativeQtyMap[row.referenceCode] > availableStock) {
-        setErrorMsg(
-          `Item #${i + 1} (${row.referenceCode}): Total requested quantity (${cumulativeQtyMap[row.referenceCode]} pcs) exceeds available ${stockTierName} (${availableStock} pcs). Negative stock is not allowed.`
-        );
-        return;
-      }
-
       // Customer is automatically retrieved from the reference data
       const autoCustomer = (refObj.customer || "GENERAL").trim().toUpperCase();
 
@@ -563,11 +551,7 @@ export default function DeliveriesWorkspace({
                                 placeholder="Quantity..."
                                 value={row.quantity}
                                 onChange={(e) => handleRowChange(index, "quantity", e.target.value)}
-                                className={`w-full min-h-[38px] px-3 py-2 text-xs bg-white border rounded-xl focus:outline-none focus:ring-2 transition-all font-mono font-bold ${
-                                  isOverStock
-                                    ? "border-rose-300 text-rose-700 focus:ring-rose-500/20 focus:border-rose-500 bg-rose-50/40"
-                                    : "border-slate-200 text-slate-900 focus:ring-rose-500/20 focus:border-rose-500"
-                                }`}
+                                className="w-full min-h-[38px] px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-900 font-mono font-bold transition-all"
                                 required
                               />
                             </div>
@@ -585,14 +569,19 @@ export default function DeliveriesWorkspace({
                                 Avail {isPrecosido ? "Stock 2" : "Stock 3"}:
                               </span>
                               <span className={`font-bold ${
-                                availableStock <= 0 
-                                  ? "text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200" 
-                                  : isOverStock 
-                                    ? "text-rose-600 font-black"
+                                availableStock < 0
+                                  ? "text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200"
+                                  : availableStock === 0
+                                    ? "text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded"
                                     : "text-emerald-700 font-bold"
                               }`}>
                                 {availableStock} PCS
                               </span>
+                              {isOverStock && (
+                                <span className="font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[9px]">
+                                  (Stock will be: {availableStock - rowQtyNumber} PCS)
+                                </span>
+                              )}
                             </div>
                           </div>
                         )}

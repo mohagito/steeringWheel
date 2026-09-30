@@ -999,9 +999,6 @@ export default function DashboardOverview({
               <Layers className="w-5 h-5 text-slate-800" />
               Inventory
             </h3>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Live stock levels across Warehouse (S1), Mallas Pegadas (S2), and Finished Goods (S3)
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
