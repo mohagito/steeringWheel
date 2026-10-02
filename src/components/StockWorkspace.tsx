@@ -99,6 +99,8 @@ export default function StockWorkspace({
   const [editingRefId, setEditingRefId] = useState<string | null>(null);
   const [editingRefStage, setEditingRefStage] = useState<"stock1" | "stock2" | "stock3">("stock1");
   const [editingRefQty, setEditingRefQty] = useState<number>(0);
+  const [editingRefStock2Normal, setEditingRefStock2Normal] = useState<number>(0);
+  const [editingRefStock2Disassembly, setEditingRefStock2Disassembly] = useState<number>(0);
 
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -475,10 +477,21 @@ export default function StockWorkspace({
   const handleSaveRefStockChange = async (refId: string) => {
     if (!onUpdateReference) return;
     try {
-      await onUpdateReference(refId, {
-        [editingRefStage]: Number(editingRefQty)
-      });
-      setStatusMsg({ type: "success", text: `Reference ${editingRefStage.toUpperCase()} stock level updated successfully.` });
+      if (editingRefStage === "stock2") {
+        const norm = Number(editingRefStock2Normal) || 0;
+        const dis = Number(editingRefStock2Disassembly) || 0;
+        await onUpdateReference(refId, {
+          stock2Normal: norm,
+          stock2Disassembly: dis,
+          stock2: norm + dis
+        });
+        setStatusMsg({ type: "success", text: `Stock 2 updated: Normal=${norm.toLocaleString()} PCS, Disassembly=${dis.toLocaleString()} PCS.` });
+      } else {
+        await onUpdateReference(refId, {
+          [editingRefStage]: Number(editingRefQty)
+        });
+        setStatusMsg({ type: "success", text: `Reference ${editingRefStage.toUpperCase()} stock level updated successfully.` });
+      }
       setEditingRefId(null);
       setTimeout(() => setStatusMsg(null), 3000);
     } catch (err: any) {
@@ -966,6 +979,14 @@ export default function StockWorkspace({
                   <Factory className="w-5 h-5 text-amber-500" />
                   Stock 2
                 </h3>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold">
+                    Normal: {references.reduce((sum, r) => sum + Math.max(0, r.stock2Normal !== undefined ? r.stock2Normal : (r.stock2 || 0) - (r.stock2Disassembly || 0)), 0).toLocaleString()} PCS
+                  </span>
+                  <span className="px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200/80 font-mono text-[11px] font-bold">
+                    Disassembly: {references.reduce((sum, r) => sum + (r.stock2Disassembly || 0), 0).toLocaleString()} PCS
+                  </span>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
@@ -1014,7 +1035,9 @@ export default function StockWorkspace({
                     <th className="py-3 px-4">Description</th>
                     <th className="py-3 px-4">Material Type</th>
                     <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-right">Production Qty (Stock 2)</th>
+                    <th className="py-3 px-4 text-right">NORMAL STOCK</th>
+                    <th className="py-3 px-4 text-right">DISASSEMBLY STOCK</th>
+                    <th className="py-3 px-4 text-right">TOTAL STOCK</th>
                     <th className="py-3 px-4 text-right">Last Update</th>
                     {(currentUser.role === "admin" || currentUser.role === "supervisor") && (
                       <th className="py-3 px-4 text-center">Actions</th>
@@ -1053,15 +1076,45 @@ export default function StockWorkspace({
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono font-extrabold text-amber-600 text-sm">
+                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 text-sm">
                           {editingRefId === ref.id && editingRefStage === "stock2" ? (
                             <input
                               type="number"
                               min="0"
-                              value={editingRefQty}
-                              onChange={(e) => setEditingRefQty(Number(e.target.value))}
+                              value={editingRefStock2Normal}
+                              onChange={(e) => setEditingRefStock2Normal(Number(e.target.value))}
                               className="w-24 text-right border border-amber-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
+                              placeholder="Normal"
                             />
+                          ) : (
+                            <>
+                              {Math.max(0, ref.stock2Normal !== undefined ? ref.stock2Normal : (ref.stock2 || 0) - (ref.stock2Disassembly || 0)).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
+                            </>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-purple-700 text-sm">
+                          {editingRefId === ref.id && editingRefStage === "stock2" ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingRefStock2Disassembly}
+                              onChange={(e) => setEditingRefStock2Disassembly(Number(e.target.value))}
+                              className="w-24 text-right border border-purple-500 px-2 py-1 font-mono text-xs rounded-xl focus:outline-none"
+                              placeholder="Disassembly"
+                            />
+                          ) : (ref.stock2Disassembly || 0) > 0 ? (
+                            <span className="px-2 py-0.5 bg-purple-50 text-purple-800 rounded-md border border-purple-200/80 font-black">
+                              {(ref.stock2Disassembly || 0).toLocaleString()} <span className="text-[10px] text-purple-500 font-sans font-normal">PCS</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-normal">0 <span className="text-[10px] text-slate-400 font-sans">PCS</span></span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-extrabold text-amber-600 text-sm">
+                          {editingRefId === ref.id && editingRefStage === "stock2" ? (
+                            <span className="text-amber-700 font-black">
+                              {(Number(editingRefStock2Normal || 0) + Number(editingRefStock2Disassembly || 0)).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
+                            </span>
                           ) : (
                             <>
                               {(ref.stock2 || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-sans font-normal">PCS</span>
@@ -1094,12 +1147,15 @@ export default function StockWorkspace({
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
                                   onClick={() => {
+                                    const dis = ref.stock2Disassembly || 0;
+                                    const norm = ref.stock2Normal !== undefined ? ref.stock2Normal : Math.max(0, (ref.stock2 || 0) - dis);
                                     setEditingRefId(ref.id);
                                     setEditingRefStage("stock2");
-                                    setEditingRefQty(ref.stock2 || 0);
+                                    setEditingRefStock2Normal(norm);
+                                    setEditingRefStock2Disassembly(dis);
                                   }}
                                   className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
-                                  title="Edit Stock 2"
+                                  title="Edit Stock 2 (Normal / Disassembly)"
                                 >
                                   <Edit2 className="w-3 h-3" />
                                   <span>Stock</span>

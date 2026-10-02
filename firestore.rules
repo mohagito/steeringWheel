@@ -34,6 +34,10 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /disassemblies/{disassemblyId} {
+      allow read, write: if true;
+    }
+
     match /scraps/{scrapId} {
       allow read, write: if true;
     }

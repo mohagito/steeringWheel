@@ -22,6 +22,8 @@ import BezelActionButtons, { BezelActiveModal } from "./bezel/BezelActionButtons
 import BezelStockTable from "./bezel/BezelStockTable";
 import BezelHistoryTable from "./bezel/BezelHistoryTable";
 import BezelOperationsModals from "./bezel/BezelOperationsModals";
+import BezelSidebar from "./bezel/BezelSidebar";
+import BezelInventoryWorkspace from "./bezel/BezelInventoryWorkspace";
 
 interface BezelWorkspaceProps {
   currentUser: User;
@@ -37,6 +39,7 @@ export default function BezelWorkspace({
   const [references, setReferences] = useState<BezelReference[]>([]);
   const [operations, setOperations] = useState<BezelOperation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState<string>("operations");
   const [activeTab, setActiveTab] = useState<"stock" | "history">("stock");
   const [activeModal, setActiveModal] = useState<BezelActiveModal>(null);
   const [selectedReferenceCode, setSelectedReferenceCode] = useState<string | undefined>(undefined);
@@ -202,96 +205,121 @@ export default function BezelWorkspace({
         </div>
       </header>
 
-      {/* Main Workspace */}
-      <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
-        {/* Toast Notification */}
-        {toast && (
-          <div
-            id="bezel-notification-toast"
-            className={`mb-4 p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs font-semibold shadow-xs animate-in slide-in-from-top-2 duration-150 ${
-              toast.type === "success"
-                ? "bg-emerald-50 text-emerald-900 border-emerald-200"
-                : "bg-rose-50 text-rose-900 border-rose-200"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              {toast.type === "success" ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              )}
-              <span>{toast.message}</span>
-            </div>
-            <button
-              onClick={() => setToast(null)}
-              className="text-slate-400 hover:text-slate-700 cursor-pointer text-sm"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* 1. Live Aggregate Inventory Metrics */}
-        <BezelMetrics
-          references={references}
-          totalStock1={totalStock1}
-          totalStock2={totalStock2}
-          totalStock={totalStock}
-        />
-
-        {/* 2. The 5 Main Operation Action Buttons */}
-        <BezelActionButtons
-          onOpenModal={handleOpenModal}
+      {/* Main Workspace with Vertical Sidebar */}
+      <main className="flex-1 flex flex-col md:flex-row w-full bg-[#f8fafc]">
+        {/* Vertical Sidebar */}
+        <BezelSidebar
+          activeSection={activeSection}
+          onSelectSection={setActiveSection}
           userRole={currentUser.role}
-          isSeeding={isSeeding}
-          onSeed={handleManualSeed}
-          hasReferences={references.length > 0}
+          referencesCount={references.length}
+          operationsCount={operations.length}
         />
 
-        {/* 3. Sub-Navigation Tabs */}
-        <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2">
-          <button
-            onClick={() => setActiveTab("stock")}
-            id="bezel-tab-stock"
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "stock"
-                ? "bg-slate-900 text-white shadow-2xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Stock Inventory ({references.length})</span>
-          </button>
+        {/* Section Content Area */}
+        <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto overflow-y-auto">
+          {/* Toast Notification */}
+          {toast && (
+            <div
+              id="bezel-notification-toast"
+              className={`mb-4 p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs font-semibold shadow-xs animate-in slide-in-from-top-2 duration-150 ${
+                toast.type === "success"
+                  ? "bg-emerald-50 text-emerald-900 border-emerald-200"
+                  : "bg-rose-50 text-rose-900 border-rose-200"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {toast.type === "success" ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{toast.message}</span>
+              </div>
+              <button
+                onClick={() => setToast(null)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer text-sm"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
-          <button
-            onClick={() => setActiveTab("history")}
-            id="bezel-tab-history"
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "history"
-                ? "bg-slate-900 text-white shadow-2xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            <span>Operations Log ({operations.length})</span>
-          </button>
+          {/* Section 1: STOCK INVENTORY */}
+          {activeSection === "inventory" ? (
+            <BezelInventoryWorkspace
+              references={references}
+              currentUser={currentUser}
+              onSuccess={(msg) => showToast(msg, "success")}
+              onError={(err) => showToast(err, "error")}
+            />
+          ) : (
+            /* Section 2: OPERATIONS & OVERVIEW */
+            <div className="space-y-6">
+              {/* 1. Live Aggregate Inventory Metrics */}
+              <BezelMetrics
+                references={references}
+                totalStock1={totalStock1}
+                totalStock2={totalStock2}
+                totalStock={totalStock}
+              />
+
+              {/* 2. The 5 Main Operation Action Buttons */}
+              <BezelActionButtons
+                onOpenModal={handleOpenModal}
+                userRole={currentUser.role}
+                isSeeding={isSeeding}
+                onSeed={handleManualSeed}
+                hasReferences={references.length > 0}
+              />
+
+              {/* 3. Sub-Navigation Tabs */}
+              <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2">
+                <button
+                  onClick={() => setActiveTab("stock")}
+                  id="bezel-tab-stock"
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === "stock"
+                      ? "bg-slate-900 text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Live Stock Overview ({references.length})</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("history")}
+                  id="bezel-tab-history"
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === "history"
+                      ? "bg-slate-900 text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span>Operations Log ({operations.length})</span>
+                </button>
+              </div>
+
+              {/* 4. Tab Content */}
+              {activeTab === "stock" ? (
+                <BezelStockTable
+                  references={references}
+                  onOpenModal={handleOpenModal}
+                />
+              ) : (
+                <BezelHistoryTable
+                  operations={operations}
+                  userRole={currentUser.role}
+                  operatorName={currentUser.fullName}
+                  onSuccess={(msg) => showToast(msg, "success")}
+                  onError={(err) => showToast(err, "error")}
+                />
+              )}
+            </div>
+          )}
         </div>
-
-        {/* 4. Tab Content */}
-        {activeTab === "stock" ? (
-          <BezelStockTable
-            references={references}
-            onOpenModal={handleOpenModal}
-          />
-        ) : (
-          <BezelHistoryTable
-            operations={operations}
-            userRole={currentUser.role}
-            operatorName={currentUser.fullName}
-            onSuccess={(msg) => showToast(msg, "success")}
-            onError={(err) => showToast(err, "error")}
-          />
-        )}
       </main>
 
       {/* 5. Operation Modals */}

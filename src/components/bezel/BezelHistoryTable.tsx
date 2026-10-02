@@ -9,7 +9,8 @@ import {
   Trash2,
   Undo2,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  ClipboardCheck
 } from "lucide-react";
 import { BezelOperation, BezelOperationType, UserRole } from "../../types";
 import { formatSystemTime, MOROCCO_TIMEZONE_LABEL } from "../../utils/timeUtils";
@@ -85,6 +86,12 @@ export default function BezelHistoryTable({
           label: "SCRAP",
           className: "bg-rose-50 text-rose-800 border-rose-200"
         };
+      case "PHYSICAL_INVENTORY":
+        return {
+          icon: <ClipboardCheck className="w-3.5 h-3.5" />,
+          label: "INVENTORY",
+          className: "bg-teal-50 text-teal-800 border-teal-200"
+        };
       default:
         return {
           icon: <Clock className="w-3.5 h-3.5" />,
@@ -146,6 +153,7 @@ export default function BezelHistoryTable({
             <option value="BEZEL_DELIVERY">Delivery</option>
             <option value="BEZEL_RETURN">Return</option>
             <option value="BEZEL_SCRAP">Scrap / NOK</option>
+            <option value="PHYSICAL_INVENTORY">Physical Inventory</option>
           </select>
 
           {/* Search Bar */}

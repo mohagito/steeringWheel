@@ -4,7 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState } from "./seeder";
-import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry, ReceivingInvoice, ScannedInvoiceBox } from "./types";
+import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry, ReceivingInvoice, ScannedInvoiceBox, DisassemblyEntry } from "./types";
 import { compareTimestampsDesc, getMoroccoTodayDateString, normalizeDocTimestamps } from "./utils/timeUtils";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
@@ -22,12 +22,13 @@ import PegadasWorkspace from "./components/PegadasWorkspace";
 import ModuleSelection from "./components/ModuleSelection";
 import BezelWorkspace from "./components/BezelWorkspace";
 import DailyProductionDemo from "./components/DailyProductionDemo";
+import DesassemblageWorkspace from "./components/DesassemblageWorkspace";
 import { LowStockAlertModal } from "./components/LowStockAlertModal";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
   RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2, FolderTree, FileText,
-  AlertTriangle, History, Layers, ArrowLeft, FileSpreadsheet
+  AlertTriangle, History, Layers, ArrowLeft, FileSpreadsheet, Hammer
 } from "lucide-react";
 import {
   executeProtectedDeliveries,
@@ -51,7 +52,10 @@ import {
   executeProtectedDeleteBatch,
   executeProtectedDeleteDailyProductionBatch,
   executeProtectedDeleteDailyProduction,
-  executeProtectedUpdateDailyProduction
+  executeProtectedUpdateDailyProduction,
+  executeProtectedDisassemblyIntake,
+  executeProtectedDeleteDisassemblyBatch,
+  executeProtectedDeleteDisassembly
 } from "./services/protectionLayer";
 
 export default function App() {
@@ -72,9 +76,10 @@ export default function App() {
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [scraps, setScraps] = useState<ScrapEntry[]>([]);
   const [invoices, setInvoices] = useState<ReceivingInvoice[]>([]);
+  const [disassemblies, setDisassemblies] = useState<DisassemblyEntry[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "scrap" | "manage-references">(() => {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "desassemblage" | "scrap" | "manage-references">(() => {
     try {
       const savedUser = sessionStorage.getItem("epp_current_user");
       const savedTab = sessionStorage.getItem("epp_active_tab") as any;
@@ -154,18 +159,27 @@ export default function App() {
     let unsubTransactions: (() => void) | null = null;
     let unsubScraps: (() => void) | null = null;
     let unsubInvoices: (() => void) | null = null;
+    let unsubDisassemblies: (() => void) | null = null;
 
-    async function initApp() {
+    const handleSnapshotError = (colName: string) => (error: any) => {
+      if (error?.code === "unavailable" || error?.message?.includes("offline") || error?.message?.includes("Could not reach Cloud Firestore")) {
+        console.info(`Firestore ${colName} operating in resilient offline/cache mode.`);
+      } else {
+        console.warn(`Firestore subscription notice for ${colName}:`, error?.message || error);
+      }
+    };
+
+    // 1. Run background seeding and self-healing audit asynchronously without blocking listeners
+    (async () => {
       try {
-        // 1. Seed database with rich sample data if completely empty
         await seedDatabaseIfNeeded();
-        // 2. Automatically run self-healing database integrity audit
         await handleAuditDatabase();
       } catch (err) {
-        console.error("Initialization / Audit failed", err);
+        console.warn("Background seed/audit notice:", err);
       }
+    })();
 
-      // 2. Real-time subscriptions to Firestore collections
+    // 2. Real-time subscriptions to Firestore collections
       unsubBoxes = onSnapshot(
         collection(db, "boxes"), 
         (snapshot) => {
@@ -316,6 +330,25 @@ export default function App() {
         }
       );
 
+      unsubDisassemblies = onSnapshot(
+        collection(db, "disassemblies"),
+        (snapshot) => {
+          const dList: DisassemblyEntry[] = [];
+          snapshot.forEach((doc) => {
+            dList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as DisassemblyEntry);
+          });
+          dList.sort((a, b) => {
+            const dateDiff = compareTimestampsDesc(a.date, b.date);
+            if (dateDiff !== 0) return dateDiff;
+            return compareTimestampsDesc(a.timestamp, b.timestamp);
+          });
+          setDisassemblies(dList);
+        },
+        (error) => {
+          console.error("Error subscribing to disassemblies:", error);
+        }
+      );
+
       unsubUsers = onSnapshot(
         collection(db, "users"), 
         (snapshot) => {
@@ -331,9 +364,6 @@ export default function App() {
           setLoading(false); // Make sure we stop loading even on error
         }
       );
-    }
-
-    initApp();
 
     return () => {
       if (unsubBoxes) unsubBoxes();
@@ -345,6 +375,7 @@ export default function App() {
       if (unsubTransactions) unsubTransactions();
       if (unsubScraps) unsubScraps();
       if (unsubInvoices) unsubInvoices();
+      if (unsubDisassemblies) unsubDisassemblies();
       if (unsubUsers) unsubUsers();
     };
   }, []);
@@ -469,6 +500,24 @@ export default function App() {
   ) => {
     if (!currentUser) throw new Error("No authenticated user session.");
     await executeProtectedUpdateDailyProduction(productionId, updatedData, currentUser.fullName, reason);
+  };
+
+  // Dedicated Désassemblage Handlers (S3 -> S2 Disassembly)
+  const handleValidateDisassembly = async (
+    entries: { date: string; reference: string; quantity: number; description?: string; notes?: string }[]
+  ) => {
+    if (!currentUser) return;
+    await executeProtectedDisassemblyIntake(entries, currentUser.fullName);
+  };
+
+  const handleDeleteDisassembly = async (disassemblyId: string, reason?: string) => {
+    if (!currentUser) return;
+    await executeProtectedDeleteDisassembly(disassemblyId, currentUser.fullName, disassemblies, reason);
+  };
+
+  const handleDeleteDisassemblyBatch = async (batchRecords: DisassemblyEntry[], reason?: string) => {
+    if (!currentUser) return;
+    await executeProtectedDeleteDisassemblyBatch(batchRecords, currentUser.fullName, reason);
   };
 
   // Action: Delete / Revert a delivery entry (Protected)
@@ -737,13 +786,27 @@ export default function App() {
       const timestamp = new Date().toISOString();
 
       const s1 = updatedFields.stock1 !== undefined ? updatedFields.stock1 : (currentData.stock1 || 0);
-      const s2 = updatedFields.stock2 !== undefined ? updatedFields.stock2 : (currentData.stock2 || 0);
+      const s2Dis = updatedFields.stock2Disassembly !== undefined 
+        ? updatedFields.stock2Disassembly 
+        : (currentData.stock2Disassembly || 0);
+      const s2Norm = updatedFields.stock2Normal !== undefined
+        ? updatedFields.stock2Normal
+        : (updatedFields.stock2 !== undefined 
+            ? Math.max(0, updatedFields.stock2 - s2Dis) 
+            : (currentData.stock2Normal !== undefined 
+                ? currentData.stock2Normal 
+                : Math.max(0, (currentData.stock2 || 0) - s2Dis)));
+      const s2 = updatedFields.stock2 !== undefined && updatedFields.stock2Normal === undefined && updatedFields.stock2Disassembly === undefined
+        ? updatedFields.stock2
+        : (s2Norm + s2Dis);
       const s3 = updatedFields.stock3 !== undefined ? updatedFields.stock3 : (currentData.stock3 || 0);
       const newTotal = s1 + s2 + s3;
 
       const isStockChange =
         updatedFields.stock1 !== undefined ||
         updatedFields.stock2 !== undefined ||
+        updatedFields.stock2Normal !== undefined ||
+        updatedFields.stock2Disassembly !== undefined ||
         updatedFields.stock3 !== undefined;
 
       const isStatusChange = updatedFields.active !== undefined && updatedFields.active !== currentData.active;
@@ -756,13 +819,15 @@ export default function App() {
         notes = `Changed active status of ${currentData.code} to ${updatedFields.active ? "ACTIVE" : "INACTIVE"}`;
       } else if (isStockChange) {
         movementType = "STOCK ADJUSTMENT";
-        notes = `Direct reference stock update for ${currentData.code}: S1=${s1}, S2=${s2}, S3=${s3}`;
+        notes = `Direct reference stock update for ${currentData.code}: S1=${s1}, S2=${s2} (Normal=${s2Norm}, Dis=${s2Dis}), S3=${s3}`;
       }
 
       const updatePayload: Record<string, any> = {
         ...updatedFields,
         stock1: s1,
         stock2: s2,
+        stock2Normal: s2Norm,
+        stock2Disassembly: s2Dis,
         stock3: s3,
         currentStock: newTotal,
         lastUpdate: timestamp,
@@ -1107,6 +1172,20 @@ export default function App() {
               <span>Daily Production</span>
             </button>
 
+            {/* Desassemblage Tab */}
+            <button
+              onClick={() => setActiveTab("desassemblage")}
+              id="nav-tab-desassemblage"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "desassemblage"
+                  ? "text-purple-400 font-bold bg-[#0f1e36] border-purple-400"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <Hammer className="w-4 h-4 shrink-0 text-purple-400" />
+              <span>Désassemblage</span>
+            </button>
+
             {/* SCRAP Tab */}
             <button
               onClick={() => setActiveTab("scrap")}
@@ -1288,6 +1367,7 @@ export default function App() {
               {activeTab === "deliveries" && "Customer Deliveries & Dispatches"}
               {activeTab === "production" && "Daily Production Consumption"}
               {activeTab === "daily-production-demo" && "Daily Production — Sheets Intake & Stock 3 Validation"}
+              {activeTab === "desassemblage" && "Désassemblage — S3 → S2 Disassembly & Recovery"}
               {activeTab === "scrap" && "SCRAP & NOK Mesh Management"}
               {activeTab === "manage-references" && "Manage References Catalog"}
               {activeTab === "operator" && "Inventory Count Workspace"}
@@ -1410,6 +1490,17 @@ export default function App() {
                   onDeleteProduction={handleDeleteDailyProduction}
                   onUpdateProduction={handleUpdateDailyProduction}
                   onDeleteBatch={handleDeleteDailyProductionBatch}
+                />
+              )}
+
+              {activeTab === "desassemblage" && (
+                <DesassemblageWorkspace
+                  references={references}
+                  currentUser={currentUser}
+                  disassemblies={disassemblies}
+                  onValidateDisassembly={handleValidateDisassembly}
+                  onDeleteDisassembly={handleDeleteDisassembly}
+                  onDeleteBatch={handleDeleteDisassemblyBatch}
                 />
               )}
 

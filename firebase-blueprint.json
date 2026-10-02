@@ -182,7 +182,7 @@
       "description": "Traceable atomic stock movement operation for the Bezel module",
       "type": "object",
       "properties": {
-        "operationType": { "type": "string", "enum": ["NEW_TRUCK", "BEZEL_ASSEMBLAGE", "BEZEL_DELIVERY", "BEZEL_RETURN", "BEZEL_SCRAP"], "description": "Operation type" },
+        "operationType": { "type": "string", "enum": ["NEW_TRUCK", "BEZEL_ASSEMBLAGE", "BEZEL_DELIVERY", "BEZEL_RETURN", "BEZEL_SCRAP", "PHYSICAL_INVENTORY"], "description": "Operation type" },
         "reference": { "type": "string", "description": "Bezel reference code" },
         "quantity": { "type": "number", "description": "Quantity moved" },
         "sourceStock": { "type": "string", "description": "Source stock (STOCK 1 or STOCK 2)" },
@@ -194,6 +194,22 @@
         "status": { "type": "string", "enum": ["completed", "reversed"], "description": "Operation status" }
       },
       "required": ["operationType", "reference", "quantity", "operatorName", "timestamp", "status"]
+    },
+    "DisassemblyEntry": {
+      "title": "DisassemblyEntry",
+      "description": "Log of recovered disassembly pieces moving from Stock 3 to Stock 2 Disassembly",
+      "type": "object",
+      "properties": {
+        "batchId": { "type": "string", "description": "Batch operation ID" },
+        "reference": { "type": "string", "description": "Part Reference code" },
+        "quantity": { "type": "number", "description": "Disassembled quantity" },
+        "date": { "type": "string", "description": "Disassembly date" },
+        "description": { "type": "string", "description": "Part description" },
+        "operatorName": { "type": "string", "description": "Operator who executed disassembly" },
+        "timestamp": { "type": "string", "description": "Execution timestamp" },
+        "notes": { "type": "string", "description": "Notes or operation context" }
+      },
+      "required": ["reference", "quantity", "date", "operatorName", "timestamp"]
     }
   },
   "firestore": {
@@ -224,6 +240,10 @@
     "/productions/{productionId}": {
       "schema": "Production",
       "description": "Collection of daily production consumption logs"
+    },
+    "/disassemblies/{disassemblyId}": {
+      "schema": "DisassemblyEntry",
+      "description": "Collection of disassembly operations moving parts from Stock 3 to Stock 2 Disassembly"
     },
     "/scraps/{scrapId}": {
       "schema": "Scrap",

@@ -19,6 +19,7 @@ import ScrapConColaCostDiagram from "./ScrapConColaCostDiagram";
 interface ScrapRow {
   referenceCode: string;
   stock: "Stock 1" | "Stock 2" | "Stock 3";
+  stock2Subtype?: "normal" | "disassembly";
   quantity: string;
   cola: "CON_COLA" | "SIN_COLA" | "";
 }
@@ -69,7 +70,7 @@ export default function ScrapWorkspace({
   
   // Multi-reference rows
   const [rows, setRows] = useState<ScrapRow[]>([
-    { referenceCode: "", stock: "Stock 2", quantity: "", cola: "" }
+    { referenceCode: "", stock: "Stock 2", stock2Subtype: "normal", quantity: "", cola: "" }
   ]);
 
   // UX Feedback States
@@ -172,7 +173,7 @@ export default function ScrapWorkspace({
   const handleAddRow = () => {
     setRows([
       ...rows,
-      { referenceCode: "", stock: "Stock 2", quantity: "", cola: "" }
+      { referenceCode: "", stock: "Stock 2", stock2Subtype: "normal", quantity: "", cola: "" }
     ]);
   };
 
@@ -249,12 +250,19 @@ export default function ScrapWorkspace({
         return;
       }
 
+      const s2Subtype = row.stock2Subtype || "normal";
+      const disStock = refObj.stock2Disassembly || 0;
+      const normStock = refObj.stock2Normal !== undefined ? refObj.stock2Normal : Math.max(0, (refObj.stock2 || 0) - disStock);
       const availableInStock =
-        row.stock === "Stock 1" ? (refObj.stock1 || 0) : row.stock === "Stock 2" ? (refObj.stock2 || 0) : (refObj.stock3 || 0);
+        row.stock === "Stock 1"
+          ? (refObj.stock1 || 0)
+          : row.stock === "Stock 2"
+          ? (s2Subtype === "disassembly" ? disStock : normStock)
+          : (refObj.stock3 || 0);
 
       if (qtyVal > availableInStock) {
         setErrorMsg(
-          `Item #${i + 1} (${cleanRef}): Scrapping ${qtyVal} PCS exceeds current available ${row.stock} inventory (${availableInStock} PCS). Negative stock is not allowed.`
+          `Item #${i + 1} (${cleanRef}): Scrapping ${qtyVal} PCS exceeds current available ${row.stock === "Stock 2" ? `${s2Subtype.toUpperCase()} Stock 2` : row.stock} inventory (${availableInStock} PCS). Negative stock is not allowed.`
         );
         return;
       }
@@ -270,12 +278,13 @@ export default function ScrapWorkspace({
         quantity: qtyVal,
         sourceStock: row.stock,
         stockDeductedFrom: row.stock,
+        stock2Subtype: row.stock === "Stock 2" ? s2Subtype : undefined,
         invoiceNumber: cleanedInvoice,
         cola: row.cola,
         colaStatus: row.cola,
         condition: row.cola === "CON_COLA" ? "CON COLA" : "SIN COLA",
         notes: ""
-      });
+      } as any);
     }
 
     try {
@@ -570,6 +579,42 @@ export default function ScrapWorkspace({
                               <span>STOCK 3</span>
                             </button>
                           </div>
+
+                          {/* Stock 2 Subtype Selection (Normal vs Disassembly) */}
+                          {row.stock === "Stock 2" && (
+                            <div className="mt-2 p-2 bg-amber-50/60 border border-amber-200/80 rounded-xl">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-[10px] font-bold text-slate-700 uppercase font-mono">Deduct from:</span>
+                                <span className="text-[9px] font-mono text-purple-700 font-bold">
+                                  {(row.stock2Subtype || "normal") === "normal" ? "Regular WIP" : "Recovered Disassembly"}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRowChange(index, "stock2Subtype", "normal")}
+                                  className={`py-1.5 px-2 rounded-lg border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                    (row.stock2Subtype || "normal") === "normal"
+                                      ? "bg-amber-100 border-amber-500 text-amber-900 ring-2 ring-amber-500/20 font-black shadow-xs"
+                                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  NORMAL STOCK 2
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRowChange(index, "stock2Subtype", "disassembly")}
+                                  className={`py-1.5 px-2 rounded-lg border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                    row.stock2Subtype === "disassembly"
+                                      ? "bg-purple-600 border-purple-700 text-white ring-2 ring-purple-500/20 font-black shadow-xs"
+                                      : "bg-white border-slate-200 text-purple-700 hover:bg-purple-50"
+                                  }`}
+                                >
+                                  DISASSEMBLY STOCK 2
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* 4. COLA STATUS (REQUIRED) */}
@@ -617,13 +662,16 @@ export default function ScrapWorkspace({
                           <span className="text-slate-400 truncate max-w-[150px] sm:max-w-[200px]" title={selectedRefObj.description}>
                             {selectedRefObj.description || selectedRefObj.code}
                           </span>
-                          <div className="flex items-center gap-1.5 text-[10px]">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
                             <span className="text-slate-400 text-[10px]">Stock:</span>
                             <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 1" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600 bg-slate-100"}`}>
                               S1: {selectedRefObj.stock1 || 0}
                             </span>
-                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 2" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600 bg-slate-100"}`}>
-                              S2: {selectedRefObj.stock2 || 0}
+                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 2" && (row.stock2Subtype || "normal") === "normal" ? "text-amber-900 bg-amber-100 ring-1 ring-amber-300" : "text-slate-600 bg-slate-100"}`}>
+                              S2 Norm: {Math.max(0, selectedRefObj.stock2Normal !== undefined ? selectedRefObj.stock2Normal : (selectedRefObj.stock2 || 0) - (selectedRefObj.stock2Disassembly || 0))}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 2" && row.stock2Subtype === "disassembly" ? "text-purple-900 bg-purple-100 ring-1 ring-purple-300 font-black" : "text-purple-700 bg-purple-50"}`}>
+                              S2 Disasm: {selectedRefObj.stock2Disassembly || 0}
                             </span>
                             <span className={`px-1.5 py-0.5 rounded font-bold transition-colors ${row.stock === "Stock 3" ? "text-rose-800 bg-rose-100 ring-1 ring-rose-300" : "text-slate-600 bg-slate-100"}`}>
                               S3: {selectedRefObj.stock3 || 0}

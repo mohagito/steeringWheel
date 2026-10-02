@@ -20,7 +20,7 @@ interface ProductionWorkspaceProps {
   productions: Production[];
   references: Reference[];
   currentUser: User;
-  onSubmitProduction: (productionEntries: { date: string; reference: string; quantity: number; notes?: string }[]) => Promise<void>;
+  onSubmitProduction: (productionEntries: { date: string; reference: string; quantity: number; notes?: string; stock2Subtype?: "normal" | "disassembly" }[]) => Promise<void>;
   onDeleteProduction?: (productionId: string, reason?: string) => Promise<void>;
   onUpdateProduction?: (
     productionId: string, 
@@ -32,6 +32,7 @@ interface ProductionWorkspaceProps {
 interface ProductionRow {
   referenceCode: string;
   quantity: string;
+  stock2Subtype?: "normal" | "disassembly";
 }
 
 export default function ProductionWorkspace({
@@ -54,7 +55,7 @@ export default function ProductionWorkspace({
 
   const [productionDate, setProductionDate] = useState(getTodayString());
   const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState<ProductionRow[]>([{ referenceCode: "", quantity: "" }]);
+  const [rows, setRows] = useState<ProductionRow[]>([{ referenceCode: "", quantity: "", stock2Subtype: "normal" }]);
 
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
@@ -183,7 +184,7 @@ export default function ProductionWorkspace({
   };
 
   const handleAddRow = () => {
-    setRows([...rows, { referenceCode: "", quantity: "" }]);
+    setRows([...rows, { referenceCode: "", quantity: "", stock2Subtype: "normal" }]);
   };
 
   const handleRemoveRow = (index: number) => {
@@ -193,7 +194,7 @@ export default function ProductionWorkspace({
     setRows(updatedRows);
   };
 
-  const handleRowChange = (index: number, field: keyof ProductionRow, value: string) => {
+  const handleRowChange = (index: number, field: keyof ProductionRow, value: any) => {
     const updatedRows = [...rows];
     let finalVal = value;
     if (field === "referenceCode" && value) {
@@ -237,7 +238,7 @@ export default function ProductionWorkspace({
       return;
     }
 
-    const submissions: { date: string; reference: string; quantity: number; notes?: string }[] = [];
+    const submissions: { date: string; reference: string; quantity: number; notes?: string; stock2Subtype?: "normal" | "disassembly" }[] = [];
     const warnings: string[] = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -253,17 +254,22 @@ export default function ProductionWorkspace({
         return;
       }
 
-      // Check stock warning against Stock 2 (WIP)
+      const subType = row.stock2Subtype || "normal";
+      // Check stock warning against Stock 2 Subtype (WIP)
       const refObj = references.find((r) => r.code === row.referenceCode);
-      const stock2Val = refObj ? (refObj.stock2 || 0) : 0;
-      if (consumeQty > stock2Val) {
-        warnings.push(`Part ${row.referenceCode}: Production output quantity (${consumeQty} pcs) exceeds current Stock 2 WIP (${stock2Val} pcs)`);
+      const disStock = refObj?.stock2Disassembly || 0;
+      const normStock = refObj ? (refObj.stock2Normal !== undefined ? refObj.stock2Normal : Math.max(0, (refObj.stock2 || 0) - disStock)) : 0;
+      const targetStockVal = subType === "disassembly" ? disStock : normStock;
+
+      if (consumeQty > targetStockVal) {
+        warnings.push(`Part ${row.referenceCode}: Production output quantity (${consumeQty} pcs) exceeds current ${subType.toUpperCase()} Stock 2 WIP (${targetStockVal} pcs)`);
       }
 
       submissions.push({
         date: productionDate,
         reference: row.referenceCode,
         quantity: consumeQty,
+        stock2Subtype: subType,
         notes: notes.trim() || undefined
       });
     }
@@ -526,12 +532,50 @@ export default function ProductionWorkspace({
                           </div>
                         </div>
 
+                        {/* Stock 2 Subtype selection (Normal vs Disassembly) */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase font-mono">Deduct from:</span>
+                            <div className="inline-flex rounded-lg p-0.5 bg-slate-200/70 text-[10px] font-mono font-bold">
+                              <button
+                                type="button"
+                                onClick={() => handleRowChange(index, "stock2Subtype", "normal")}
+                                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                                  (row.stock2Subtype || "normal") === "normal"
+                                    ? "bg-white text-slate-900 shadow-xs font-black"
+                                    : "text-slate-600 hover:text-slate-900"
+                                }`}
+                              >
+                                NORMAL STOCK 2
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRowChange(index, "stock2Subtype", "disassembly")}
+                                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                                  row.stock2Subtype === "disassembly"
+                                    ? "bg-purple-600 text-white shadow-xs font-black"
+                                    : "text-purple-700 hover:text-purple-900"
+                                }`}
+                              >
+                                DISASSEMBLY STOCK 2
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
                         {selectedRefObj && (
-                          <div className="flex flex-wrap items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-200/50 gap-2">
+                          <div className="flex flex-wrap items-center justify-between text-[10px] font-mono pt-1.5 border-t border-slate-200/50 gap-2">
                             <span className="text-slate-500 font-sans truncate max-w-[200px]">{selectedRefObj.description}</span>
-                            <div className="flex gap-2">
-                              <span className="text-slate-500">S2: <strong className="text-amber-600 font-bold">{selectedRefObj.stock2 || 0}</strong></span>
-                              <span className="text-slate-500">S3: <strong className="text-emerald-600 font-bold">{selectedRefObj.stock3 || 0}</strong></span>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="text-slate-600">
+                                S2 Normal: <strong className="text-amber-700 font-bold">{Math.max(0, selectedRefObj.stock2Normal !== undefined ? selectedRefObj.stock2Normal : (selectedRefObj.stock2 || 0) - (selectedRefObj.stock2Disassembly || 0)).toLocaleString()}</strong>
+                              </span>
+                              <span className="text-purple-700">
+                                S2 Disassembly: <strong className="text-purple-700 font-bold">{(selectedRefObj.stock2Disassembly || 0).toLocaleString()}</strong>
+                              </span>
+                              <span className="text-slate-600">
+                                S3: <strong className="text-emerald-600 font-bold">{(selectedRefObj.stock3 || 0).toLocaleString()}</strong>
+                              </span>
                             </div>
                           </div>
                         )}

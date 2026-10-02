@@ -171,7 +171,7 @@ export const CustomReferenceSelect: React.FC<CustomReferenceSelectProps> = ({
 
       {/* Dropdown Popover */}
       {isOpen && (
-        <div className="absolute left-0 top-full mt-1.5 w-full min-w-[280px] sm:min-w-[340px] max-w-[calc(100vw-2rem)] bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-[999] overflow-hidden flex flex-col max-h-80 animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute left-0 top-full mt-1.5 w-full min-w-0 sm:min-w-[320px] max-w-[calc(100vw-2rem)] bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-[999] overflow-hidden flex flex-col max-h-72 animate-in fade-in slide-in-from-top-2 duration-150">
           {/* Search Header */}
           <div className="p-3 bg-slate-50/90 border-b border-slate-100 flex items-center gap-2">
             <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />

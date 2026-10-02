@@ -271,7 +271,7 @@ export default function ScrapConColaCostDiagram({
           <div className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider">
             Peak Week Cost
           </div>
-          <div className="text-xl sm:text-2xl font-black text-rose-600 font-mono mt-0.5">
+          <div className="text-xl sm:text-2xl font-black text-[#131111] font-mono mt-0.5">
             € {kpis.peakConColaCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className="text-[11px] text-slate-500 font-mono mt-0.5">

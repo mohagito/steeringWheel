@@ -8,7 +8,7 @@ import {
   Package, ArrowRight, Truck, AlertTriangle, Search, 
   Warehouse, Factory, X, Layers, Send, ArrowLeftRight, ShieldAlert, Eye,
   Trash2, FileText, CheckCircle2, ChevronRight, Calendar, Filter,
-  FileSpreadsheet, Download
+  FileSpreadsheet, Download, Plus
 } from "lucide-react";
 import { formatSystemTime, getMoroccoTodayDateString, getMoroccoDateString } from "../utils/timeUtils";
 import { exportStockAuditExcel } from "../utils/stockReportExport";
@@ -88,11 +88,40 @@ export default function DashboardOverview({
   const [modalNote, setModalNote] = useState("");
   const [modalInvoiceNumber, setModalInvoiceNumber] = useState("");
   const [incomingDestStock, setIncomingDestStock] = useState<"Stock 1" | "Stock 2" | "Stock 3">("Stock 1");
+  const [incomingItems, setIncomingItems] = useState<{ id: string; reference: string; quantity: string }[]>([
+    { id: "inc-1", reference: "", quantity: "" }
+  ]);
   const [modalShiftOrLine, setModalShiftOrLine] = useState("Shift A");
   const [modalDestination, setModalDestination] = useState("Villanova");
   const [modalReasonType, setModalReasonType] = useState("Correction of input error");
+  const [modalStock2Subtype, setModalStock2Subtype] = useState<"normal" | "disassembly">("normal");
   const [modalSubmitting, setModalSubmitting] = useState(false);
   const [modalFeedback, setModalFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const incomingTotalQty = useMemo(() => {
+    return incomingItems.reduce((sum, it) => {
+      const q = parseInt(it.quantity, 10);
+      return sum + (!isNaN(q) && q > 0 ? q : 0);
+    }, 0);
+  }, [incomingItems]);
+
+  const handleAddIncomingItem = () => {
+    setIncomingItems(prev => [
+      ...prev,
+      { id: `inc-${Date.now()}-${prev.length + 1}`, reference: references[0]?.code || "", quantity: "" }
+    ]);
+  };
+
+  const handleRemoveIncomingItem = (id: string) => {
+    setIncomingItems(prev => {
+      if (prev.length <= 1) return prev;
+      return prev.filter(item => item.id !== id);
+    });
+  };
+
+  const handleUpdateIncomingItem = (id: string, field: "reference" | "quantity", value: string) => {
+    setIncomingItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+  };
 
   const selectedModalRef = useMemo(() => {
     return references.find(r => r.code.toUpperCase() === (modalRef || "").trim().toUpperCase());
@@ -333,6 +362,119 @@ export default function DashboardOverview({
   // Quick Action Handler
   const handleExecuteQuickAction = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (activeModal === "incoming") {
+      const invNum = modalInvoiceNumber.trim().toUpperCase();
+      if (!invNum) {
+        setModalFeedback({ type: "error", message: "Please enter an invoice or delivery note number." });
+        return;
+      }
+
+      const validItems = incomingItems
+        .map(item => ({
+          reference: item.reference.trim().toUpperCase(),
+          quantity: parseInt(item.quantity, 10)
+        }))
+        .filter(it => it.reference && !isNaN(it.quantity) && it.quantity > 0);
+
+      if (validItems.length === 0) {
+        setModalFeedback({ type: "error", message: "Please enter at least one valid reference and quantity." });
+        return;
+      }
+
+      setModalSubmitting(true);
+      setModalFeedback(null);
+
+      try {
+        const operatorName = currentUser?.fullName || "Operator";
+        const now = new Date().toISOString();
+        const totalQty = validItems.reduce((sum, it) => sum + it.quantity, 0);
+
+        // Group quantities by reference in case a reference appears multiple times
+        const groupedMap: Record<string, number> = {};
+        for (const item of validItems) {
+          groupedMap[item.reference] = (groupedMap[item.reference] || 0) + item.quantity;
+        }
+
+        const deltas = Object.entries(groupedMap).map(([ref, q]) => ({
+          reference: ref,
+          delta1: incomingDestStock === "Stock 1" ? q : 0,
+          delta2: incomingDestStock === "Stock 2" ? q : 0,
+          delta2Subtype: incomingDestStock === "Stock 2" ? modalStock2Subtype : undefined,
+          delta3: incomingDestStock === "Stock 3" ? q : 0
+        }));
+
+        const moveType = incomingDestStock === "Stock 1"
+          ? "STOCK 1 IN"
+          : incomingDestStock === "Stock 2"
+          ? "STOCK 2 IN"
+          : "STOCK 3 IN";
+
+        const transactions = validItems.map((item, idx) => ({
+          id: `trans-inc-${Date.now()}-${idx}`,
+          reference: item.reference,
+          movementType: moveType,
+          stock: incomingDestStock,
+          destinationStock: incomingDestStock,
+          invoiceNumber: invNum,
+          quantity: item.quantity,
+          expectedQty: item.quantity,
+          actualQty: item.quantity,
+          operatorName,
+          timestamp: now,
+          notes: `Received via Invoice ${invNum} -> ${incomingDestStock}${modalNote ? ` (${modalNote})` : ""}`
+        }));
+
+        const invoiceId = `inv-${invNum.toLowerCase().replace(/[^a-z0-9_-]/g, "-")}-${Date.now()}`;
+
+        await executeProtectedStockOperation({
+          operationType: "INCOMING_RECEIPT",
+          deltas,
+          operatorName,
+          reason: `Incoming Truck: ${invNum} -> ${incomingDestStock} (${validItems.length} references, ${totalQty} pcs)${modalNote ? ` (${modalNote})` : ""}`,
+          transactions,
+          additionalWrites: (transaction, timestamp) => {
+            const invoiceDoc = doc(db, "invoices", invoiceId);
+            transaction.set(invoiceDoc, {
+              id: invoiceId,
+              invoiceNumber: invNum,
+              operator: operatorName,
+              createdAt: timestamp,
+              status: "approved",
+              approvedAt: timestamp,
+              approvedBy: operatorName,
+              notes: modalNote || "",
+              totalBoxes: validItems.length,
+              totalQuantity: totalQty,
+              items: validItems.map((it, i) => ({
+                id: `box-${invoiceId}-${i + 1}`,
+                boxBarcode: `${invNum}-${it.reference}-${i + 1}`,
+                reference: it.reference,
+                expectedQty: it.quantity,
+                quantity: it.quantity,
+                scannedAt: timestamp,
+                destinationStock: incomingDestStock
+              }))
+            });
+          }
+        });
+
+        const successMsg = `Successfully added ${totalQty} pcs across ${validItems.length} reference${validItems.length > 1 ? "s" : ""} via Invoice ${invNum} to ${incomingDestStock}.`;
+        setModalFeedback({ type: "success", message: successMsg });
+        setTimeout(() => {
+          setActiveModal(null);
+          setModalSubmitting(false);
+          setIncomingItems([{ id: "inc-1", reference: references[0]?.code || "", quantity: "" }]);
+          setModalInvoiceNumber("");
+          setModalNote("");
+        }, 1500);
+      } catch (err: any) {
+        setModalFeedback({ type: "error", message: err.message || "Failed to process incoming stock." });
+        setModalSubmitting(false);
+      }
+      return;
+    }
+
     if (!modalRef || !modalQty) return;
     const qty = parseInt(modalQty, 10);
     if (isNaN(qty) || qty <= 0) {
@@ -347,74 +489,23 @@ export default function DashboardOverview({
       const operatorName = currentUser?.fullName || "Operator";
       let successMsg = "";
 
-      if (activeModal === "incoming") {
-        const invNum = modalInvoiceNumber.trim().toUpperCase();
-        if (!invNum) {
-          setModalFeedback({ type: "error", message: "Please enter an invoice or delivery note number." });
-          setModalSubmitting(false);
-          return;
-        }
-
-        await executeProtectedStockOperation({
-          operationType: "INCOMING_RECEIPT",
-          referenceCode: modalRef,
-          operatorName,
-          reason: `Incoming Truck: ${invNum} -> ${incomingDestStock}${modalNote ? ` (${modalNote})` : ""}`,
-          execute: async (refData, transaction) => {
-            let s1 = refData.stock1 || 0;
-            let s2 = refData.stock2 || 0;
-            let s3 = refData.stock3 || 0;
-            let moveType: "STOCK 1 IN" | "STOCK 2 IN" | "STOCK 3 IN" = "STOCK 1 IN";
-
-            if (incomingDestStock === "Stock 1") {
-              s1 += qty;
-              moveType = "STOCK 1 IN";
-            } else if (incomingDestStock === "Stock 2") {
-              s2 += qty;
-              moveType = "STOCK 2 IN";
-            } else {
-              s3 += qty;
-              moveType = "STOCK 3 IN";
-            }
-
-            const newTotal = s1 + s2 + s3;
-            const transId = `trans-inc-${Date.now()}`;
-            const now = new Date().toISOString();
-
-            transaction.set(doc(db, "transactions", transId), {
-              id: transId,
-              reference: modalRef,
-              movementType: moveType,
-              stock: incomingDestStock,
-              destinationStock: incomingDestStock,
-              invoiceNumber: invNum,
-              quantity: qty,
-              expectedQty: qty,
-              actualQty: qty,
-              operatorName,
-              timestamp: now,
-              notes: `Received via Invoice ${invNum} -> ${incomingDestStock}${modalNote ? ` (${modalNote})` : ""}`
-            });
-
-            return {
-              stockChanges: [{ referenceCode: modalRef, newStock1: s1, newStock2: s2, newStock3: s3, newTotal }]
-            };
-          }
-        });
-        successMsg = `Successfully added ${qty} pcs to ${incomingDestStock} via Invoice ${invNum}.`;
-      } else if (activeModal === "mallas") {
+      if (activeModal === "mallas") {
         await executeProtectedStockOperation({
           operationType: "TRANSFER_S1_S2",
           referenceCode: modalRef,
           operatorName,
-          reason: `Sent to Gluing/Processing: ${modalNote || "Mallas Pegadas"}`,
+          reason: `Sent to Gluing/Processing (${modalStock2Subtype.toUpperCase()}): ${modalNote || "Mallas Pegadas"}`,
           execute: async (refData, transaction) => {
             const s1 = refData.stock1 || 0;
             if (qty > s1) {
               throw new Error(`Insufficient Stock 1! Available: ${s1} pcs, requested: ${qty} pcs.`);
             }
             const newS1 = s1 - qty;
-            const newS2 = (refData.stock2 || 0) + qty;
+            const curDis = refData.stock2Disassembly || 0;
+            const curNorm = refData.stock2Normal !== undefined ? refData.stock2Normal : Math.max(0, (refData.stock2 || 0) - curDis);
+            const newNorm = modalStock2Subtype === "normal" ? curNorm + qty : curNorm;
+            const newDis = modalStock2Subtype === "disassembly" ? curDis + qty : curDis;
+            const newS2 = newNorm + newDis;
             const newTotal = newS1 + newS2 + (refData.stock3 || 0);
             const transId = `trans-trf-${Date.now()}`;
             const now = new Date().toISOString();
@@ -423,34 +514,53 @@ export default function DashboardOverview({
               id: transId,
               reference: modalRef,
               movementType: "TRANSFER S1->S2",
-              stock: "Stock 1 -> Stock 2",
+              stock: `Stock 1 -> Stock 2 (${modalStock2Subtype.toUpperCase()})`,
               quantity: qty,
               expectedQty: qty,
               actualQty: qty,
               operatorName,
               timestamp: now,
-              notes: `Mallas Pegadas / Gluing Transfer: ${modalNote || "Sent to Gluing/Processing - Stock 1 -> Stock 2"}`
+              notes: `Mallas Pegadas / Gluing Transfer (${modalStock2Subtype.toUpperCase()} Stock 2): ${modalNote || "Sent to Gluing/Processing"}`
             });
 
             return {
-              stockChanges: [{ referenceCode: modalRef, newStock1: newS1, newStock2: newS2, newStock3: refData.stock3 || 0, newTotal }]
+              stockChanges: [{ 
+                referenceCode: modalRef, 
+                newStock1: newS1, 
+                newStock2: newS2, 
+                newStock2Normal: newNorm, 
+                newStock2Disassembly: newDis, 
+                newStock3: refData.stock3 || 0, 
+                newTotal 
+              }]
             };
           }
         });
-        successMsg = `Successfully transferred ${qty} pcs to Stock 2 (Mallas Pegadas).`;
+        successMsg = `Successfully transferred ${qty} pcs to Stock 2 (${modalStock2Subtype.toUpperCase()}).`;
       } else if (activeModal === "production") {
         const shift = modalShiftOrLine.trim() || "Shift A";
         await executeProtectedStockOperation({
           operationType: "PRODUCTION_OUT",
           referenceCode: modalRef,
           operatorName,
-          reason: `Montaje Steering Wheel Assembly (${shift}): ${modalNote || "Daily Production"}`,
+          reason: `Montaje Steering Wheel Assembly (${shift}) from ${modalStock2Subtype.toUpperCase()} Stock 2: ${modalNote || "Daily Production"}`,
           execute: async (refData, transaction) => {
-            const s2 = refData.stock2 || 0;
-            if (qty > s2) {
-              throw new Error(`Insufficient Stock 2! Available: ${s2} pcs, requested: ${qty} pcs.`);
+            const curDis = refData.stock2Disassembly || 0;
+            const curNorm = refData.stock2Normal !== undefined ? refData.stock2Normal : Math.max(0, (refData.stock2 || 0) - curDis);
+
+            if (modalStock2Subtype === "disassembly") {
+              if (qty > curDis) {
+                throw new Error(`Insufficient Disassembly Stock 2! Available: ${curDis} pcs, requested: ${qty} pcs.`);
+              }
+            } else {
+              if (qty > curNorm) {
+                throw new Error(`Insufficient Normal Stock 2! Available: ${curNorm} pcs, requested: ${qty} pcs.`);
+              }
             }
-            const newS2 = s2 - qty;
+
+            const newNorm = modalStock2Subtype === "normal" ? curNorm - qty : curNorm;
+            const newDis = modalStock2Subtype === "disassembly" ? curDis - qty : curDis;
+            const newS2 = newNorm + newDis;
             const newS3 = (refData.stock3 || 0) + qty;
             const newTotal = (refData.stock1 || 0) + newS2 + newS3;
             const transId = `trans-prod-${Date.now()}`;
@@ -460,34 +570,53 @@ export default function DashboardOverview({
               id: transId,
               reference: modalRef,
               movementType: "STOCK 2 OUT / STOCK 3 IN",
-              stock: "Stock 2 -> Stock 3",
+              stock: `Stock 2 (${modalStock2Subtype.toUpperCase()}) -> Stock 3`,
               quantity: qty,
               expectedQty: qty,
               actualQty: qty,
               operatorName,
               timestamp: now,
-              notes: `Production Output (${shift}): ${modalNote || "None"}`
+              notes: `Production Output (${shift}) from ${modalStock2Subtype.toUpperCase()} Stock 2: ${modalNote || "None"}`
             });
 
             return {
-              stockChanges: [{ referenceCode: modalRef, newStock1: refData.stock1 || 0, newStock2: newS2, newStock3: newS3, newTotal }]
+              stockChanges: [{ 
+                referenceCode: modalRef, 
+                newStock1: refData.stock1 || 0, 
+                newStock2: newS2, 
+                newStock2Normal: newNorm, 
+                newStock2Disassembly: newDis, 
+                newStock3: newS3, 
+                newTotal 
+              }]
             };
           }
         });
-        successMsg = `Successfully assembled ${qty} Steering Wheels into Stock 3 (${shift}).`;
+        successMsg = `Successfully assembled ${qty} Steering Wheels from ${modalStock2Subtype.toUpperCase()} Stock 2 into Stock 3 (${shift}).`;
       } else if (activeModal === "precosido") {
         const invNum = modalInvoiceNumber.trim().toUpperCase() || "PRECOSIDO";
         await executeProtectedStockOperation({
           operationType: "DELIVERY_OUT",
           referenceCode: modalRef,
           operatorName,
-          reason: `Precosido Invoice Dispatch: ${invNum}${modalNote ? ` - ${modalNote}` : ""}`,
+          reason: `Precosido Invoice Dispatch: ${invNum} from ${modalStock2Subtype.toUpperCase()} Stock 2${modalNote ? ` - ${modalNote}` : ""}`,
           execute: async (refData, transaction) => {
-            const s2 = refData.stock2 || 0;
-            if (qty > s2) {
-              throw new Error(`Insufficient Stock 2! Available: ${s2} pcs, requested: ${qty} pcs.`);
+            const curDis = refData.stock2Disassembly || 0;
+            const curNorm = refData.stock2Normal !== undefined ? refData.stock2Normal : Math.max(0, (refData.stock2 || 0) - curDis);
+
+            if (modalStock2Subtype === "disassembly") {
+              if (qty > curDis) {
+                throw new Error(`Insufficient Disassembly Stock 2! Available: ${curDis} pcs, requested: ${qty} pcs.`);
+              }
+            } else {
+              if (qty > curNorm) {
+                throw new Error(`Insufficient Normal Stock 2! Available: ${curNorm} pcs, requested: ${qty} pcs.`);
+              }
             }
-            const newS2 = s2 - qty;
+
+            const newNorm = modalStock2Subtype === "normal" ? curNorm - qty : curNorm;
+            const newDis = modalStock2Subtype === "disassembly" ? curDis - qty : curDis;
+            const newS2 = newNorm + newDis;
             const newTotal = (refData.stock1 || 0) + newS2 + (refData.stock3 || 0);
             const transId = `trans-pre-${Date.now()}`;
             const now = new Date().toISOString();
@@ -496,22 +625,30 @@ export default function DashboardOverview({
               id: transId,
               reference: modalRef,
               movementType: "STOCK 2 OUT",
-              stock: "Stock 2",
+              stock: `Stock 2 (${modalStock2Subtype.toUpperCase()})`,
               invoiceNumber: invNum,
               quantity: qty,
               expectedQty: qty,
               actualQty: qty,
               operatorName,
               timestamp: now,
-              notes: `Precosido Invoice Dispatch: ${invNum}${modalNote ? ` - ${modalNote}` : ""}`
+              notes: `Precosido Invoice Dispatch from ${modalStock2Subtype.toUpperCase()} Stock 2: ${invNum}${modalNote ? ` - ${modalNote}` : ""}`
             });
 
             return {
-              stockChanges: [{ referenceCode: modalRef, newStock1: refData.stock1 || 0, newStock2: newS2, newStock3: refData.stock3 || 0, newTotal }]
+              stockChanges: [{ 
+                referenceCode: modalRef, 
+                newStock1: refData.stock1 || 0, 
+                newStock2: newS2, 
+                newStock2Normal: newNorm, 
+                newStock2Disassembly: newDis, 
+                newStock3: refData.stock3 || 0, 
+                newTotal 
+              }]
             };
           }
         });
-        successMsg = `Successfully dispatched ${qty} pcs Precosido from Stock 2 (Invoice: ${invNum}).`;
+        successMsg = `Successfully dispatched ${qty} pcs Precosido from ${modalStock2Subtype.toUpperCase()} Stock 2 (Invoice: ${invNum}).`;
       } else if (activeModal === "villanova") {
         const invNum = modalInvoiceNumber.trim().toUpperCase() || "DELIVERY";
         const destination = modalDestination.trim() || "Villanova";
@@ -563,15 +700,25 @@ export default function DashboardOverview({
             let s1 = refData.stock1 || 0;
             let s2 = refData.stock2 || 0;
             let s3 = refData.stock3 || 0;
+            let curDis = refData.stock2Disassembly || 0;
+            let curNorm = refData.stock2Normal !== undefined ? refData.stock2Normal : Math.max(0, s2 - curDis);
+            let newNorm = curNorm;
+            let newDis = curDis;
 
             if (removeStockStage === "stock1") {
               if (qty > s1) throw new Error(`Insufficient Stock 1! Available: ${s1} pcs, requested: ${qty} pcs.`);
               s1 = s1 - qty;
               stageName = "Stock 1";
             } else if (removeStockStage === "stock2") {
-              if (qty > s2) throw new Error(`Insufficient Stock 2! Available: ${s2} pcs, requested: ${qty} pcs.`);
-              s2 = s2 - qty;
-              stageName = "Stock 2";
+              if (modalStock2Subtype === "disassembly") {
+                if (qty > curDis) throw new Error(`Insufficient Disassembly Stock 2! Available: ${curDis} pcs, requested: ${qty} pcs.`);
+                newDis = curDis - qty;
+              } else {
+                if (qty > curNorm) throw new Error(`Insufficient Normal Stock 2! Available: ${curNorm} pcs, requested: ${qty} pcs.`);
+                newNorm = curNorm - qty;
+              }
+              s2 = newNorm + newDis;
+              stageName = `Stock 2 (${modalStock2Subtype.toUpperCase()})`;
             } else if (removeStockStage === "stock3") {
               if (qty > s3) throw new Error(`Insufficient Stock 3! Available: ${s3} pcs, requested: ${qty} pcs.`);
               s3 = s3 - qty;
@@ -596,7 +743,15 @@ export default function DashboardOverview({
             });
 
             return {
-              stockChanges: [{ referenceCode: modalRef, newStock1: s1, newStock2: s2, newStock3: s3, newTotal }]
+              stockChanges: [{ 
+                referenceCode: modalRef, 
+                newStock1: s1, 
+                newStock2: s2, 
+                newStock2Normal: newNorm, 
+                newStock2Disassembly: newDis, 
+                newStock3: s3, 
+                newTotal 
+              }]
             };
           }
         });
@@ -632,11 +787,17 @@ export default function DashboardOverview({
     setModalNote("");
     setModalInvoiceNumber("");
     setIncomingDestStock("Stock 1");
+    setModalStock2Subtype("normal");
     setModalShiftOrLine("Shift A");
     setModalDestination(type === "villanova" ? "Villanova" : type === "precosido" ? "Precosido" : "");
     setModalReasonType(type === "remove" ? "Correction of input error" : "");
     if (references.length > 0 && !modalRef) {
       setModalRef(references[0].code);
+    }
+    if (type === "incoming") {
+      setIncomingItems([
+        { id: `inc-${Date.now()}-1`, reference: references[0]?.code || "", quantity: "" }
+      ]);
     }
   };
 
@@ -1552,8 +1713,8 @@ export default function DashboardOverview({
 
       {/* QUICK ACTION MODAL DIALOG */}
       {activeModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-100 rounded-3xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 md:p-6">
+          <div className={`bg-white border border-slate-100 rounded-3xl shadow-2xl ${activeModal === "incoming" ? "w-full max-w-xl sm:max-w-2xl" : "w-full max-w-md sm:max-w-lg"} p-4 sm:p-6 animate-fadeIn max-h-[92vh] overflow-y-auto`}>
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
               <div className="flex items-center gap-2.5">
@@ -1595,67 +1756,103 @@ export default function DashboardOverview({
             )}
 
             <form onSubmit={handleExecuteQuickAction} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">
-                  Reference <span className="text-rose-500">*</span>
-                </label>
-                <CustomReferenceSelect
-                  references={references}
-                  value={modalRef}
-                  onChange={(code) => setModalRef(code)}
-                  placeholder="Select reference..."
-                  required
-                />
-                {selectedModalRef && (
-                  <div className="mt-2 flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-2xl text-[11px] font-mono">
-                    <span className="text-slate-600 font-medium truncate max-w-[150px]">
-                      {selectedModalRef.description || selectedModalRef.code}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-1.5 py-0.5 rounded-lg ${activeModal === "incoming" && incomingDestStock === "Stock 1" ? "bg-blue-100 font-bold text-blue-800" : "text-slate-600"}`}>
-                        S1: <strong className="text-blue-600">{selectedModalRef.stock1 || 0}</strong>
+              {/* Single Reference Selection for non-incoming operations */}
+              {activeModal !== "incoming" && (
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    Reference <span className="text-rose-500">*</span>
+                  </label>
+                  <CustomReferenceSelect
+                    references={references}
+                    value={modalRef}
+                    onChange={(code) => setModalRef(code)}
+                    placeholder="Select reference..."
+                    required
+                  />
+                  {selectedModalRef && (
+                    <div className="mt-2 flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-2xl text-[11px] font-mono">
+                      <span className="text-slate-600 font-medium truncate max-w-[150px]">
+                        {selectedModalRef.description || selectedModalRef.code}
                       </span>
-                      <span className="text-slate-300">•</span>
-                      <span className={`px-1.5 py-0.5 rounded-lg ${activeModal === "incoming" && incomingDestStock === "Stock 2" ? "bg-amber-100 font-bold text-amber-800" : "text-slate-600"}`}>
-                        S2: <strong className="text-amber-600">{selectedModalRef.stock2 || 0}</strong>
-                      </span>
-                      <span className="text-slate-300">•</span>
-                      <span className={`px-1.5 py-0.5 rounded-lg ${activeModal === "incoming" && incomingDestStock === "Stock 3" ? "bg-emerald-100 font-bold text-emerald-800" : "text-slate-600"}`}>
-                        S3: <strong className="text-emerald-600">{selectedModalRef.stock3 || 0}</strong>
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-600">
+                          S1: <strong className="text-blue-600">{selectedModalRef.stock1 || 0}</strong>
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <span className="text-slate-600">
+                          S2: <strong className="text-amber-600">{selectedModalRef.stock2 || 0}</strong>
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <span className="text-slate-600">
+                          S3: <strong className="text-emerald-600">{selectedModalRef.stock3 || 0}</strong>
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
               {/* SPECIFIC FIELDS PER ACTION TYPE */}
 
-              {/* 1. INCOMING: Destination Stock (STOCK 1 - 2 or 3) & Invoice Number */}
+              {/* 1. INCOMING: Destination Stock, Invoice Number & Multi-Reference List */}
               {activeModal === "incoming" && (
                 <>
                   <div>
                     <label className="block text-slate-700 font-bold mb-1">
                       Destination Stock <span className="text-rose-500">*</span>
                     </label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5">
                       {(["Stock 1", "Stock 2", "Stock 3"] as const).map((stk) => (
                         <button
                           key={stk}
                           type="button"
                           onClick={() => setIncomingDestStock(stk)}
-                          className={`py-2 px-2.5 rounded-2xl border text-xs font-mono font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${
+                          className={`py-2 px-1.5 sm:px-2.5 rounded-2xl border text-[11px] sm:text-xs font-mono font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${
                             incomingDestStock === stk
                               ? "bg-blue-50 border-blue-500 text-blue-800 ring-2 ring-blue-500/20 shadow-xs"
                               : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                           }`}
                         >
-                          <span className="tracking-wide">{stk.toUpperCase()}</span>
-                          <span className="text-[9px] font-normal text-slate-500 mt-0.5">
+                          <span className="tracking-wide font-extrabold">{stk.toUpperCase()}</span>
+                          <span className="text-[8px] sm:text-[9px] font-normal text-slate-500 mt-0.5 truncate max-w-full">
                             {stk === "Stock 1" ? "Warehouse Raw" : stk === "Stock 2" ? "Gluing WIP" : "Finished Wheels"}
                           </span>
                         </button>
                       ))}
                     </div>
+                    {incomingDestStock === "Stock 2" && (
+                      <div className="mt-2.5 p-2.5 bg-amber-50/60 border border-amber-200/80 rounded-2xl">
+                        <label className="block text-slate-700 font-bold text-xs mb-1.5">
+                          Target Stock 2 Subtype <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setModalStock2Subtype("normal")}
+                            className={`py-2 px-3 rounded-xl border text-xs font-mono font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${
+                              modalStock2Subtype === "normal"
+                                ? "bg-amber-100 border-amber-500 text-amber-900 ring-2 ring-amber-500/20 font-black shadow-xs"
+                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            <span>NORMAL STOCK</span>
+                            <span className="text-[9px] font-normal text-slate-500 mt-0.5">Regular WIP</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setModalStock2Subtype("disassembly")}
+                            className={`py-2 px-3 rounded-xl border text-xs font-mono font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${
+                              modalStock2Subtype === "disassembly"
+                                ? "bg-purple-100 border-purple-500 text-purple-900 ring-2 ring-purple-500/20 font-black shadow-xs"
+                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            <span>DISASSEMBLY STOCK</span>
+                            <span className="text-[9px] font-normal text-slate-500 mt-0.5">Recovered WIP</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -1671,48 +1868,224 @@ export default function DashboardOverview({
                       required
                     />
                   </div>
+
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-slate-700 font-bold">
+                        References in this Invoice <span className="text-rose-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleAddIncomingItem}
+                        className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl font-mono text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Reference</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {incomingItems.map((item, idx) => (
+                        <div key={item.id} className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+                            <div className="flex-1 min-w-0 w-full">
+                              <CustomReferenceSelect
+                                references={references}
+                                value={item.reference}
+                                onChange={(code) => handleUpdateIncomingItem(item.id, "reference", code)}
+                                placeholder={`Select reference #${idx + 1}...`}
+                                required
+                              />
+                            </div>
+                            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="Qty (PCS)"
+                                value={item.quantity}
+                                onChange={(e) => handleUpdateIncomingItem(item.id, "quantity", e.target.value)}
+                                className="w-full sm:w-32 p-2.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-900 text-xs shadow-2xs"
+                                required
+                              />
+                              {incomingItems.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveIncomingItem(item.id)}
+                                  className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer shrink-0 border border-transparent hover:border-rose-100"
+                                  title="Remove reference"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {incomingTotalQty > 0 && (
+                      <div className="text-[11px] text-slate-600 font-mono text-right font-bold pt-0.5">
+                        Total: {incomingTotalQty} PCS across {incomingItems.length} reference{incomingItems.length > 1 ? "s" : ""}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
-              {/* 2. PRODUCTION: Shift selection (Shift A, Shift B) */}
-              {activeModal === "production" && (
+              {/* MALLAS PEGADAS: Destination in Stock 2 */}
+              {activeModal === "mallas" && (
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    Production Shift
+                  <label className="block text-slate-700 font-bold mb-1 text-xs">
+                    Destination in Stock 2 <span className="text-rose-500">*</span>
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {["Shift A", "Shift B"].map((sh) => (
-                      <button
-                        key={sh}
-                        type="button"
-                        onClick={() => setModalShiftOrLine(sh)}
-                        className={`py-2 px-3 rounded-2xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
-                          modalShiftOrLine === sh
-                            ? "bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20 shadow-xs"
-                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                        }`}
-                      >
-                        {sh}
-                      </button>
-                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setModalStock2Subtype("normal")}
+                      className={`py-2 px-3 rounded-2xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                        modalStock2Subtype === "normal"
+                          ? "bg-amber-100 border-amber-500 text-amber-900 ring-2 ring-amber-500/20 shadow-xs"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span>NORMAL STOCK 2</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalStock2Subtype("disassembly")}
+                      className={`py-2 px-3 rounded-2xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                        modalStock2Subtype === "disassembly"
+                          ? "bg-purple-100 border-purple-500 text-purple-900 ring-2 ring-purple-500/20 shadow-xs"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span>DISASSEMBLY STOCK 2</span>
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* 3. PRECOSIDO: Invoice Number */}
+              {/* 2. PRODUCTION: Shift selection & Stock 2 Subtype source */}
+              {activeModal === "production" && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1 text-xs">
+                      Deduct from Stock 2 Subtype <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(() => {
+                        const dis = selectedModalRef?.stock2Disassembly || 0;
+                        const norm = selectedModalRef ? (selectedModalRef.stock2Normal !== undefined ? selectedModalRef.stock2Normal : Math.max(0, (selectedModalRef.stock2 || 0) - dis)) : 0;
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setModalStock2Subtype("normal")}
+                              className={`py-2 px-3 rounded-2xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                modalStock2Subtype === "normal"
+                                  ? "bg-amber-100 border-amber-500 text-amber-900 ring-2 ring-amber-500/20 shadow-xs"
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <div>NORMAL STOCK 2</div>
+                              <div className="text-[10px] font-normal text-slate-500 mt-0.5">{norm.toLocaleString()} PCS avail</div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setModalStock2Subtype("disassembly")}
+                              className={`py-2 px-3 rounded-2xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                modalStock2Subtype === "disassembly"
+                                  ? "bg-purple-100 border-purple-500 text-purple-900 ring-2 ring-purple-500/20 shadow-xs"
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <div>DISASSEMBLY STOCK 2</div>
+                              <div className="text-[10px] font-normal text-slate-500 mt-0.5">{dis.toLocaleString()} PCS avail</div>
+                            </button>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1 text-xs">
+                      Production Shift
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {["Shift A", "Shift B"].map((sh) => (
+                        <button
+                          key={sh}
+                          type="button"
+                          onClick={() => setModalShiftOrLine(sh)}
+                          className={`py-2 px-3 rounded-2xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                            modalShiftOrLine === sh
+                              ? "bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20 shadow-xs"
+                              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                          }`}
+                        >
+                          {sh}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. PRECOSIDO: Deduct Subtype & Invoice Number */}
               {activeModal === "precosido" && (
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    Precosido Invoice / Dispatch Note <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. PREC-2026-001"
-                    value={modalInvoiceNumber}
-                    onChange={(e) => setModalInvoiceNumber(e.target.value.toUpperCase())}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-rose-500 font-mono font-bold text-slate-900 uppercase tracking-wider"
-                    required
-                  />
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1 text-xs">
+                      Deduct from Stock 2 Subtype <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(() => {
+                        const dis = selectedModalRef?.stock2Disassembly || 0;
+                        const norm = selectedModalRef ? (selectedModalRef.stock2Normal !== undefined ? selectedModalRef.stock2Normal : Math.max(0, (selectedModalRef.stock2 || 0) - dis)) : 0;
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setModalStock2Subtype("normal")}
+                              className={`py-2 px-3 rounded-2xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                modalStock2Subtype === "normal"
+                                  ? "bg-rose-100 border-rose-500 text-rose-900 ring-2 ring-rose-500/20 shadow-xs"
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <div>NORMAL STOCK 2</div>
+                              <div className="text-[10px] font-normal text-slate-500 mt-0.5">{norm.toLocaleString()} PCS avail</div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setModalStock2Subtype("disassembly")}
+                              className={`py-2 px-3 rounded-2xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                modalStock2Subtype === "disassembly"
+                                  ? "bg-purple-100 border-purple-500 text-purple-900 ring-2 ring-purple-500/20 shadow-xs"
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <div>DISASSEMBLY STOCK 2</div>
+                              <div className="text-[10px] font-normal text-slate-500 mt-0.5">{dis.toLocaleString()} PCS avail</div>
+                            </button>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1 text-xs">
+                      Precosido Invoice / Dispatch Note <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. PREC-2026-001"
+                      value={modalInvoiceNumber}
+                      onChange={(e) => setModalInvoiceNumber(e.target.value.toUpperCase())}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-rose-500 font-mono font-bold text-slate-900 uppercase tracking-wider"
+                      required
+                    />
+                  </div>
                 </div>
               )}
 
@@ -1775,6 +2148,47 @@ export default function DashboardOverview({
                         );
                       })}
                     </div>
+                    {removeStockStage === "stock2" && (
+                      <div className="mt-2.5 p-2.5 bg-amber-50/60 border border-amber-200/80 rounded-2xl">
+                        <label className="block text-slate-700 font-bold mb-1 text-xs">
+                          Deduct from Stock 2 Subtype <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(() => {
+                            const dis = selectedModalRef?.stock2Disassembly || 0;
+                            const norm = selectedModalRef ? (selectedModalRef.stock2Normal !== undefined ? selectedModalRef.stock2Normal : Math.max(0, (selectedModalRef.stock2 || 0) - dis)) : 0;
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setModalStock2Subtype("normal")}
+                                  className={`py-2 px-3 rounded-xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                    modalStock2Subtype === "normal"
+                                      ? "bg-amber-100 border-amber-500 text-amber-900 ring-2 ring-amber-500/20 font-black shadow-xs"
+                                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <div>NORMAL STOCK 2</div>
+                                  <div className="text-[10px] font-normal text-slate-500 mt-0.5">{norm.toLocaleString()} PCS</div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setModalStock2Subtype("disassembly")}
+                                  className={`py-2 px-3 rounded-xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                    modalStock2Subtype === "disassembly"
+                                      ? "bg-purple-100 border-purple-500 text-purple-900 ring-2 ring-purple-500/20 font-black shadow-xs"
+                                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <div>DISASSEMBLY STOCK 2</div>
+                                  <div className="text-[10px] font-normal text-slate-500 mt-0.5">{dis.toLocaleString()} PCS</div>
+                                </button>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -1796,20 +2210,23 @@ export default function DashboardOverview({
                 </>
               )}
 
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">
-                  Quantity (PCS) <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="Qty..."
-                  value={modalQty}
-                  onChange={(e) => setModalQty(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-900"
-                  required
-                />
-              </div>
+              {/* Single Quantity input for non-incoming modals */}
+              {activeModal !== "incoming" && (
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    Quantity (PCS) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Qty..."
+                    value={modalQty}
+                    onChange={(e) => setModalQty(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono font-bold text-slate-900"
+                    required
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-slate-700 font-bold mb-1">
@@ -1824,18 +2241,18 @@ export default function DashboardOverview({
                 />
               </div>
 
-              <div className="pt-3 flex justify-end gap-2.5">
+              <div className="pt-3 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2.5 w-full">
                 <button
                   type="button"
                   onClick={() => setActiveModal(null)}
-                  className="px-4 py-2.5 border border-slate-200 rounded-2xl text-slate-600 hover:bg-slate-50 font-bold cursor-pointer font-mono"
+                  className="w-full sm:w-auto px-4 py-2.5 border border-slate-200 rounded-2xl text-slate-600 hover:bg-slate-50 font-bold cursor-pointer font-mono text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={modalSubmitting}
-                  className={`px-5 py-2.5 text-white rounded-2xl font-bold cursor-pointer transition-all disabled:opacity-50 shadow-md font-mono ${
+                  className={`w-full sm:w-auto px-5 py-2.5 text-white rounded-2xl font-bold cursor-pointer transition-all disabled:opacity-50 shadow-md font-mono text-center ${
                     activeModal === "incoming" ? "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20" :
                     activeModal === "mallas" ? "bg-amber-600 hover:bg-amber-700 shadow-amber-500/20" :
                     activeModal === "production" ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20" :
@@ -1844,7 +2261,7 @@ export default function DashboardOverview({
                     "bg-slate-800 hover:bg-slate-900 shadow-slate-700/20"
                   }`}
                 >
-                  {modalSubmitting ? "Processing..." : "Confirm"}
+                  {modalSubmitting ? "Processing..." : activeModal === "incoming" ? `Confirm Invoice (${incomingTotalQty} PCS)` : "Confirm"}
                 </button>
               </div>
             </form>

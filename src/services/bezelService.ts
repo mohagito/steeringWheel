@@ -814,6 +814,15 @@ export async function reverseBezelOperation(params: {
         }
         break;
 
+      case "PHYSICAL_INVENTORY":
+        // Revert back to the exact pre-inventory system stock
+        if (opData.sourceStock === "STOCK 1") {
+          s1 = opData.stock1Before ?? s1;
+        } else {
+          s2 = opData.stock2Before ?? s2;
+        }
+        break;
+
       default:
         throw new Error(`Unknown operation type: ${opData.operationType}`);
     }
@@ -836,4 +845,160 @@ export async function reverseBezelOperation(params: {
       serverTimestamp: serverTimestamp()
     });
   });
+}
+
+export interface BezelInventoryReconciliationEntry {
+  reference: string;
+  stockType: "STOCK 1" | "STOCK 2";
+  previousSystemQuantity: number;
+  physicalQuantity: number;
+  difference: number; // physicalQuantity - previousSystemQuantity
+}
+
+export interface BezelPhysicalInventoryParams {
+  adjustments: BezelInventoryReconciliationEntry[];
+  managerName: string;
+  managerId?: string;
+  notes?: string;
+  idempotencyKey?: string;
+}
+
+/**
+ * 6. PHYSICAL INVENTORY / RECONCILIATION
+ * Manager performs physical stock count reconciliation for Bezel references.
+ * Updates the authoritative system stock to match physical count.
+ * Creates immutable, traceable BezelOperation audit records for every adjusted stock.
+ * Stock update + inventory record executed in ONE atomic Firestore transaction.
+ */
+export async function executeBezelPhysicalInventory(
+  params: BezelPhysicalInventoryParams
+): Promise<{ success: boolean; operations: BezelOperation[] }> {
+  if (!params.adjustments || params.adjustments.length === 0) {
+    throw new Error("No inventory adjustments provided.");
+  }
+
+  // Idempotency guard to prevent duplicate rapid submissions
+  const key =
+    params.idempotencyKey ||
+    `inv-${params.managerName}-${params.adjustments.map((a) => `${a.reference}:${a.stockType}:${a.physicalQuantity}`).join("-")}`;
+  checkAndSetIdempotency(key);
+
+  // Validate parameters
+  for (const item of params.adjustments) {
+    if (!item.reference || !item.reference.trim()) {
+      throw new Error("All adjustment items must have a valid reference.");
+    }
+    if (item.stockType !== "STOCK 1" && item.stockType !== "STOCK 2") {
+      throw new Error(`Stock type for ${item.reference} must be STOCK 1 or STOCK 2.`);
+    }
+    const counted = Number(item.physicalQuantity);
+    if (isNaN(counted) || counted < 0) {
+      throw new Error(`Physical count for ${item.reference} (${item.stockType}) must be a valid non-negative number.`);
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const operationsCreated: BezelOperation[] = [];
+
+  await runTransaction(db, async (transaction) => {
+    // 1. Gather all unique reference codes
+    const refCodes = Array.from(new Set(params.adjustments.map((a) => a.reference.trim())));
+
+    // 2. Read authoritative state for all affected references inside transaction
+    const refDocs = new Map<string, { docRef: any; data: BezelReference }>();
+    for (const refCode of refCodes) {
+      const docRef = doc(db, "bezel_references", refCode);
+      const snap = await transaction.get(docRef);
+      if (!snap.exists()) {
+        throw new Error(`Reference "${refCode}" does not exist in the Bezel catalog.`);
+      }
+      refDocs.set(refCode, { docRef, data: snap.data() as BezelReference });
+    }
+
+    // 3. Process each adjustment and verify against concurrent modifications
+    for (const item of params.adjustments) {
+      const refCode = item.reference.trim();
+      const entry = refDocs.get(refCode)!;
+      const curRef = entry.data;
+
+      const s1Before = curRef.stock1 || 0;
+      const s2Before = curRef.stock2 || 0;
+
+      const currentSystemStock = item.stockType === "STOCK 1" ? s1Before : s2Before;
+      if (currentSystemStock !== item.previousSystemQuantity) {
+        throw new Error(
+          `Concurrent modification detected for ${refCode} (${item.stockType}). System stock changed from ${item.previousSystemQuantity} to ${currentSystemStock}. Please refresh and re-verify.`
+        );
+      }
+
+      const countedQty = Number(item.physicalQuantity);
+      const difference = countedQty - currentSystemStock;
+
+      let s1After = s1Before;
+      let s2After = s2Before;
+
+      if (item.stockType === "STOCK 1") {
+        s1After = countedQty;
+        curRef.stock1 = s1After;
+      } else {
+        s2After = countedQty;
+        curRef.stock2 = s2After;
+      }
+
+      curRef.totalStock = (curRef.stock1 || 0) + (curRef.stock2 || 0);
+      curRef.updatedAt = nowIso;
+      curRef.lastOperation = "PHYSICAL_INVENTORY";
+
+      const opId = generateBezelOpId("bz-inv");
+      const opRecord: BezelOperation = {
+        id: opId,
+        operationType: "PHYSICAL_INVENTORY",
+        reference: refCode,
+        quantity: Math.abs(difference),
+        sourceStock: item.stockType,
+        destinationStock: difference >= 0 ? item.stockType : "OUT",
+        reason: "PHYSICAL INVENTORY",
+        operatorName: params.managerName,
+        operatorId: params.managerId || "",
+        timestamp: nowIso,
+        stock1Before: s1Before,
+        stock1After: s1After,
+        stock2Before: s2Before,
+        stock2After: s2After,
+        previousSystemQuantity: currentSystemStock,
+        physicalQuantity: countedQty,
+        difference: difference,
+        status: "completed",
+        notes:
+          params.notes ||
+          `PHYSICAL INVENTORY: ${item.stockType} adjusted from ${currentSystemStock} to ${countedQty} (${difference >= 0 ? `+${difference}` : difference} PCS)`
+      };
+
+      const opDocRef = doc(db, "bezel_operations", opId);
+      transaction.set(
+        opDocRef,
+        cleanData({
+          ...opRecord,
+          serverTimestamp: serverTimestamp()
+        })
+      );
+
+      operationsCreated.push(opRecord);
+    }
+
+    // 4. Commit authoritative stock updates for all modified references
+    for (const [, entry] of refDocs.entries()) {
+      transaction.set(
+        entry.docRef,
+        cleanData({
+          ...entry.data,
+          updatedAt: nowIso,
+          serverTimestamp: serverTimestamp()
+        }),
+        { merge: true }
+      );
+    }
+  });
+
+  return { success: true, operations: operationsCreated };
 }

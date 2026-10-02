@@ -85,9 +85,25 @@ export interface Reference {
   updatedBy?: string;
   currentStock: number; // Total combined across stocks
   stock1: number; // STOCK 1 - Warehouse Stock (Raw Materials)
-  stock2: number; // STOCK 2 - Production Stock (WIP)
+  stock2: number; // STOCK 2 - Production Stock (WIP Total)
+  stock2Normal?: number; // STOCK 2 - Normal WIP Stock
+  stock2Disassembly?: number; // STOCK 2 - Disassembly Stock (recovered from S3)
   stock3: number; // STOCK 3 - Finished Goods Stock
   lastUpdate: string | any;
+}
+
+export interface DisassemblyEntry {
+  id: string;
+  batchId?: string;
+  date: string; // YYYY-MM-DD
+  reference: string;
+  quantity: number;
+  description?: string;
+  operatorName: string;
+  timestamp: string | any;
+  notes?: string;
+  status?: "completed" | "edited" | "deleted";
+  changeHistory?: Array<{ action: string; oldQty: number; newQty: number; modifiedBy: string; timestamp: any; reason: string }>;
 }
 
 export interface ScrapEntry {
@@ -251,7 +267,8 @@ export type BezelOperationType =
   | "BEZEL_ASSEMBLAGE"
   | "BEZEL_DELIVERY"
   | "BEZEL_RETURN"
-  | "BEZEL_SCRAP";
+  | "BEZEL_SCRAP"
+  | "PHYSICAL_INVENTORY";
 
 export interface BezelOperation {
   id: string; // Unique stable operation ID
@@ -269,6 +286,9 @@ export interface BezelOperation {
   stock1After?: number;
   stock2Before?: number;
   stock2After?: number;
+  previousSystemQuantity?: number;
+  physicalQuantity?: number;
+  difference?: number;
   status: "completed" | "reversed";
   reversalReason?: string;
   reversedAt?: string | any;

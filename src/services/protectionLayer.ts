@@ -18,6 +18,7 @@ import {
   InventoryTransaction,
   Delivery,
   Production,
+  DisassemblyEntry,
   ScrapEntry,
   Adjustment,
   ReceivingInvoice,
@@ -98,6 +99,9 @@ export interface ProtectedStockDelta {
   reference: string;
   delta1?: number;
   delta2?: number;
+  delta2Subtype?: "normal" | "disassembly";
+  targetStock2Normal?: number;
+  targetStock2Disassembly?: number;
   delta3?: number;
   // If direct override is desired (e.g. physical count adjustment)
   isDirectOverride?: boolean;
@@ -132,6 +136,8 @@ export interface ProtectedOperationParams {
       referenceCode: string;
       newStock1: number;
       newStock2: number;
+      newStock2Normal?: number;
+      newStock2Disassembly?: number;
       newStock3: number;
       newTotal?: number;
     }[];
@@ -226,17 +232,16 @@ export async function executeProtectedStockOperation(
 
             const targetDoc = doc(db, "references", code);
             const total = change.newStock1 + change.newStock2 + change.newStock3;
-            transaction.set(
-              targetDoc,
-              cleanDocData({
-                stock1: change.newStock1,
-                stock2: change.newStock2,
-                stock3: change.newStock3,
-                currentStock: total,
-                lastUpdate: timestamp
-              }),
-              { merge: true }
-            );
+            const patch: Record<string, any> = {
+              stock1: change.newStock1,
+              stock2: change.newStock2,
+              stock3: change.newStock3,
+              currentStock: total,
+              lastUpdate: timestamp
+            };
+            if (change.newStock2Normal !== undefined) patch.stock2Normal = change.newStock2Normal;
+            if (change.newStock2Disassembly !== undefined) patch.stock2Disassembly = change.newStock2Disassembly;
+            transaction.set(targetDoc, cleanDocData(patch), { merge: true });
           }
         }
 
@@ -331,21 +336,32 @@ export async function executeProtectedStockOperation(
         {
           s1Before: number;
           s2Before: number;
+          s2NormalBefore: number;
+          s2DisassemblyBefore: number;
           s3Before: number;
           s1After: number;
           s2After: number;
+          s2NormalAfter: number;
+          s2DisassemblyAfter: number;
           s3After: number;
         }
       > = {};
 
       for (const code of uniqueRefCodes) {
         const refInfo = refSnapMap[code];
+        const disBefore = typeof refInfo.data.stock2Disassembly === "number" ? refInfo.data.stock2Disassembly : 0;
+        const normBefore = typeof refInfo.data.stock2Normal === "number" ? refInfo.data.stock2Normal : (refInfo.data.stock2 || 0) - disBefore;
+
         accumulatedChanges[code] = {
           s1Before: refInfo.data.stock1,
           s2Before: refInfo.data.stock2,
+          s2NormalBefore: Math.max(0, normBefore),
+          s2DisassemblyBefore: Math.max(0, disBefore),
           s3Before: refInfo.data.stock3,
           s1After: refInfo.data.stock1,
           s2After: refInfo.data.stock2,
+          s2NormalAfter: Math.max(0, normBefore),
+          s2DisassemblyAfter: Math.max(0, disBefore),
           s3After: refInfo.data.stock3
         };
       }
@@ -356,11 +372,30 @@ export async function executeProtectedStockOperation(
 
         if (d.isDirectOverride) {
           if (d.targetStock1 !== undefined) cur.s1After = d.targetStock1;
-          if (d.targetStock2 !== undefined) cur.s2After = d.targetStock2;
+          if (d.targetStock2 !== undefined) {
+            cur.s2After = d.targetStock2;
+            if (d.targetStock2Normal !== undefined) cur.s2NormalAfter = d.targetStock2Normal;
+            if (d.targetStock2Disassembly !== undefined) cur.s2DisassemblyAfter = d.targetStock2Disassembly;
+          }
           if (d.targetStock3 !== undefined) cur.s3After = d.targetStock3;
         } else {
           if (d.delta1 !== undefined) cur.s1After += d.delta1;
-          if (d.delta2 !== undefined) cur.s2After += d.delta2;
+          if (d.delta2 !== undefined) {
+            if (d.delta2Subtype === "disassembly") {
+              cur.s2DisassemblyAfter += d.delta2;
+              if (cur.s2DisassemblyAfter < 0 && !allowNegativeStock && !clampToZeroOnNegative) {
+                throw new Error(`PROTECTION_NEGATIVE_STOCK:Insufficient Disassembly Stock 2 for Reference "${code}". Available: ${cur.s2DisassemblyBefore} pcs, requested: ${Math.abs(d.delta2)} pcs.`);
+              }
+              if (cur.s2DisassemblyAfter < 0 && clampToZeroOnNegative) cur.s2DisassemblyAfter = 0;
+            } else {
+              cur.s2NormalAfter += d.delta2;
+              if (cur.s2NormalAfter < 0 && !allowNegativeStock && !clampToZeroOnNegative) {
+                throw new Error(`PROTECTION_NEGATIVE_STOCK:Insufficient Normal Stock 2 for Reference "${code}". Available: ${cur.s2NormalBefore} pcs, requested: ${Math.abs(d.delta2)} pcs.`);
+              }
+              if (cur.s2NormalAfter < 0 && clampToZeroOnNegative) cur.s2NormalAfter = 0;
+            }
+            cur.s2After = cur.s2NormalAfter + cur.s2DisassemblyAfter;
+          }
           if (d.delta3 !== undefined) cur.s3After += d.delta3;
         }
       }
@@ -398,6 +433,8 @@ export async function executeProtectedStockOperation(
           cleanDocData({
             stock1: cur.s1After,
             stock2: cur.s2After,
+            stock2Normal: cur.s2NormalAfter,
+            stock2Disassembly: cur.s2DisassemblyAfter,
             stock3: cur.s3After,
             currentStock: newTotal,
             lastUpdate: timestamp
@@ -586,10 +623,12 @@ export async function executeProtectedTransfer(
     const refCode = t.reference.trim().toUpperCase();
     const qty = qtyCheck.value;
 
+    const destSubtype = (t as any).destStock2Subtype || (t as any).stock2Subtype || "normal";
     deltas.push({
       reference: refCode,
       delta1: -qty,
-      delta2: qty
+      delta2: qty,
+      delta2Subtype: destSubtype
     });
 
     const transId = `trans-trf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 5)}`;
@@ -686,9 +725,11 @@ export async function executeProtectedProduction(
     const refCode = p.reference.trim().toUpperCase();
     const qty = qtyCheck.value;
 
+    const subtype = (p as any).stock2Subtype || (p as any).sourceStock2Subtype || "normal";
     deltas.push({
       reference: refCode,
       delta2: -qty,
+      delta2Subtype: subtype,
       delta3: qty
     });
 
@@ -795,9 +836,11 @@ export async function executeProtectedValidateToStock3(
       });
     } else {
       // Standard: Deduct from Stock 2 (WIP) and Add to Stock 3 (Finished Goods)
+      const s2Subtype = (p as any).stock2Subtype || (p as any).sourceStock2Subtype || "normal";
       deltas.push({
         reference: refCode,
         delta2: -qty,
+        delta2Subtype: s2Subtype,
         delta3: qty
       });
     }
@@ -892,7 +935,8 @@ export async function executeProtectedScrap(
     if (stockSource === "Stock 1") {
       deltas.push({ reference: refCode, delta1: -qty });
     } else if (stockSource === "Stock 2") {
-      deltas.push({ reference: refCode, delta2: -qty });
+      const s2Subtype = (entry as any).stock2Subtype || (entry as any).sourceStock2Subtype || "normal";
+      deltas.push({ reference: refCode, delta2: -qty, delta2Subtype: s2Subtype });
     } else {
       deltas.push({ reference: refCode, delta3: -qty });
     }
@@ -1714,26 +1758,28 @@ export async function executeProtectedApproveInvoice(
   const boxDocs: { id: string; doc: any }[] = [];
 
   // Group quantities per reference
-  const grouped: Record<string, { s1: number; s2: number; s3: number }> = {};
+  const grouped: Record<string, { s1: number; s2Normal: number; s2Disassembly: number; s3: number }> = {};
   invoiceData.items.forEach((item) => {
     const code = item.reference.trim().toUpperCase();
-    if (!grouped[code]) grouped[code] = { s1: 0, s2: 0, s3: 0 };
+    if (!grouped[code]) grouped[code] = { s1: 0, s2Normal: 0, s2Disassembly: 0, s3: 0 };
     if (item.destinationStock === "Stock 3") {
       grouped[code].s3 += item.quantity;
     } else if (item.destinationStock === "Stock 2") {
-      grouped[code].s2 += item.quantity;
+      if ((item as any).destStock2Subtype === "disassembly") {
+        grouped[code].s2Disassembly += item.quantity;
+      } else {
+        grouped[code].s2Normal += item.quantity;
+      }
     } else {
       grouped[code].s1 += item.quantity;
     }
   });
 
   Object.entries(grouped).forEach(([code, vals]) => {
-    deltas.push({
-      reference: code,
-      delta1: vals.s1,
-      delta2: vals.s2,
-      delta3: vals.s3
-    });
+    if (vals.s1 > 0) deltas.push({ reference: code, delta1: vals.s1 });
+    if (vals.s2Normal > 0) deltas.push({ reference: code, delta2: vals.s2Normal, delta2Subtype: "normal" });
+    if (vals.s2Disassembly > 0) deltas.push({ reference: code, delta2: vals.s2Disassembly, delta2Subtype: "disassembly" });
+    if (vals.s3 > 0) deltas.push({ reference: code, delta3: vals.s3 });
   });
 
   invoiceData.items.forEach((item, i) => {
@@ -2884,6 +2930,225 @@ export async function executeProtectedUpdateBox(
         }),
         { merge: true }
       );
+    }
+  });
+}
+
+/**
+ * 17. Disassembly Sheet Validation: Deducts from Stock 3 (Finished Goods) and Adds to Stock 2 (Disassembly Stock)
+ */
+export async function executeProtectedDisassemblyIntake(
+  entries: { 
+    date: string; 
+    reference: string; 
+    quantity: number; 
+    description?: string; 
+    notes?: string; 
+  }[],
+  operatorName: string
+) {
+  if (!entries || entries.length === 0) return;
+
+  const timestamp = new Date().toISOString();
+  const deltas: ProtectedStockDelta[] = [];
+  const transactions: any[] = [];
+  const disassemblyDocs: { id: string; doc: DisassemblyEntry }[] = [];
+
+  // 1. Ensure any missing reference documents exist in the catalog before the transaction
+  for (const p of entries) {
+    const refCode = p.reference.trim().toUpperCase();
+    const refDocRef = doc(db, "references", refCode);
+    const snap = await getDoc(refDocRef);
+    if (!snap.exists()) {
+      await setDoc(refDocRef, cleanDocData({
+        id: refCode,
+        code: refCode,
+        description: p.description?.trim() || "Imported Disassembly Reference",
+        materialType: "Mesh",
+        currentStock: 0,
+        stock1: 0,
+        stock2: 0,
+        stock2Normal: 0,
+        stock2Disassembly: 0,
+        stock3: 0,
+        active: true,
+        createdAt: timestamp,
+        createdBy: operatorName,
+        lastUpdate: timestamp
+      }));
+    }
+  }
+
+  // 2. Prepare deltas: deduct from Stock 3, add to Stock 2 (Disassembly)
+  const batchId = `disasm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  entries.forEach((p, idx) => {
+    const qtyCheck = validateQuantity(p.quantity, `Disassembly quantity for ${p.reference}`);
+    if (!qtyCheck.valid) throw new Error(qtyCheck.error);
+
+    const refCode = p.reference.trim().toUpperCase();
+    const qty = qtyCheck.value;
+
+    deltas.push({
+      reference: refCode,
+      delta3: -qty, // remove from s3
+      delta2: qty,  // add to s2
+      delta2Subtype: "disassembly" // specifically disassembly stock 2
+    });
+
+    const disasmId = `disasm-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+    disassemblyDocs.push({
+      id: disasmId,
+      doc: {
+        id: disasmId,
+        batchId,
+        reference: refCode,
+        quantity: qty,
+        description: p.description || "",
+        date: p.date,
+        operatorName,
+        timestamp,
+        notes: p.notes || `Disassembly S3 -> S2 (Recovered ${qty} pcs to Stock 2 Disassembly)`
+      }
+    });
+
+    const transId = `trans-disasm-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 5)}`;
+    transactions.push({
+      id: transId,
+      reference: refCode,
+      movementType: "STOCK 3 OUT / STOCK 2 IN (DISASSEMBLY)",
+      stock: "Stock 3 -> Stock 2 (Disassembly)",
+      quantity: qty,
+      operatorName,
+      timestamp,
+      notes: `Disassembly (${p.date}): -Stock 3, +Stock 2 Disassembly (${qty} PCS). ${p.notes || ""}`
+    });
+  });
+
+  const idempotencyKey = `disasm-batch-${operatorName}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  await executeProtectedStockOperation({
+    operationType: "DISASSEMBLY_INTAKE",
+    deltas,
+    operatorName,
+    reason: `Disassembly Batch: S3 -> S2 Disassembly (${entries.length} items)`,
+    idempotencyKey,
+    source: "Desassemblage Workspace",
+    transactions,
+    additionalWrites: (transaction) => {
+      for (const item of disassemblyDocs) {
+        transaction.set(doc(db, "disassemblies", item.id), cleanDocData(item.doc));
+      }
+    }
+  });
+
+  return { batchId, count: entries.length };
+}
+
+/**
+ * 18. Delete / Revert an Entire Batch of Disassembly Entries
+ */
+export async function executeProtectedDeleteDisassemblyBatch(
+  batchRecords: DisassemblyEntry[],
+  operatorName: string,
+  reason: string = "Reverted disassembly batch"
+) {
+  if (!batchRecords || batchRecords.length === 0) return;
+
+  const timestamp = new Date().toISOString();
+  const deltas: ProtectedStockDelta[] = [];
+  const transactions: any[] = [];
+
+  // Group by reference to invert deltas: deduct from Stock 2 Disassembly, restore to Stock 3
+  const refQtyMap = new Map<string, number>();
+  batchRecords.forEach((r) => {
+    const code = r.reference.trim().toUpperCase();
+    refQtyMap.set(code, (refQtyMap.get(code) || 0) + (r.quantity || 0));
+  });
+
+  refQtyMap.forEach((qty, refCode) => {
+    deltas.push({
+      reference: refCode,
+      delta2: -qty, // deduct from S2 Disassembly
+      delta2Subtype: "disassembly",
+      delta3: qty  // restore to S3
+    });
+
+    const transId = `trans-rev-disasm-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
+    transactions.push({
+      id: transId,
+      reference: refCode,
+      movementType: "STOCK 2 OUT / STOCK 3 IN (DISASSEMBLY REVERSAL)",
+      stock: "Stock 2 (Disassembly) -> Stock 3",
+      quantity: qty,
+      operatorName: `${operatorName} (Reversal)`,
+      timestamp,
+      notes: `Reverted Disassembly batch. Reason: ${reason}`
+    });
+  });
+
+  await executeProtectedStockOperation({
+    operationType: "DISASSEMBLY_BATCH_REVERSAL",
+    deltas,
+    operatorName,
+    reason: `Revert Disassembly Batch (${batchRecords.length} records): ${reason}`,
+    source: "Desassemblage Workspace",
+    transactions,
+    additionalWrites: (transaction) => {
+      for (const rec of batchRecords) {
+        transaction.delete(doc(db, "disassemblies", rec.id));
+      }
+    }
+  });
+}
+
+/**
+ * 19. Delete a Single Disassembly Entry
+ */
+export async function executeProtectedDeleteDisassembly(
+  disassemblyId: string,
+  operatorName: string,
+  currentList: DisassemblyEntry[],
+  reason: string = "Deleted disassembly entry"
+) {
+  const item = currentList.find((p) => p.id === disassemblyId);
+  if (!item) throw new Error("Disassembly entry not found in active state");
+
+  const timestamp = new Date().toISOString();
+  const refCode = item.reference.trim().toUpperCase();
+  const qty = item.quantity || 0;
+
+  const deltas: ProtectedStockDelta[] = [
+    {
+      reference: refCode,
+      delta2: -qty, // deduct from S2 Disassembly
+      delta2Subtype: "disassembly",
+      delta3: qty  // restore to S3
+    }
+  ];
+
+  const transId = `trans-rev-disasm-single-${Date.now()}`;
+  const transactions = [
+    {
+      id: transId,
+      reference: refCode,
+      movementType: "STOCK 2 OUT / STOCK 3 IN (DISASSEMBLY REVERSAL)",
+      stock: "Stock 2 (Disassembly) -> Stock 3",
+      quantity: qty,
+      operatorName: `${operatorName} (Reversal)`,
+      timestamp,
+      notes: `Reverted Disassembly entry ${item.id}. Reason: ${reason}`
+    }
+  ];
+
+  await executeProtectedStockOperation({
+    operationType: "DISASSEMBLY_REVERSAL",
+    deltas,
+    operatorName,
+    reason: `Revert Disassembly #${disassemblyId}: ${reason}`,
+    source: "Desassemblage Workspace",
+    transactions,
+    additionalWrites: (transaction) => {
+      transaction.delete(doc(db, "disassemblies", disassemblyId));
     }
   });
 }
