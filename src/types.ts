@@ -147,6 +147,10 @@ export interface InventoryTransaction {
   expectedQty?: number;
   actualQty?: number;
   difference?: number;
+  previousQuantity?: number;
+  physicalQuantity?: number;
+  operationType?: string;
+  serverTimestamp?: any;
   palletQuality?: string;
   deliveryType?: "PRECOSIDO" | "STEERING WHEELS" | "Villanova" | "Mini Project" | "Normal Delivery";
   stock1Before?: number;
@@ -307,4 +311,22 @@ export interface BezelTruckItem {
   quantity: number;
   destinationStock: "STOCK 1" | "STOCK 2";
 }
+
+export interface MeshInventoryAdjustment {
+  reference: string;
+  stockType: "STOCK 1" | "STOCK 2" | "STOCK 3";
+  previousSystemQuantity: number;
+  physicalQuantity: number;
+  difference?: number;
+}
+
+export interface MeshPhysicalInventoryParams {
+  adjustments: MeshInventoryAdjustment[];
+  managerName: string;
+  managerRole?: string;
+  managerId?: string;
+  notes?: string;
+  idempotencyKey?: string;
+}
+
 

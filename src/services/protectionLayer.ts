@@ -23,7 +23,9 @@ import {
   Adjustment,
   ReceivingInvoice,
   Box,
-  Reference
+  Reference,
+  MeshInventoryAdjustment,
+  MeshPhysicalInventoryParams
 } from "../types";
 
 // In-Memory Idempotency / Duplicate Prevention Cache (Window: 10 seconds)
@@ -3406,4 +3408,182 @@ export async function executeProtectedDeleteDisassembly(
       transaction.delete(doc(db, "disassemblies", disassemblyId));
     }
   });
+}
+
+/**
+ * 20. Mesh Physical Inventory Reconciliation (STOCK INVENTORY)
+ * Creates traceable PHYSICAL_INVENTORY audit operations for every adjusted stock.
+ * Stock update + inventory transaction executed in ONE atomic Firestore transaction.
+ */
+export async function executeMeshPhysicalInventory(
+  params: MeshPhysicalInventoryParams
+): Promise<{ success: boolean; operations: InventoryTransaction[] }> {
+  // 1. Role validation: Managers only
+  if (params.managerRole === "operator") {
+    throw new Error("PERMISSION_DENIED: Operators are not authorized to perform Stock Inventory reconciliation.");
+  }
+  if (!params.adjustments || params.adjustments.length === 0) {
+    throw new Error("No inventory adjustments provided.");
+  }
+
+  // 2. Validate parameters
+  for (const item of params.adjustments) {
+    if (!item.reference || !item.reference.trim()) {
+      throw new Error("All adjustment items must have a valid reference.");
+    }
+    if (item.stockType !== "STOCK 1" && item.stockType !== "STOCK 2" && item.stockType !== "STOCK 3") {
+      throw new Error(`Stock type for ${item.reference} must be STOCK 1, STOCK 2, or STOCK 3.`);
+    }
+    const counted = Number(item.physicalQuantity);
+    if (isNaN(counted) || counted < 0) {
+      throw new Error(`Physical count for ${item.reference} (${item.stockType}) must be a valid non-negative number.`);
+    }
+  }
+
+  // 3. Idempotency guard to prevent duplicate rapid submissions
+  const key =
+    params.idempotencyKey ||
+    `inv-mesh-${params.managerName}-${params.adjustments.map((a) => `${a.reference}:${a.stockType}:${a.physicalQuantity}`).join("-")}`;
+  
+  const cached = duplicateGuardCache.get(key);
+  if (cached && Date.now() - cached.timestamp < 10000) {
+    console.warn(`[ProtectionLayer] Duplicate Mesh Stock Inventory suppressed for key: ${key}`);
+    return cached.result;
+  }
+
+  const nowIso = new Date().toISOString();
+  const operationsCreated: InventoryTransaction[] = [];
+
+  await runTransaction(db, async (transaction) => {
+    // 1. Gather all unique reference codes
+    const refCodes = Array.from(new Set(params.adjustments.map((a) => a.reference.trim().toUpperCase())));
+
+    // 2. Read authoritative state for all affected references inside transaction
+    const refDocs = new Map<string, { docRef: any; data: Reference }>();
+    for (const refCode of refCodes) {
+      let docRef = doc(db, "references", refCode);
+      let snap = await transaction.get(docRef);
+      if (!snap.exists()) {
+        const sanitizedId = refCode.replace(/[^a-zA-Z0-9_-]/g, "_");
+        if (sanitizedId !== refCode) {
+          docRef = doc(db, "references", sanitizedId);
+          snap = await transaction.get(docRef);
+        }
+      }
+      if (!snap.exists()) {
+        throw new Error(`Reference "${refCode}" does not exist in the master catalog.`);
+      }
+      refDocs.set(refCode, { docRef, data: snap.data() as Reference });
+    }
+
+    // 3. Process each adjustment and verify against concurrent modifications
+    for (let idx = 0; idx < params.adjustments.length; idx++) {
+      const item = params.adjustments[idx];
+      const refCode = item.reference.trim().toUpperCase();
+      const entry = refDocs.get(refCode)!;
+      const curRef = entry.data;
+
+      const s1Before = curRef.stock1 || 0;
+      const s2Before = curRef.stock2 || 0;
+      const s3Before = curRef.stock3 || 0;
+
+      let currentSystemStock = 0;
+      if (item.stockType === "STOCK 1") currentSystemStock = s1Before;
+      else if (item.stockType === "STOCK 2") currentSystemStock = s2Before;
+      else if (item.stockType === "STOCK 3") currentSystemStock = s3Before;
+
+      if (currentSystemStock !== item.previousSystemQuantity) {
+        throw new Error(
+          `Concurrent modification detected for ${refCode} (${item.stockType}). System stock changed from ${item.previousSystemQuantity} to ${currentSystemStock}. Please refresh and re-verify.`
+        );
+      }
+
+      const countedQty = Number(item.physicalQuantity);
+      const difference = countedQty - currentSystemStock;
+
+      let s1After = s1Before;
+      let s2After = s2Before;
+      let s3After = s3Before;
+      let s2NormAfter = curRef.stock2Normal !== undefined ? curRef.stock2Normal : Math.max(0, s2Before - (curRef.stock2Disassembly || 0));
+      let s2DisAfter = curRef.stock2Disassembly || 0;
+
+      if (item.stockType === "STOCK 1") {
+        s1After = countedQty;
+        curRef.stock1 = s1After;
+      } else if (item.stockType === "STOCK 2") {
+        s2After = countedQty;
+        curRef.stock2 = s2After;
+        // Proportionally adjust normal vs disassembly if non-zero
+        if (s2Before > 0 && s2DisAfter > 0) {
+          const disRatio = s2DisAfter / s2Before;
+          s2DisAfter = Math.round(countedQty * disRatio);
+          s2NormAfter = countedQty - s2DisAfter;
+        } else {
+          s2NormAfter = countedQty;
+          s2DisAfter = 0;
+        }
+        curRef.stock2Normal = s2NormAfter;
+        curRef.stock2Disassembly = s2DisAfter;
+      } else {
+        s3After = countedQty;
+        curRef.stock3 = s3After;
+      }
+
+      const newTotal = s1After + s2After + s3After;
+      curRef.currentStock = newTotal;
+      curRef.lastUpdate = nowIso;
+      curRef.updatedAt = nowIso;
+      curRef.updatedBy = params.managerName;
+
+      // Update reference in transaction
+      transaction.set(
+        entry.docRef,
+        cleanDocData({
+          code: curRef.code || refCode,
+          stock1: s1After,
+          stock2: s2After,
+          stock2Normal: s2NormAfter,
+          stock2Disassembly: s2DisAfter,
+          stock3: s3After,
+          currentStock: newTotal,
+          lastUpdate: nowIso,
+          updatedAt: nowIso,
+          updatedBy: params.managerName
+        }),
+        { merge: true }
+      );
+
+      // Create traceable PHYSICAL_INVENTORY transaction audit record
+      const transId = `trans-inv-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+      const opRecord: InventoryTransaction = {
+        id: transId,
+        reference: refCode,
+        movementType: "PHYSICAL_INVENTORY",
+        operationType: "PHYSICAL_INVENTORY",
+        stock: item.stockType === "STOCK 1" ? "Stock 1" : item.stockType === "STOCK 2" ? "Stock 2" : "Stock 3",
+        quantity: Math.abs(difference),
+        previousQuantity: currentSystemStock,
+        physicalQuantity: countedQty,
+        difference: difference,
+        stock1Before: s1Before,
+        stock1After: s1After,
+        stock2Before: s2Before,
+        stock2After: s2After,
+        stock3Before: s3Before,
+        stock3After: s3After,
+        operatorName: params.managerName,
+        timestamp: nowIso,
+        serverTimestamp: serverTimestamp(),
+        status: "completed",
+        notes: `Physical Stock Inventory Reconciliation (${item.stockType}): ${currentSystemStock} ➔ ${countedQty} PCS (Diff: ${difference > 0 ? `+${difference}` : difference}). ${params.notes || ""}`
+      };
+
+      transaction.set(doc(db, "transactions", transId), cleanDocData(opRecord));
+      operationsCreated.push(opRecord);
+    }
+  });
+
+  const finalResult = { success: true, operations: operationsCreated };
+  duplicateGuardCache.set(key, { timestamp: Date.now(), result: finalResult });
+  return finalResult;
 }

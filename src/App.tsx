@@ -23,7 +23,9 @@ import ModuleSelection from "./components/ModuleSelection";
 import BezelWorkspace from "./components/BezelWorkspace";
 import DailyProductionDemo from "./components/DailyProductionDemo";
 import DesassemblageWorkspace from "./components/DesassemblageWorkspace";
+import MeshInventoryWorkspace from "./components/MeshInventoryWorkspace";
 import { LowStockAlertModal } from "./components/LowStockAlertModal";
+import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
@@ -81,7 +83,8 @@ export default function App() {
   const [disassemblies, setDisassemblies] = useState<DisassemblyEntry[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "invoices" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "desassemblage" | "scrap" | "manage-references">(() => {
+  const [stockInventoryInitialRef, setStockInventoryInitialRef] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "stock-inventory" | "invoices" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "desassemblage" | "scrap" | "manage-references">(() => {
     try {
       const savedUser = sessionStorage.getItem("epp_current_user");
       const savedTab = sessionStorage.getItem("epp_active_tab") as any;
@@ -148,6 +151,11 @@ export default function App() {
       sessionStorage.removeItem("epp_active_module");
     }
   }, [activeModule]);
+
+  const handleOpenStockInventory = (refCode?: string) => {
+    setStockInventoryInitialRef(refCode || "");
+    setActiveTab("stock-inventory");
+  };
 
   // Sync state with Firestore on mount
   useEffect(() => {
@@ -1126,6 +1134,24 @@ export default function App() {
               </div>
             </button>
 
+            {/* Stock Inventory Tab (Manager Physical Count & Reconciliation) */}
+            {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
+              <button
+                onClick={() => handleOpenStockInventory()}
+                id="nav-tab-stock-inventory"
+                className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                  activeTab === "stock-inventory"
+                    ? "text-indigo-400 font-bold bg-[#0f1e36] border-indigo-400"
+                    : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <ClipboardCheck className="w-4 h-4 shrink-0 text-indigo-400" />
+                  <span>STOCK INVENTORY</span>
+                </div>
+              </button>
+            )}
+
             {/* Invoices Tab */}
             <button
               onClick={() => setActiveTab("invoices")}
@@ -1391,10 +1417,24 @@ export default function App() {
               {activeTab === "records" && "Operator Movement Records & History"}
               {activeTab === "supervisor" && "Supervisor Validation & Sign-offs"}
               {activeTab === "admin" && "Administrative Control Center"}
+              {activeTab === "stock-inventory" && "Stock Inventory — Physical Count & Reconciliation"}
             </h1>
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Stock Inventory Quick Access for Managers */}
+            {(currentUser.role === "admin" || currentUser.role === "supervisor") && activeTab !== "stock-inventory" && (
+              <button
+                onClick={() => handleOpenStockInventory()}
+                id="header-stock-inventory-btn"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold text-xs shadow-md shadow-indigo-200 transition-all cursor-pointer active:scale-95"
+                title="Physical stock reconciliation (System Stock → Physical Count → Difference → Confirm)"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5" />
+                <span>STOCK INVENTORY</span>
+              </button>
+            )}
+
             {/* Low Stock Real-Time Alert Indicator for All Portals (Operator, Supervisor & Manager) */}
             {lowStockReferences.length > 0 && (
               <button
@@ -1455,6 +1495,31 @@ export default function App() {
                   onUpdateBox={handleUpdateBox}
                   onCreateReference={handleCreateReference}
                   onUpdateReference={handleUpdateReference}
+                  onNavigateToStockInventory={handleOpenStockInventory}
+                />
+              )}
+
+              {activeTab === "stock-inventory" && (
+                <MeshInventoryWorkspace
+                  references={references}
+                  currentUser={currentUser}
+                  initialFilterRefCode={stockInventoryInitialRef}
+                  onSuccess={(msg) => {
+                    Swal.fire({
+                      title: "Stock Reconciled",
+                      text: msg,
+                      icon: "success",
+                      confirmButtonColor: "#4f46e5"
+                    });
+                  }}
+                  onError={(err) => {
+                    Swal.fire({
+                      title: "Reconciliation Error",
+                      text: err,
+                      icon: "error",
+                      confirmButtonColor: "#ef4444"
+                    });
+                  }}
                 />
               )}
 

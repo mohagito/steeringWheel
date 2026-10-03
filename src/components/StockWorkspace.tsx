@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Box, Adjustment, Reference, User, InventoryTransaction } from "../types";
 import { 
   Search, Filter, ArrowLeftRight, Clock, Trash2, Edit2, Check, X, Download, FileText, Calendar, UserCheck, Tag, Info,
-  Boxes, Factory, CheckCircle2, FileSpreadsheet, Layers, Sparkles, Plus, Power, CheckCircle, AlertOctagon
+  Boxes, Factory, CheckCircle2, FileSpreadsheet, Layers, Sparkles, Plus, Power, CheckCircle, AlertOctagon, ClipboardCheck
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
@@ -29,6 +29,7 @@ interface StockWorkspaceProps {
     active?: boolean;
   }) => Promise<void>;
   onUpdateReference?: (refId: string, updatedFields: Partial<Reference>) => Promise<void>;
+  onNavigateToStockInventory?: (initialRefCode?: string) => void;
 }
 
 // Helper function to extract Scanned Qty, Real Count Qty, and Difference for report tables
@@ -75,7 +76,8 @@ export default function StockWorkspace({
   onDeleteBox,
   onUpdateBox,
   onCreateReference,
-  onUpdateReference
+  onUpdateReference,
+  onNavigateToStockInventory
 }: StockWorkspaceProps) {
   
   // Local navigation tab: "warehouse" (Stock 1), "production" (Stock 2), "finished" (Stock 3), "reports" (Reports Suite)
@@ -616,6 +618,17 @@ export default function StockWorkspace({
             <span>Reports</span>
           </button>
         </div>
+
+        {(currentUser.role === "admin" || currentUser.role === "supervisor") && onNavigateToStockInventory && (
+          <button
+            onClick={() => onNavigateToStockInventory()}
+            className="px-4 py-2 text-xs font-bold rounded-2xl cursor-pointer transition-all flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/25 active:scale-95"
+            title="Physical stock reconciliation (System Stock → Physical Count → Difference → Confirm)"
+          >
+            <ClipboardCheck className="w-4 h-4" />
+            <span>Stock Inventory</span>
+          </button>
+        )}
       </div>
 
       {statusMsg && (
@@ -772,15 +785,19 @@ export default function StockWorkspace({
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
                                   onClick={() => {
-                                    setEditingRefId(ref.id);
-                                    setEditingRefStage("stock1");
-                                    setEditingRefQty(ref.stock1 || 0);
+                                    if (onNavigateToStockInventory) {
+                                      onNavigateToStockInventory(ref.code);
+                                    } else {
+                                      setEditingRefId(ref.id);
+                                      setEditingRefStage("stock1");
+                                      setEditingRefQty(ref.stock1 || 0);
+                                    }
                                   }}
-                                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
-                                  title="Edit Stock Level"
+                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
+                                  title="Physical Stock Inventory Reconciliation"
                                 >
-                                  <Edit2 className="w-3 h-3" />
-                                  <span>Stock</span>
+                                  <ClipboardCheck className="w-3 h-3" />
+                                  <span>Inventory</span>
                                 </button>
 
                                 <button
@@ -1147,18 +1164,22 @@ export default function StockWorkspace({
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
                                   onClick={() => {
-                                    const dis = ref.stock2Disassembly || 0;
-                                    const norm = ref.stock2Normal !== undefined ? ref.stock2Normal : Math.max(0, (ref.stock2 || 0) - dis);
-                                    setEditingRefId(ref.id);
-                                    setEditingRefStage("stock2");
-                                    setEditingRefStock2Normal(norm);
-                                    setEditingRefStock2Disassembly(dis);
+                                    if (onNavigateToStockInventory) {
+                                      onNavigateToStockInventory(ref.code);
+                                    } else {
+                                      const dis = ref.stock2Disassembly || 0;
+                                      const norm = ref.stock2Normal !== undefined ? ref.stock2Normal : Math.max(0, (ref.stock2 || 0) - dis);
+                                      setEditingRefId(ref.id);
+                                      setEditingRefStage("stock2");
+                                      setEditingRefStock2Normal(norm);
+                                      setEditingRefStock2Disassembly(dis);
+                                    }
                                   }}
-                                  className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
-                                  title="Edit Stock 2 (Normal / Disassembly)"
+                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
+                                  title="Physical Stock Inventory Reconciliation"
                                 >
-                                  <Edit2 className="w-3 h-3" />
-                                  <span>Stock</span>
+                                  <ClipboardCheck className="w-3 h-3" />
+                                  <span>Inventory</span>
                                 </button>
 
                                 <button
@@ -1338,15 +1359,19 @@ export default function StockWorkspace({
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
                                   onClick={() => {
-                                    setEditingRefId(ref.id);
-                                    setEditingRefStage("stock3");
-                                    setEditingRefQty(ref.stock3 || 0);
+                                    if (onNavigateToStockInventory) {
+                                      onNavigateToStockInventory(ref.code);
+                                    } else {
+                                      setEditingRefId(ref.id);
+                                      setEditingRefStage("stock3");
+                                      setEditingRefQty(ref.stock3 || 0);
+                                    }
                                   }}
-                                  className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
-                                  title="Edit Stock 3"
+                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] rounded-xl flex items-center justify-center gap-1 cursor-pointer"
+                                  title="Physical Stock Inventory Reconciliation"
                                 >
-                                  <Edit2 className="w-3 h-3" />
-                                  <span>Stock</span>
+                                  <ClipboardCheck className="w-3 h-3" />
+                                  <span>Inventory</span>
                                 </button>
 
                                 <button
