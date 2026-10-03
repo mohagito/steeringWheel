@@ -26,18 +26,213 @@ import {
   Reference
 } from "../types";
 
-// In-Memory Idempotency / Duplicate Prevention Cache (Window: 4 seconds)
+// In-Memory Idempotency / Duplicate Prevention Cache (Window: 10 seconds)
 const duplicateGuardCache = new Map<string, { timestamp: number; result: any }>();
 
 // Periodic cleanup of stale cache keys
-setInterval(() => {
+const dedupCleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, val] of duplicateGuardCache.entries()) {
-    if (now - val.timestamp > 30000) {
+    if (now - val.timestamp > 60000) {
       duplicateGuardCache.delete(key);
     }
   }
 }, 60000);
+if (typeof dedupCleanupInterval.unref === "function") {
+  dedupCleanupInterval.unref();
+}
+
+/**
+ * Defensive Security: Operation ID validation (Blocks forged, script-injected, or malformed IDs)
+ */
+export function validateOperationId(id: any, fieldName = "operationId"): { valid: boolean; error?: string; cleanId: string } {
+  if (typeof id !== "string" || !id.trim()) {
+    return { valid: false, error: `${fieldName} must be a non-empty string.`, cleanId: "" };
+  }
+  const clean = id.trim();
+  if (clean.length > 128) {
+    return { valid: false, error: `${fieldName} exceeds maximum permitted length (128 characters).`, cleanId: clean };
+  }
+  // Safe ID pattern: letters, numbers, hyphens, underscores, dots, colons
+  if (!/^[a-zA-Z0-9_\-\.:]+$/.test(clean)) {
+    return { valid: false, error: `${fieldName} contains illegal or forged characters.`, cleanId: clean };
+  }
+  return { valid: true, cleanId: clean };
+}
+
+/**
+ * Defensive Security: Reference code validation (Blocks invalid reference IDs, malformed references)
+ */
+export function validateReferenceCode(code: any, fieldName = "reference"): { valid: boolean; error?: string; cleanCode: string } {
+  if (typeof code !== "string" || !code.trim()) {
+    return { valid: false, error: `${fieldName} code must be a non-empty string.`, cleanCode: "" };
+  }
+  const clean = code.trim().toUpperCase();
+  if (clean.length < 2 || clean.length > 60) {
+    return { valid: false, error: `${fieldName} code must be between 2 and 60 characters (got: "${clean}").`, cleanCode: clean };
+  }
+  if (!/^[a-zA-Z0-9_\-\.\/ ]+$/.test(clean)) {
+    return { valid: false, error: `${fieldName} code "${clean}" contains invalid characters.`, cleanCode: clean };
+  }
+  return { valid: true, cleanCode: clean };
+}
+
+/**
+ * Defensive Security: Timestamp validation (Blocks forged future timestamps or malformed date values)
+ */
+export function validateTimestamp(ts: any): { valid: boolean; cleanTimestamp: string } {
+  if (!ts) {
+    return { valid: true, cleanTimestamp: new Date().toISOString() };
+  }
+  const parsed = Date.parse(ts);
+  if (isNaN(parsed)) {
+    return { valid: false, cleanTimestamp: new Date().toISOString() };
+  }
+  // Block timestamps more than 24 hours in the future
+  if (parsed > Date.now() + 24 * 60 * 60 * 1000) {
+    return { valid: false, cleanTimestamp: new Date().toISOString() };
+  }
+  return { valid: true, cleanTimestamp: new Date(parsed).toISOString() };
+}
+
+/**
+ * Defensive Security: Session verification (FAILS CLOSED if session is missing or unauthenticated)
+ */
+export function assertAuthorizedSession(
+  user?: { id?: string; fullName?: string; role?: string } | null
+): { id: string; fullName: string; role: "operator" | "supervisor" | "admin" } {
+  if (!user || !user.fullName || !user.role) {
+    const err = "UNAUTHORIZED_ACCESS: No authenticated user session.";
+    logProtectionIncident({
+      eventType: "UNAUTHORIZED_ACTION_BLOCKED",
+      attemptedOperation: "SESSION_AUTHENTICATION",
+      reason: err,
+      operator: "Unauthenticated",
+      source: "DefensiveSecurityLayer"
+    });
+    throw new Error(err);
+  }
+  const cleanRole = user.role.toLowerCase() as "operator" | "supervisor" | "admin";
+  if (cleanRole !== "operator" && cleanRole !== "supervisor" && cleanRole !== "admin") {
+    const err = `UNAUTHORIZED_ACCESS: Invalid user role "${user.role}".`;
+    logProtectionIncident({
+      eventType: "UNAUTHORIZED_ACTION_BLOCKED",
+      attemptedOperation: "SESSION_AUTHENTICATION",
+      reason: err,
+      operator: user.fullName,
+      source: "DefensiveSecurityLayer"
+    });
+    throw new Error(err);
+  }
+  return { id: user.id || user.fullName, fullName: user.fullName, role: cleanRole };
+}
+
+/**
+ * Defensive Security: Manager/Admin Action Gate (BLOCKS Operators from performing Manager/Admin actions)
+ */
+export function assertManagerOrAdminAction(
+  actionName: string,
+  role?: string,
+  operatorName?: string
+): void {
+  const cleanRole = (role || "").toLowerCase();
+  if (cleanRole === "operator" || (cleanRole !== "admin" && cleanRole !== "supervisor")) {
+    const err = `PERMISSION_DENIED: Operators are not authorized to perform Manager/Admin action "${actionName}". Supervisor or Manager authorization required.`;
+    logProtectionIncident({
+      eventType: "UNAUTHORIZED_ACTION_BLOCKED",
+      attemptedOperation: actionName,
+      reason: err,
+      operator: operatorName || "Operator",
+      source: "DefensiveSecurityLayer"
+    });
+    throw new Error(err);
+  }
+}
+
+/**
+ * Defensive Security: User Account and Role Protection
+ * 1. BLOCKS non-admin users from creating, editing, or deleting accounts
+ * 2. BLOCKS users from altering their own role or permissions (self-escalation defense)
+ */
+export function assertCanManageUser(
+  actingUser: { id?: string; role?: string; fullName?: string } | null | undefined,
+  targetUserId: string,
+  updatedFields?: any
+): void {
+  if (!actingUser || (actingUser.role !== "admin" && actingUser.role !== "supervisor")) {
+    const err = "PERMISSION_DENIED: Only Administrators can create, modify, or delete user accounts.";
+    logProtectionIncident({
+      eventType: "UNAUTHORIZED_ACTION_BLOCKED",
+      attemptedOperation: "USER_MANAGEMENT",
+      reason: err,
+      operator: actingUser?.fullName || "Anonymous",
+      source: "DefensiveSecurityLayer"
+    });
+    throw new Error(err);
+  }
+
+  // Self-role / Self-permission escalation defense
+  if (actingUser.id === targetUserId && updatedFields && updatedFields.role && updatedFields.role !== actingUser.role) {
+    const err = "SECURITY_VIOLATION: Users are strictly forbidden from altering their own role or permissions.";
+    logProtectionIncident({
+      eventType: "ROLE_MODIFICATION_BLOCKED",
+      attemptedOperation: "SELF_ROLE_MODIFICATION",
+      reason: err,
+      operator: actingUser.fullName,
+      source: "DefensiveSecurityLayer",
+      payloadSummary: JSON.stringify({ targetUserId, attemptedRole: updatedFields.role })
+    });
+    throw new Error(err);
+  }
+}
+
+/**
+ * Defensive Security: Audit Immutability Guard
+ * BLOCKS deletion of historical audit logs in transactions, bezel_operations, or protection_logs.
+ */
+export function assertAuditImmutability(
+  collectionName: string,
+  docId: string,
+  operation: "delete" | "modify",
+  operatorName?: string
+): void {
+  if (collectionName === "transactions" || collectionName === "bezel_operations" || collectionName === "protection_logs") {
+    if (operation === "delete") {
+      const err = `SECURITY_VIOLATION: Historical audit record ${collectionName}/${docId} is immutable and cannot be deleted.`;
+      logProtectionIncident({
+        eventType: "AUDIT_MUTATION_BLOCKED",
+        attemptedOperation: `DELETE_${collectionName.toUpperCase()}`,
+        reason: err,
+        operator: operatorName || "System",
+        source: "DefensiveSecurityLayer"
+      });
+      throw new Error(err);
+    }
+  }
+}
+
+/**
+ * Defensive Security: Direct Stock Modification Guard
+ * BLOCKS direct stock field overwriting outside approved workflows.
+ */
+export function assertCanDirectlyModifyStock(
+  userRole?: string,
+  refCode?: string,
+  operatorName?: string
+): void {
+  const cleanRole = (userRole || "").toLowerCase();
+  if (cleanRole === "operator") {
+    const err = `SECURITY_VIOLATION: Direct stock modification on reference "${refCode || "unknown"}" is blocked for Operators.`;
+    logProtectionIncident({
+      eventType: "DIRECT_STOCK_MODIFICATION_BLOCKED",
+      attemptedOperation: "DIRECT_STOCK_EDIT",
+      reason: err,
+      operator: operatorName || "Operator",
+      source: "DefensiveSecurityLayer"
+    });
+    throw new Error(err);
+  }
+}
 
 /**
  * Helper to clean undefined values before saving to Firestore
@@ -56,7 +251,7 @@ export const cleanDocData = <T extends Record<string, any>>(obj: T): T => {
  * Silently logs database protection incidents to the internal Firestore collection `protection_logs`.
  * This never throws or interferes with normal client-side operation.
  */
-export async function logProtectionIncident(incident: Omit<ProtectionLog, "id">): Promise<void> {
+export async function logProtectionIncident(incident: Omit<ProtectionLog, "id" | "timestamp"> & { timestamp?: string }): Promise<void> {
   try {
     const logId = `prot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const logRef = doc(db, "protection_logs", logId);
@@ -91,6 +286,9 @@ export function validateQuantity(
   }
   if (!options?.allowZero && num === 0) {
     return { valid: false, error: `${fieldName} must be greater than zero`, value: num };
+  }
+  if (Math.abs(num) > 10000000) {
+    return { valid: false, error: `${fieldName} exceeds maximum allowable physical threshold (10,000,000)`, value: num };
   }
   return { valid: true, value: num };
 }
@@ -174,13 +372,37 @@ export async function executeProtectedStockOperation(
     allowNegativeStock = false
   } = params;
 
-  // 1. Idempotency / Duplicate Check
-  if (idempotencyKey) {
-    const cached = duplicateGuardCache.get(idempotencyKey);
-    if (cached && Date.now() - cached.timestamp < 4000) {
-      console.warn(`[ProtectionLayer] Duplicate operation suppressed for key: ${idempotencyKey}`);
+  // 1. Idempotency / Duplicate & Replay Check
+  const effectiveDedupKey = idempotencyKey || (deltas.length > 0
+    ? `auto-${operationType}-${(operatorName || "").trim().toLowerCase()}-${deltas.map(d => `${d.reference}:${d.delta1 || 0}:${d.delta2 || 0}:${d.delta3 || 0}`).join(";")}`
+    : undefined);
+
+  if (effectiveDedupKey) {
+    const cached = duplicateGuardCache.get(effectiveDedupKey);
+    if (cached && Date.now() - cached.timestamp < 10000) {
+      console.warn(`[ProtectionLayer] Duplicate operation suppressed for key: ${effectiveDedupKey}`);
+      logProtectionIncident({
+        eventType: "DUPLICATE_OPERATION_BLOCKED",
+        attemptedOperation: operationType,
+        reason: `Replayed or duplicate operation suppressed (${effectiveDedupKey})`,
+        operator: operatorName,
+        source
+      });
       return { success: true, details: cached.result };
     }
+  }
+
+  // Defensive validation: Operator identity must be present
+  if (!operatorName || typeof operatorName !== "string" || !operatorName.trim()) {
+    const errStr = `Operation ${operationType} rejected: Operator name is required.`;
+    await logProtectionIncident({
+      eventType: "UNAUTHORIZED_ACTION_BLOCKED",
+      attemptedOperation: operationType,
+      reason: errStr,
+      operator: "Anonymous",
+      source
+    });
+    throw new Error(errStr);
   }
 
   const timestamp = new Date().toISOString();
@@ -190,6 +412,10 @@ export async function executeProtectedStockOperation(
     const targetRefCode = (referenceCode || deltas[0]?.reference || "").trim().toUpperCase();
     if (!targetRefCode) {
       throw new Error(`Reference code is required for ${operationType}`);
+    }
+    const refCodeCheck = validateReferenceCode(targetRefCode, "Target reference");
+    if (!refCodeCheck.valid) {
+      throw new Error(refCodeCheck.error);
     }
 
     try {
@@ -248,8 +474,8 @@ export async function executeProtectedStockOperation(
         return execResult;
       });
 
-      if (idempotencyKey) {
-        duplicateGuardCache.set(idempotencyKey, { timestamp: Date.now(), result });
+      if (effectiveDedupKey) {
+        duplicateGuardCache.set(effectiveDedupKey, { timestamp: Date.now(), result });
       }
 
       return { success: true, details: result };
@@ -272,30 +498,49 @@ export async function executeProtectedStockOperation(
     }
   }
 
-  // Declarative deltas branch
+  // Declarative deltas branch - rigorous defensive pre-validation
   for (const d of deltas) {
-    if (!d.reference || typeof d.reference !== "string" || d.reference.trim() === "") {
-      const errStr = `Invalid or missing reference code in operation ${operationType}.`;
+    const refCheck = validateReferenceCode(d.reference, `Reference in operation ${operationType}`);
+    if (!refCheck.valid) {
       await logProtectionIncident({
-        eventType: "INVALID_QUANTITY_BLOCKED",
+        eventType: "UNKNOWN_REFERENCE_BLOCKED",
         attemptedOperation: operationType,
-        reason: errStr,
-        timestamp: new Date().toISOString(),
+        reason: refCheck.error || "Invalid reference code",
         operator: operatorName,
         source
       });
-      throw new Error(errStr);
+      throw new Error(refCheck.error);
     }
 
     if (!d.isDirectOverride) {
-      if (d.delta1 !== undefined && (!isFinite(d.delta1) || isNaN(d.delta1))) {
-        throw new Error(`Invalid stock1 delta for ${d.reference}`);
+      if (d.delta1 !== undefined) {
+        const q1 = validateQuantity(d.delta1, `Stock 1 delta for ${d.reference}`, { allowNegative: true, allowZero: true });
+        if (!q1.valid) throw new Error(q1.error);
       }
-      if (d.delta2 !== undefined && (!isFinite(d.delta2) || isNaN(d.delta2))) {
-        throw new Error(`Invalid stock2 delta for ${d.reference}`);
+      if (d.delta2 !== undefined) {
+        const q2 = validateQuantity(d.delta2, `Stock 2 delta for ${d.reference}`, { allowNegative: true, allowZero: true });
+        if (!q2.valid) throw new Error(q2.error);
       }
-      if (d.delta3 !== undefined && (!isFinite(d.delta3) || isNaN(d.delta3))) {
-        throw new Error(`Invalid stock3 delta for ${d.reference}`);
+      if (d.delta3 !== undefined) {
+        const q3 = validateQuantity(d.delta3, `Stock 3 delta for ${d.reference}`, { allowNegative: true, allowZero: true });
+        if (!q3.valid) throw new Error(q3.error);
+      }
+    }
+  }
+
+  // Validate incoming transactions
+  for (const tx of transactions) {
+    if (tx.id) {
+      const idCheck = validateOperationId(tx.id, "Transaction ID");
+      if (!idCheck.valid) {
+        await logProtectionIncident({
+          eventType: "FORGED_OPERATION_BLOCKED",
+          attemptedOperation: operationType,
+          reason: idCheck.error || "Forged transaction ID",
+          operator: operatorName,
+          source
+        });
+        throw new Error(idCheck.error);
       }
     }
   }
@@ -2778,8 +3023,18 @@ export async function executeProtectedDeleteOrReverseOperation(
         );
       };
     } else {
+      // Historical audit records are immutable: mark as REVERSED with audit reason instead of deleting
       additionalWrites = (transaction) => {
-        transaction.delete(doc(db, "transactions", txSnap.id));
+        transaction.update(
+          doc(db, "transactions", txSnap.id),
+          cleanDocData({
+            status: "REVERSED",
+            reversedAt: timestamp,
+            reversedBy: operatorName,
+            reversalReason: reason,
+            notes: `${txData.notes || ""} | REVERSED on ${timestamp} by ${operatorName}. Reason: ${reason}`
+          })
+        );
       };
     }
   }

@@ -1,15 +1,17 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { Delivery, Reference, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Truck, Search, AlertCircle, Plus, FileText, 
   TrendingDown, ArrowUpRight, Trash2, CheckCircle, Building2, Layers,
-  Edit2, X
+  Edit2, X, Upload, FileUp
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import { CustomSelect } from "./CustomSelect";
 import { formatSystemTime, compareTimestampsDesc } from "../utils/timeUtils";
+import DeliveryPdfModal from "./DeliveryPdfModal";
+import { parseDeliveryPDF, ParsedDeliveryDocument } from "../services/deliveryPdfParser";
 
 interface DeliveriesWorkspaceProps {
   deliveries: Delivery[];
@@ -52,6 +54,68 @@ export default function DeliveriesWorkspace({
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+
+  // PDF Delivery Import States
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [parsedPdfDoc, setParsedPdfDoc] = useState<ParsedDeliveryDocument | null>(null);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isParsingPdf, setIsParsingPdf] = useState(false);
+  const [isDraggingPdf, setIsDraggingPdf] = useState(false);
+
+  const handleProcessPdfFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      Swal.fire({
+        icon: "warning",
+        title: "Invalid File",
+        text: "Please select a valid PDF delivery invoice."
+      });
+      return;
+    }
+
+    setIsParsingPdf(true);
+    try {
+      const doc = await parseDeliveryPDF(file, references);
+      if (doc.items.length === 0) {
+        Swal.fire({
+          icon: "warning",
+          title: "No Line Items Found",
+          text: "Could not find valid references or quantities in this PDF. Please check the document format."
+        });
+        return;
+      }
+      setParsedPdfDoc(doc);
+      setIsPdfModalOpen(true);
+    } catch (err: any) {
+      console.error("PDF Parsing failed:", err);
+      Swal.fire({
+        icon: "error",
+        title: "PDF Read Error",
+        text: err?.message || "Failed to read delivery PDF."
+      });
+    } finally {
+      setIsParsingPdf(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleProcessPdfFile(file);
+  };
+
+  const handleLoadIntoForm = (doc: ParsedDeliveryDocument) => {
+    setInvoiceNumber(doc.invoiceNumber);
+    setDeliveryType(doc.deliveryType);
+    const meshItems = doc.items.filter((i) => i.isMeshDeduction && i.associatedMeshRef);
+    if (meshItems.length > 0) {
+      setRows(
+        meshItems.map((item) => ({
+          referenceCode: item.associatedMeshRef!,
+          quantity: item.quantity.toString()
+        }))
+      );
+    }
+  };
 
   // Search and filter for deliveries ledger
   const [searchQuery, setSearchQuery] = useState("");
@@ -383,7 +447,7 @@ export default function DeliveriesWorkspace({
         {/* Left Column: New Delivery Form */}
         <div className="lg:col-span-5 space-y-6">
           <div className="glass-panel p-5 sm:p-6">
-            <div className="flex items-center justify-between gap-2.5 mb-5 pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between gap-2.5 mb-4 pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <ArrowUpRight className="w-5 h-5 text-rose-600" />
                 <div>
@@ -391,14 +455,67 @@ export default function DeliveriesWorkspace({
                 </div>
               </div>
 
-              {/* Delivery Tier Indicator Badge */}
-              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono uppercase border ${
-                isPrecosido
-                  ? "bg-amber-50 text-amber-800 border-amber-200"
-                  : "bg-blue-50 text-blue-800 border-blue-200"
-              }`}>
-                Deducts {isPrecosido ? "Stock 2" : "Stock 3"}
-              </span>
+              {/* Delivery Actions & Tier Indicator Badge */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isParsingPdf}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+                  title="Import delivery invoice PDF (MPT...) for automatic mesh deduction"
+                >
+                  {isParsingPdf ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Reading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Import PDF</span>
+                    </>
+                  )}
+                </button>
+
+                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono uppercase border ${
+                  isPrecosido
+                    ? "bg-amber-50 text-amber-800 border-amber-200"
+                    : "bg-blue-50 text-blue-800 border-blue-200"
+                }`}>
+                  Deducts {isPrecosido ? "Stock 2" : "Stock 3"}
+                </span>
+              </div>
+            </div>
+
+            {/* Drag & Drop PDF Dropzone */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDraggingPdf(true);
+              }}
+              onDragLeave={() => setIsDraggingPdf(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDraggingPdf(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) handleProcessPdfFile(file);
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`mb-4 p-3 rounded-xl border border-dashed transition-all cursor-pointer text-center flex items-center justify-center gap-2.5 text-xs font-mono ${
+                isDraggingPdf
+                  ? "bg-blue-50 border-blue-400 text-blue-800 scale-[1.01]"
+                  : "bg-slate-50/60 hover:bg-slate-100/70 border-slate-300/80 text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <FileUp className="w-4 h-4 text-slate-400" />
+              <span>Drop delivery PDF invoice here or click to import</span>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5" id="delivery-dispatch-form">
@@ -909,6 +1026,16 @@ export default function DeliveriesWorkspace({
           </div>
         </div>
       )}
+
+      {/* PDF Delivery Import & BOM Deduction Modal */}
+      <DeliveryPdfModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        parsedDoc={parsedPdfDoc}
+        references={references}
+        onApplyDelivery={onSubmitDeliveries}
+        onLoadIntoForm={handleLoadIntoForm}
+      />
 
     </div>
   );

@@ -873,6 +873,9 @@ export interface BezelPhysicalInventoryParams {
 export async function executeBezelPhysicalInventory(
   params: BezelPhysicalInventoryParams
 ): Promise<{ success: boolean; operations: BezelOperation[] }> {
+  if ((params as any).role === "operator" || (params as any).managerRole === "operator") {
+    throw new Error("PERMISSION_DENIED: Operators are not authorized to perform Bezel Physical Inventory reconciliation.");
+  }
   if (!params.adjustments || params.adjustments.length === 0) {
     throw new Error("No inventory adjustments provided.");
   }

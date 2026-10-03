@@ -291,6 +291,19 @@ export default function DailyProductionDemo({
     return { totalBatches, totalRecords, totalQty };
   }, [filteredBatches]);
 
+  const filteredTraceabilityRecords = useMemo(() => {
+    if (!historySearchQuery.trim()) return productions;
+    const q = historySearchQuery.toLowerCase().trim();
+    return productions.filter(
+      (p) =>
+        (p.reference || "").toLowerCase().includes(q) ||
+        (p.notes || "").toLowerCase().includes(q) ||
+        (p.operatorName || "").toLowerCase().includes(q) ||
+        (p.date || "").includes(q) ||
+        (refMap.get((p.reference || "").toUpperCase().trim())?.description || "").toLowerCase().includes(q)
+    );
+  }, [productions, historySearchQuery, refMap]);
+
   // Handle Drag Events
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1067,18 +1080,6 @@ export default function DailyProductionDemo({
               </button>
             )}
 
-            {/* Optional Load Sample Template button when rows === 0 */}
-            {rows.length === 0 && (
-              <button
-                onClick={handleResetToUserDemo}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold font-mono flex items-center gap-1.5 border border-slate-200 cursor-pointer"
-                title="Optionally load sample template rows for testing"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
-                <span>Load Sample Template</span>
-              </button>
-            )}
-
             {/* Add row manually */}
             <button
               onClick={() => setShowAddRow(!showAddRow)}
@@ -1359,7 +1360,83 @@ export default function DailyProductionDemo({
       </div>
 
       {/* ---------------------------------------------------- */}
-      {/* 7. MODAL: PASTE GOOGLE SHEETS CONTENT */}
+      {/* 4. VALIDATED TRACEABILITY RECORDS */}
+      {/* ---------------------------------------------------- */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden" id="daily-production-traceability-card">
+        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+              Traceability Records
+            </h3>
+            <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">
+              {productions.length}
+            </span>
+          </div>
+
+          <div className="w-full sm:w-56">
+            <input
+              type="text"
+              placeholder="Search reference, date..."
+              value={historySearchQuery}
+              onChange={(e) => setHistorySearchQuery(e.target.value)}
+              className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400 font-mono"
+            />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
+          <table className="w-full text-left border-collapse text-xs font-mono">
+            <thead className="bg-slate-100/70 border-b border-slate-200 text-[10px] uppercase text-slate-600 font-bold sticky top-0 bg-slate-100 z-10">
+              <tr>
+                <th className="py-2.5 px-4">DATE</th>
+                <th className="py-2.5 px-4">REFERENCE</th>
+                <th className="py-2.5 px-4">DESCRIPTION</th>
+                <th className="py-2.5 px-4 text-right">QUANTITY</th>
+                <th className="py-2.5 px-4">MOVEMENT</th>
+                <th className="py-2.5 px-4">OPERATOR</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredTraceabilityRecords.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-slate-400 font-mono text-xs">
+                    No validated records yet.
+                  </td>
+                </tr>
+              ) : (
+                filteredTraceabilityRecords.map((item) => {
+                  const refInfo = refMap.get((item.reference || "").toUpperCase().trim());
+                  const desc = refInfo?.description || item.notes || "—";
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-2.5 px-4 whitespace-nowrap text-slate-600">
+                        {item.date || (item.timestamp ? formatSystemTime(item.timestamp).split(" ")[0] : "—")}
+                      </td>
+                      <td className="py-2.5 px-4 font-bold text-slate-900">
+                        {item.reference}
+                      </td>
+                      <td className="py-2.5 px-4 text-slate-500 truncate max-w-xs" title={desc}>
+                        {desc}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-black text-emerald-700">
+                        {item.quantity?.toLocaleString()} PCS
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+                          S2 → S3
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4 text-slate-600 truncate max-w-[140px]">
+                        {item.operatorName || currentUser.fullName}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
       {/* ---------------------------------------------------- */}
       {showPasteModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">

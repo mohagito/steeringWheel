@@ -55,7 +55,9 @@ import {
   executeProtectedUpdateDailyProduction,
   executeProtectedDisassemblyIntake,
   executeProtectedDeleteDisassemblyBatch,
-  executeProtectedDeleteDisassembly
+  executeProtectedDeleteDisassembly,
+  assertManagerOrAdminAction,
+  assertCanManageUser
 } from "./services/protectionLayer";
 
 export default function App() {
@@ -544,12 +546,14 @@ export default function App() {
   // Action: Atomically approve an entire receiving invoice into Stock 1 (Protected)
   const handleApproveInvoice = async (invoiceId: string) => {
     if (!currentUser) throw new Error("No authenticated user session.");
+    assertManagerOrAdminAction("INVOICE_APPROVAL", currentUser.role, currentUser.fullName);
     await executeProtectedApproveInvoice(invoiceId, currentUser.fullName);
   };
 
   // Action: Cancel an entire receiving invoice with ZERO stock impact
   const handleCancelInvoice = async (invoiceId: string) => {
     if (!currentUser) return;
+    assertManagerOrAdminAction("INVOICE_CANCEL", currentUser.role, currentUser.fullName);
     const now = new Date().toISOString();
     const invoiceRef = doc(db, "invoices", invoiceId);
     const invoiceSnap = await getDoc(invoiceRef);
@@ -567,6 +571,8 @@ export default function App() {
 
   // Action: Delete a single receiving invoice record from the register permanently
   const handleDeleteInvoice = async (invoiceId: string) => {
+    if (!currentUser) return;
+    assertManagerOrAdminAction("INVOICE_DELETE", currentUser.role, currentUser.fullName);
     try {
       const invoiceRef = doc(db, "invoices", invoiceId);
       const invoiceSnap = await getDoc(invoiceRef);
@@ -621,6 +627,7 @@ export default function App() {
   // Crucial logic: Marks as approved and UPDATES the physical expectedQty of the carton!
   const handleApproveAdjustment = async (adjustmentId: string) => {
     if (!currentUser) return;
+    assertManagerOrAdminAction("ADJUSTMENT_APPROVAL", currentUser.role, currentUser.fullName);
     const adj = adjustments.find(a => a.id === adjustmentId);
     if (!adj) return;
 
@@ -643,6 +650,7 @@ export default function App() {
   // Action: Supervisor rejects count adjustment
   const handleRejectAdjustment = async (adjustmentId: string) => {
     if (!currentUser) return;
+    assertManagerOrAdminAction("ADJUSTMENT_REJECTION", currentUser.role, currentUser.fullName);
     const adjRef = doc(db, "adjustments", adjustmentId);
     await updateDoc(adjRef, {
       status: "rejected",
@@ -729,6 +737,7 @@ export default function App() {
     if (!rawCode) {
       throw new Error("Reference code cannot be empty.");
     }
+    assertManagerOrAdminAction("REFERENCE_CREATION", currentUser?.role, currentUser?.fullName);
 
     const uppercaseCode = rawCode.toUpperCase();
     const docId = uppercaseCode.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -779,6 +788,7 @@ export default function App() {
 
   // Action: Admin / Supervisor updates a reference directly (metadata, stock, or status)
   const handleUpdateReference = async (refId: string, updatedFields: Partial<Reference>) => {
+    assertManagerOrAdminAction("REFERENCE_UPDATE", currentUser?.role, currentUser?.fullName);
     const refRef = doc(db, "references", refId);
     const refSnap = await getDoc(refRef);
     if (refSnap.exists()) {
@@ -853,6 +863,7 @@ export default function App() {
 
   // Action: Admin or Supervisor permanently deletes an UNUSED reference (with safety verification)
   const handleDeleteReference = async (refId: string, refCode: string) => {
+    assertManagerOrAdminAction("REFERENCE_DELETION", currentUser?.role, currentUser?.fullName);
     const codeUpper = refCode.toUpperCase();
     await deleteDoc(doc(db, "references", refId));
 
@@ -873,11 +884,13 @@ export default function App() {
 
   // Action: Admin adds a user profile
   const handleAddUser = async (userData: User) => {
+    assertCanManageUser(currentUser, userData.id, userData);
     await setDoc(doc(db, "users", userData.id), userData);
   };
 
   // Action: Admin updates a user profile (Name, PIN / Password, Role, Username)
   const handleUpdateUser = async (userId: string, updatedFields: Partial<User>) => {
+    assertCanManageUser(currentUser, userId, updatedFields);
     const userRef = doc(db, "users", userId);
     await updateDoc(userRef, updatedFields);
     if (currentUser && currentUser.id === userId) {
@@ -887,16 +900,19 @@ export default function App() {
 
   // Action: Admin deletes a user profile
   const handleDeleteUser = async (userId: string) => {
+    assertCanManageUser(currentUser, userId);
     await deleteDoc(doc(db, "users", userId));
   };
 
   // Action: Clean/Reset Database
   const handleCleanDatabase = async () => {
+    assertManagerOrAdminAction("DATABASE_RESET", currentUser?.role, currentUser?.fullName);
     await resetDatabaseToPristineState();
   };
 
   // Action: Audit & Repair Database Integrity for Enterprise Readiness
   const handleAuditDatabase = async (): Promise<{ repairedRefs: number; repairedUsers: number }> => {
+    assertManagerOrAdminAction("DATABASE_AUDIT", currentUser?.role, currentUser?.fullName);
     let repairedRefs = 0;
     let repairedUsers = 0;
 
