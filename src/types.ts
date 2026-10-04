@@ -314,7 +314,7 @@ export interface BezelTruckItem {
 
 export interface MeshInventoryAdjustment {
   reference: string;
-  stockType: "STOCK 1" | "STOCK 2" | "STOCK 3";
+  stockType: "STOCK 1" | "STOCK 2" | "STOCK 2 NORMAL" | "STOCK 2 DISASSEMBLY" | "STOCK 3";
   previousSystemQuantity: number;
   physicalQuantity: number;
   difference?: number;

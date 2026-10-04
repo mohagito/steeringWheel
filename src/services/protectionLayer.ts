@@ -3431,8 +3431,14 @@ export async function executeMeshPhysicalInventory(
     if (!item.reference || !item.reference.trim()) {
       throw new Error("All adjustment items must have a valid reference.");
     }
-    if (item.stockType !== "STOCK 1" && item.stockType !== "STOCK 2" && item.stockType !== "STOCK 3") {
-      throw new Error(`Stock type for ${item.reference} must be STOCK 1, STOCK 2, or STOCK 3.`);
+    if (
+      item.stockType !== "STOCK 1" &&
+      item.stockType !== "STOCK 2" &&
+      item.stockType !== "STOCK 2 NORMAL" &&
+      item.stockType !== "STOCK 2 DISASSEMBLY" &&
+      item.stockType !== "STOCK 3"
+    ) {
+      throw new Error(`Stock type for ${item.reference} must be STOCK 1, STOCK 2, STOCK 2 NORMAL, STOCK 2 DISASSEMBLY, or STOCK 3.`);
     }
     const counted = Number(item.physicalQuantity);
     if (isNaN(counted) || counted < 0) {
@@ -3486,10 +3492,14 @@ export async function executeMeshPhysicalInventory(
       const s1Before = curRef.stock1 || 0;
       const s2Before = curRef.stock2 || 0;
       const s3Before = curRef.stock3 || 0;
+      const s2DisBefore = curRef.stock2Disassembly || 0;
+      const s2NormBefore = curRef.stock2Normal !== undefined ? curRef.stock2Normal : Math.max(0, s2Before - s2DisBefore);
 
       let currentSystemStock = 0;
       if (item.stockType === "STOCK 1") currentSystemStock = s1Before;
       else if (item.stockType === "STOCK 2") currentSystemStock = s2Before;
+      else if (item.stockType === "STOCK 2 NORMAL") currentSystemStock = s2NormBefore;
+      else if (item.stockType === "STOCK 2 DISASSEMBLY") currentSystemStock = s2DisBefore;
       else if (item.stockType === "STOCK 3") currentSystemStock = s3Before;
 
       if (currentSystemStock !== item.previousSystemQuantity) {
@@ -3504,12 +3514,22 @@ export async function executeMeshPhysicalInventory(
       let s1After = s1Before;
       let s2After = s2Before;
       let s3After = s3Before;
-      let s2NormAfter = curRef.stock2Normal !== undefined ? curRef.stock2Normal : Math.max(0, s2Before - (curRef.stock2Disassembly || 0));
+      let s2NormAfter = curRef.stock2Normal !== undefined ? curRef.stock2Normal : Math.max(0, s2Before - s2DisBefore);
       let s2DisAfter = curRef.stock2Disassembly || 0;
 
       if (item.stockType === "STOCK 1") {
         s1After = countedQty;
         curRef.stock1 = s1After;
+      } else if (item.stockType === "STOCK 2 NORMAL") {
+        s2NormAfter = countedQty;
+        s2After = s2NormAfter + s2DisAfter;
+        curRef.stock2Normal = s2NormAfter;
+        curRef.stock2 = s2After;
+      } else if (item.stockType === "STOCK 2 DISASSEMBLY") {
+        s2DisAfter = countedQty;
+        s2After = s2NormAfter + s2DisAfter;
+        curRef.stock2Disassembly = s2DisAfter;
+        curRef.stock2 = s2After;
       } else if (item.stockType === "STOCK 2") {
         s2After = countedQty;
         curRef.stock2 = s2After;
@@ -3555,12 +3575,22 @@ export async function executeMeshPhysicalInventory(
 
       // Create traceable PHYSICAL_INVENTORY transaction audit record
       const transId = `trans-inv-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+      const opStock = item.stockType === "STOCK 1" 
+        ? "Stock 1" 
+        : item.stockType === "STOCK 2 NORMAL" 
+        ? "Stock 2 (Normal)"
+        : item.stockType === "STOCK 2 DISASSEMBLY"
+        ? "Stock 2 (Disassembly)"
+        : item.stockType === "STOCK 2"
+        ? "Stock 2"
+        : "Stock 3";
+
       const opRecord: InventoryTransaction = {
         id: transId,
         reference: refCode,
         movementType: "PHYSICAL_INVENTORY",
         operationType: "PHYSICAL_INVENTORY",
-        stock: item.stockType === "STOCK 1" ? "Stock 1" : item.stockType === "STOCK 2" ? "Stock 2" : "Stock 3",
+        stock: opStock,
         quantity: Math.abs(difference),
         previousQuantity: currentSystemStock,
         physicalQuantity: countedQty,

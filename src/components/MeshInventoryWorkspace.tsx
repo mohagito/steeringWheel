@@ -27,7 +27,8 @@ interface MeshInventoryWorkspaceProps {
 
 interface PhysicalCountState {
   stock1: string; // empty string means untouched
-  stock2: string;
+  stock2Normal: string;
+  stock2Disassembly: string;
   stock3: string;
 }
 
@@ -51,7 +52,7 @@ export default function MeshInventoryWorkspace({
   // Update a single count input
   const handleCountChange = (
     refCode: string,
-    stockType: "stock1" | "stock2" | "stock3",
+    stockType: "stock1" | "stock2Normal" | "stock2Disassembly" | "stock3",
     value: string
   ) => {
     // Only allow non-negative integers or empty string
@@ -62,7 +63,8 @@ export default function MeshInventoryWorkspace({
       ...prev,
       [refCode]: {
         stock1: stockType === "stock1" ? value : prev[refCode]?.stock1 ?? "",
-        stock2: stockType === "stock2" ? value : prev[refCode]?.stock2 ?? "",
+        stock2Normal: stockType === "stock2Normal" ? value : prev[refCode]?.stock2Normal ?? "",
+        stock2Disassembly: stockType === "stock2Disassembly" ? value : prev[refCode]?.stock2Disassembly ?? "",
         stock3: stockType === "stock3" ? value : prev[refCode]?.stock3 ?? ""
       }
     }));
@@ -114,15 +116,32 @@ export default function MeshInventoryWorkspace({
         }
       }
 
-      // Stock 2
-      if (state.stock2 !== "") {
-        const physical = parseInt(state.stock2, 10);
-        const system = ref.stock2 || 0;
+      // Stock 2 Normal
+      if (state.stock2Normal !== undefined && state.stock2Normal !== "") {
+        const physical = parseInt(state.stock2Normal, 10);
+        const dis = ref.stock2Disassembly || 0;
+        const system = ref.stock2Normal !== undefined ? ref.stock2Normal : Math.max(0, (ref.stock2 || 0) - dis);
         const diff = physical - system;
         if (diff !== 0) {
           list.push({
             reference: ref.code,
-            stockType: "STOCK 2",
+            stockType: "STOCK 2 NORMAL",
+            previousSystemQuantity: system,
+            physicalQuantity: physical,
+            difference: diff
+          });
+        }
+      }
+
+      // Stock 2 Disassembled
+      if (state.stock2Disassembly !== undefined && state.stock2Disassembly !== "") {
+        const physical = parseInt(state.stock2Disassembly, 10);
+        const system = ref.stock2Disassembly || 0;
+        const diff = physical - system;
+        if (diff !== 0) {
+          list.push({
+            reference: ref.code,
+            stockType: "STOCK 2 DISASSEMBLY",
             previousSystemQuantity: system,
             physicalQuantity: physical,
             difference: diff
@@ -314,14 +333,17 @@ export default function MeshInventoryWorkspace({
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                <th className="py-3 px-4 min-w-[220px]">Reference</th>
-                <th className="py-3 px-3 text-center min-w-[170px] bg-blue-50/40 border-l border-r border-blue-100">
+                <th className="py-3 px-4 min-w-[200px]">Reference</th>
+                <th className="py-3 px-3 text-center min-w-[155px] bg-blue-50/40 border-l border-r border-blue-100">
                   <span className="text-blue-700 font-black">Stock 1 (Warehouse)</span>
                 </th>
-                <th className="py-3 px-3 text-center min-w-[170px] bg-amber-50/40 border-r border-amber-100">
-                  <span className="text-amber-700 font-black">Stock 2 (PEGADAS)</span>
+                <th className="py-3 px-3 text-center min-w-[155px] bg-amber-50/40 border-r border-amber-100">
+                  <span className="text-amber-700 font-black">Stock 2 Normal</span>
                 </th>
-                <th className="py-3 px-3 text-center min-w-[170px] bg-emerald-50/40 border-r border-emerald-100">
+                <th className="py-3 px-3 text-center min-w-[155px] bg-purple-50/40 border-r border-purple-100">
+                  <span className="text-purple-700 font-black">Stock 2 Disassembled</span>
+                </th>
+                <th className="py-3 px-3 text-center min-w-[155px] bg-emerald-50/40 border-r border-emerald-100">
                   <span className="text-emerald-700 font-black">Stock 3 (Finished)</span>
                 </th>
               </tr>
@@ -329,18 +351,21 @@ export default function MeshInventoryWorkspace({
             <tbody className="divide-y divide-slate-100">
               {filteredReferences.map((ref) => {
                 const s1 = ref.stock1 || 0;
-                const s2 = ref.stock2 || 0;
+                const s2Dis = ref.stock2Disassembly || 0;
+                const s2Norm = ref.stock2Normal !== undefined ? ref.stock2Normal : Math.max(0, (ref.stock2 || 0) - s2Dis);
                 const s3 = ref.stock3 || 0;
 
-                const cState = counts[ref.code] || { stock1: "", stock2: "", stock3: "" };
+                const cState = counts[ref.code] || { stock1: "", stock2Normal: "", stock2Disassembly: "", stock3: "" };
 
                 // Diffs
                 const diff1 = cState.stock1 !== "" ? parseInt(cState.stock1, 10) - s1 : null;
-                const diff2 = cState.stock2 !== "" ? parseInt(cState.stock2, 10) - s2 : null;
+                const diff2Norm = cState.stock2Normal !== "" ? parseInt(cState.stock2Normal, 10) - s2Norm : null;
+                const diff2Dis = cState.stock2Disassembly !== "" ? parseInt(cState.stock2Disassembly, 10) - s2Dis : null;
                 const diff3 = cState.stock3 !== "" ? parseInt(cState.stock3, 10) - s3 : null;
 
                 const hasChanges = (diff1 !== null && diff1 !== 0) ||
-                                   (diff2 !== null && diff2 !== 0) ||
+                                   (diff2Norm !== null && diff2Norm !== 0) ||
+                                   (diff2Dis !== null && diff2Dis !== 0) ||
                                    (diff3 !== null && diff3 !== 0);
 
                 return (
@@ -365,11 +390,16 @@ export default function MeshInventoryWorkspace({
                       <p className="text-[11px] text-slate-500 truncate max-w-xs mt-0.5" title={ref.description}>
                         {ref.description || "No description"}
                       </p>
-                      {ref.customer && (
-                        <p className="text-[10px] text-slate-400 font-medium">
-                          Customer: {ref.customer}
-                        </p>
-                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        {ref.customer && (
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {ref.customer}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded font-semibold">
+                          S2 Total: {(s2Norm + s2Dis).toLocaleString()}
+                        </span>
+                      </div>
                     </td>
 
                     {/* Stock 1 (Warehouse Raw) */}
@@ -407,12 +437,12 @@ export default function MeshInventoryWorkspace({
                       </div>
                     </td>
 
-                    {/* Stock 2 (WIP Mallas Pegadas) */}
+                    {/* Stock 2 Normal */}
                     <td className="py-2.5 px-3 bg-amber-50/20 border-r border-amber-100">
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-right shrink-0">
                           <p className="text-[10px] text-slate-400 font-semibold uppercase">System</p>
-                          <p className="font-mono font-bold text-slate-800 text-xs">{s2.toLocaleString()}</p>
+                          <p className="font-mono font-bold text-slate-800 text-xs">{s2Norm.toLocaleString()}</p>
                         </div>
                         <ArrowRight className="w-3 h-3 text-slate-300 shrink-0" />
                         <div className="w-20 shrink-0">
@@ -421,21 +451,56 @@ export default function MeshInventoryWorkspace({
                             inputMode="numeric"
                             placeholder="Count..."
                             disabled={!isManager}
-                            value={cState.stock2}
-                            onChange={(e) => handleCountChange(ref.code, "stock2", e.target.value)}
+                            value={cState.stock2Normal}
+                            onChange={(e) => handleCountChange(ref.code, "stock2Normal", e.target.value)}
                             className="w-full px-2 py-1 text-xs font-mono font-bold text-center bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
                           />
                         </div>
                         <div className="w-14 text-right shrink-0">
-                          {diff2 === null ? (
+                          {diff2Norm === null ? (
                             <span className="text-[10px] text-slate-300 font-mono">-</span>
-                          ) : diff2 === 0 ? (
+                          ) : diff2Norm === 0 ? (
                             <span className="text-[10px] font-mono text-slate-400">0</span>
                           ) : (
                             <span className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded ${
-                              diff2 > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                              diff2Norm > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
                             }`}>
-                              {diff2 > 0 ? `+${diff2}` : diff2}
+                              {diff2Norm > 0 ? `+${diff2Norm}` : diff2Norm}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Stock 2 Disassembled */}
+                    <td className="py-2.5 px-3 bg-purple-50/20 border-r border-purple-100">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-right shrink-0">
+                          <p className="text-[10px] text-slate-400 font-semibold uppercase">System</p>
+                          <p className="font-mono font-bold text-purple-900 text-xs">{s2Dis.toLocaleString()}</p>
+                        </div>
+                        <ArrowRight className="w-3 h-3 text-slate-300 shrink-0" />
+                        <div className="w-20 shrink-0">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="Count..."
+                            disabled={!isManager}
+                            value={cState.stock2Disassembly}
+                            onChange={(e) => handleCountChange(ref.code, "stock2Disassembly", e.target.value)}
+                            className="w-full px-2 py-1 text-xs font-mono font-bold text-center bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div className="w-14 text-right shrink-0">
+                          {diff2Dis === null ? (
+                            <span className="text-[10px] text-slate-300 font-mono">-</span>
+                          ) : diff2Dis === 0 ? (
+                            <span className="text-[10px] font-mono text-slate-400">0</span>
+                          ) : (
+                            <span className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded ${
+                              diff2Dis > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                            }`}>
+                              {diff2Dis > 0 ? `+${diff2Dis}` : diff2Dis}
                             </span>
                           )}
                         </div>
@@ -529,8 +594,21 @@ export default function MeshInventoryWorkspace({
                         <tr key={i} className="hover:bg-slate-50">
                           <td className="py-2 px-3 font-bold text-slate-900">{adj.reference}</td>
                           <td className="py-2 px-3">
-                            <span className="text-[10px] font-sans font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
-                              {adj.stockType}
+                            <span className={`text-[10px] font-sans font-bold px-1.5 py-0.5 rounded ${
+                              adj.stockType === "STOCK 1"
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : adj.stockType === "STOCK 2 NORMAL"
+                                ? "bg-amber-50 text-amber-800 border border-amber-200"
+                                : adj.stockType === "STOCK 2 DISASSEMBLY"
+                                ? "bg-purple-50 text-purple-800 border border-purple-200"
+                                : adj.stockType === "STOCK 3"
+                                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                : "bg-slate-100 text-slate-700"
+                            }`}>
+                              {adj.stockType === "STOCK 1" ? "Stock 1" :
+                               adj.stockType === "STOCK 2 NORMAL" ? "Stock 2 Normal" :
+                               adj.stockType === "STOCK 2 DISASSEMBLY" ? "Stock 2 Disassembled" :
+                               adj.stockType === "STOCK 3" ? "Stock 3" : adj.stockType}
                             </span>
                           </td>
                           <td className="py-2 px-3 text-right text-slate-600">{adj.previousSystemQuantity}</td>
