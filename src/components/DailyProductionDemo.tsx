@@ -38,7 +38,8 @@ import {
   Filter,
   Eye,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ChevronRight
 } from "lucide-react";
 import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
@@ -146,6 +147,21 @@ export default function DailyProductionDemo({
         next.delete(batchId);
       } else {
         next.add(batchId);
+      }
+      return next;
+    });
+  };
+
+  // Traceability records daily expandable state
+  const [expandedTraceabilityDays, setExpandedTraceabilityDays] = useState<Set<string>>(new Set());
+
+  const toggleTraceabilityDay = (day: string) => {
+    setExpandedTraceabilityDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) {
+        next.delete(day);
+      } else {
+        next.add(day);
       }
       return next;
     });
@@ -303,6 +319,43 @@ export default function DailyProductionDemo({
         (refMap.get((p.reference || "").toUpperCase().trim())?.description || "").toLowerCase().includes(q)
     );
   }, [productions, historySearchQuery, refMap]);
+
+  // Group filtered traceability records by day
+  const groupedTraceabilityByDay = useMemo(() => {
+    const map = new Map<string, {
+      date: string;
+      totalQuantity: number;
+      records: Production[];
+      operators: Set<string>;
+    }>();
+
+    filteredTraceabilityRecords.forEach((item) => {
+      const day = item.date || (item.timestamp ? formatSystemTime(item.timestamp).split(" ")[0] : "—");
+      if (!map.has(day)) {
+        map.set(day, {
+          date: day,
+          totalQuantity: 0,
+          records: [],
+          operators: new Set<string>()
+        });
+      }
+      const g = map.get(day)!;
+      g.records.push(item);
+      g.totalQuantity += item.quantity || 0;
+      if (item.operatorName) g.operators.add(item.operatorName);
+    });
+
+    const sortedDays = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
+    return sortedDays.map((day) => {
+      const g = map.get(day)!;
+      return {
+        date: g.date,
+        totalQuantity: g.totalQuantity,
+        records: g.records,
+        operators: Array.from(g.operators)
+      };
+    });
+  }, [filteredTraceabilityRecords]);
 
   // Handle Drag Events
   const handleDragOver = (e: React.DragEvent) => {
@@ -1369,7 +1422,7 @@ export default function DailyProductionDemo({
               Traceability Records
             </h3>
             <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">
-              {productions.length}
+              {groupedTraceabilityByDay.length} {groupedTraceabilityByDay.length === 1 ? "day" : "days"} ({productions.length} total)
             </span>
           </div>
 
@@ -1388,48 +1441,105 @@ export default function DailyProductionDemo({
           <table className="w-full text-left border-collapse text-xs font-mono">
             <thead className="bg-slate-100/70 border-b border-slate-200 text-[10px] uppercase text-slate-600 font-bold sticky top-0 bg-slate-100 z-10">
               <tr>
-                <th className="py-2.5 px-4">DATE</th>
-                <th className="py-2.5 px-4">REFERENCE</th>
-                <th className="py-2.5 px-4">DESCRIPTION</th>
-                <th className="py-2.5 px-4 text-right">QUANTITY</th>
+                <th className="py-2.5 px-4 w-44">DATE</th>
+                <th className="py-2.5 px-4">ENTRIES</th>
+                <th className="py-2.5 px-4">REFERENCES</th>
+                <th className="py-2.5 px-4 text-right">TOTAL QUANTITY</th>
                 <th className="py-2.5 px-4">MOVEMENT</th>
-                <th className="py-2.5 px-4">OPERATOR</th>
+                <th className="py-2.5 px-4">OPERATOR(S)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredTraceabilityRecords.length === 0 ? (
+              {groupedTraceabilityByDay.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-400 font-mono text-xs">
                     No validated records yet.
                   </td>
                 </tr>
               ) : (
-                filteredTraceabilityRecords.map((item) => {
-                  const refInfo = refMap.get((item.reference || "").toUpperCase().trim());
-                  const desc = refInfo?.description || item.notes || "—";
+                groupedTraceabilityByDay.map((group) => {
+                  const isExpanded = expandedTraceabilityDays.has(group.date);
+                  const uniqueRefs = Array.from(new Set(group.records.map((r) => (r.reference || "").toUpperCase().trim()))).filter(Boolean);
                   return (
-                    <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-2.5 px-4 whitespace-nowrap text-slate-600">
-                        {item.date || (item.timestamp ? formatSystemTime(item.timestamp).split(" ")[0] : "—")}
-                      </td>
-                      <td className="py-2.5 px-4 font-bold text-slate-900">
-                        {item.reference}
-                      </td>
-                      <td className="py-2.5 px-4 text-slate-500 truncate max-w-xs" title={desc}>
-                        {desc}
-                      </td>
-                      <td className="py-2.5 px-4 text-right font-black text-emerald-700">
-                        {item.quantity?.toLocaleString()} PCS
-                      </td>
-                      <td className="py-2.5 px-4">
-                        <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
-                          S2 → S3
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-4 text-slate-600 truncate max-w-[140px]">
-                        {item.operatorName || currentUser.fullName}
-                      </td>
-                    </tr>
+                    <React.Fragment key={group.date}>
+                      <tr
+                        onClick={() => toggleTraceabilityDay(group.date)}
+                        className={`cursor-pointer transition-colors font-mono select-none ${
+                          isExpanded ? "bg-slate-100/80 font-bold" : "hover:bg-slate-50 bg-white"
+                        }`}
+                      >
+                        <td className="py-2.5 px-4 whitespace-nowrap text-slate-900 font-bold flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4 text-blue-600 shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          )}
+                          <span>{group.date}</span>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-600">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
+                            {group.records.length} {group.records.length === 1 ? "record" : "records"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-500 text-[11px] truncate max-w-xs" title={uniqueRefs.join(", ")}>
+                          {uniqueRefs.slice(0, 4).join(", ")}{uniqueRefs.length > 4 ? ` +${uniqueRefs.length - 4}` : ""}
+                        </td>
+                        <td className="py-2.5 px-4 text-right font-black text-emerald-700">
+                          {group.totalQuantity.toLocaleString()} PCS
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+                            S2 → S3
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-600 truncate max-w-[140px]">
+                          {group.operators.length > 0 ? group.operators.join(", ") : currentUser.fullName}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-slate-50/70 border-b border-slate-200">
+                          <td colSpan={6} className="p-0">
+                            <div className="py-3 px-4 pl-10 pr-6 overflow-x-auto">
+                              <table className="w-full text-left border-collapse text-xs bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs font-mono">
+                                <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b border-slate-200">
+                                  <tr>
+                                    <th className="py-2 px-3">Reference</th>
+                                    <th className="py-2 px-3">Description</th>
+                                    <th className="py-2 px-3 text-right">Quantity</th>
+                                    <th className="py-2 px-3">Movement</th>
+                                    <th className="py-2 px-3">Operator</th>
+                                    <th className="py-2 px-3 text-right">Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-xs">
+                                  {group.records.map((item) => {
+                                    const refInfo = refMap.get((item.reference || "").toUpperCase().trim());
+                                    const desc = refInfo?.description || item.notes || "—";
+                                    const timeStr = item.timestamp ? formatSystemTime(item.timestamp).split(" ")[1] || "—" : "—";
+                                    return (
+                                      <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                                        <td className="py-2 px-3 font-bold text-slate-900">{item.reference}</td>
+                                        <td className="py-2 px-3 text-slate-500 truncate max-w-xs" title={desc}>{desc}</td>
+                                        <td className="py-2 px-3 text-right font-black text-emerald-700">
+                                          {item.quantity?.toLocaleString()} PCS
+                                        </td>
+                                        <td className="py-2 px-3">
+                                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+                                            S2 → S3
+                                          </span>
+                                        </td>
+                                        <td className="py-2 px-3 text-slate-600 truncate max-w-[140px]">{item.operatorName || currentUser.fullName}</td>
+                                        <td className="py-2 px-3 text-right text-slate-400 text-[10px]">{timeStr}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })
               )}

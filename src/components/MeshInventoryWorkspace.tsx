@@ -232,7 +232,7 @@ export default function MeshInventoryWorkspace({
               Stock Inventory
             </h2>
             <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-lg uppercase tracking-wider border border-indigo-200">
-              Mesh Reconciliation
+              Mesh
             </span>
           </div>
         </div>
