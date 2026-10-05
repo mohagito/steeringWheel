@@ -62,55 +62,11 @@ export default function InvoicesWorkspace({
     }
   }, [invoices, selectedInvoice]);
 
-  // Check if current user is authorized to validate a pending invoice
+  // Check if current user is authorized to validate a pending invoice (Both Operators and Managers)
   const canUserValidateInvoice = (inv: ReceivingInvoice | null | undefined): boolean => {
     if (!inv || inv.status !== "pending") return false;
     if (!currentUser) return false;
-
-    // 1. Manager / Supervisor / Admin has full authorization
-    if (
-      currentUser.role === "admin" ||
-      currentUser.role === "supervisor" ||
-      currentUser.username?.toLowerCase() === "gonzalo" ||
-      currentUser.fullName?.toUpperCase().includes("MANAGER")
-    ) {
-      return true;
-    }
-
-    // 2. Operator who performed this operation (Shift A or Shift B)
-    if (currentUser.role === "operator") {
-      if (inv.operatorId && inv.operatorId === currentUser.id) {
-        return true;
-      }
-
-      const invOp = (inv.operator || "").toUpperCase().trim();
-      const userFull = (currentUser.fullName || "").toUpperCase().trim();
-      const userName = (currentUser.username || "").toUpperCase().trim();
-
-      // Direct name match or substring match
-      if (invOp && userFull && (invOp === userFull || invOp.includes(userFull) || userFull.includes(invOp))) {
-        return true;
-      }
-      if (invOp && userName && (invOp.includes(userName) || userName.includes(invOp))) {
-        return true;
-      }
-
-      // Check shift matching: Shift A or Shift B
-      const isUserShiftA = userFull.includes("SHIFT A") || userName.includes("SHIFT_A") || userName === "shift_a";
-      const isUserShiftB = userFull.includes("SHIFT B") || userName.includes("SHIFT_B") || userName === "shift_b";
-      const isInvShiftA = invOp.includes("SHIFT A");
-      const isInvShiftB = invOp.includes("SHIFT B");
-
-      if (isUserShiftA && isInvShiftA) return true;
-      if (isUserShiftB && isInvShiftB) return true;
-
-      // Fallback for generic or unspecified operator
-      if (!invOp || invOp === "OPERATOR") {
-        return true;
-      }
-    }
-
-    return false;
+    return true;
   };
 
   // Action: Validate pending invoice and commit scanned boxes directly to stock

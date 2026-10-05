@@ -551,17 +551,15 @@ export default function App() {
     await setDoc(invoiceRef, cleanUndefined(invoice), { merge: true });
   };
 
-  // Action: Atomically approve an entire receiving invoice into Stock 1 (Protected)
+  // Action: Atomically approve an entire receiving invoice into Stock 1 (Allowed for Operators and Managers)
   const handleApproveInvoice = async (invoiceId: string) => {
     if (!currentUser) throw new Error("No authenticated user session.");
-    assertManagerOrAdminAction("INVOICE_APPROVAL", currentUser.role, currentUser.fullName);
     await executeProtectedApproveInvoice(invoiceId, currentUser.fullName);
   };
 
   // Action: Cancel an entire receiving invoice with ZERO stock impact
   const handleCancelInvoice = async (invoiceId: string) => {
     if (!currentUser) return;
-    assertManagerOrAdminAction("INVOICE_CANCEL", currentUser.role, currentUser.fullName);
     const now = new Date().toISOString();
     const invoiceRef = doc(db, "invoices", invoiceId);
     const invoiceSnap = await getDoc(invoiceRef);

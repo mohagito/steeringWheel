@@ -585,8 +585,8 @@ export default function ScrapWorkspace({
                             <div className="mt-2 p-2 bg-amber-50/60 border border-amber-200/80 rounded-xl">
                               <div className="flex items-center justify-between mb-1.5">
                                 <span className="text-[10px] font-bold text-slate-700 uppercase font-mono">Deduct from:</span>
-                                <span className="text-[9px] font-mono text-purple-700 font-bold">
-                                  {(row.stock2Subtype || "normal") === "normal" ? "Regular WIP" : "Recovered Disassembly"}
+                                <span className={`text-[9px] font-mono font-bold ${(row.stock2Subtype || "normal") === "normal" ? "text-amber-800" : "text-purple-700"}`}>
+                                  {(row.stock2Subtype || "normal") === "normal" ? "Normal S2" : "Disassembly S2"}
                                 </span>
                               </div>
                               <div className="grid grid-cols-2 gap-1.5">
