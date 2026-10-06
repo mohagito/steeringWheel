@@ -161,13 +161,50 @@ export default function ManageReferencesWorkspace({
   const handleToggleActive = async (ref: Reference) => {
     const isCurrentlyActive = ref.active !== false;
     const newStatus = !isCurrentlyActive;
+
+    // When deactivating, confirm with explicit reassurance that ALL linked records & history are kept
+    if (isCurrentlyActive) {
+      const result = await Swal.fire({
+        title: "Deactivate Reference?",
+        html: `
+          <div style="text-align: left; font-size: 13px; line-height: 1.6; color: #334155;">
+            <p>You are deactivating reference <strong style="color: #0f172a; font-family: monospace;">${ref.code}</strong>.</p>
+            <div style="margin-top: 12px; padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
+              <p style="font-weight: bold; color: #166534; margin-bottom: 4px;">✓ All Historical Data Preserved</p>
+              <ul style="margin: 0; padding-left: 18px; color: #15803d; font-size: 12px;">
+                <li>Linked production entries & history remain untouched</li>
+                <li>All invoices & incoming truck logs are kept</li>
+                <li>All customer delivery dispatches & scraps are kept</li>
+                <li>Current inventory balances (S1, S2, S3) are retained</li>
+                <li>Audit trail & transaction logs are permanently preserved</li>
+              </ul>
+            </div>
+            <p style="margin-top: 10px; font-size: 12px; color: #64748b;">The reference will simply be archived as INACTIVE in catalog selections.</p>
+          </div>
+        `,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#d97706",
+        cancelButtonColor: "#64748b",
+        confirmButtonText: "Yes, Deactivate (Keep History)",
+        cancelButtonText: "Cancel",
+      });
+
+      if (!result.isConfirmed) return;
+    }
+
     try {
       await onUpdateReference(ref.id, { active: newStatus });
       Swal.fire({
         title: newStatus ? "Reference Activated" : "Reference Deactivated",
-        text: `Reference ${ref.code} is now ${newStatus ? "ACTIVE" : "INACTIVE"}.`,
+        html: `
+          <div style="font-size: 13px; line-height: 1.5; color: #334155;">
+            <p>Reference <strong style="font-family: monospace;">${ref.code}</strong> is now <strong>${newStatus ? "ACTIVE" : "INACTIVE"}</strong>.</p>
+            ${!newStatus ? '<p style="color: #166534; font-size: 12px; margin-top: 6px; font-weight: 600;">✓ All linked production, invoices, and history remain safely preserved.</p>' : ''}
+          </div>
+        `,
         icon: "success",
-        timer: 1500,
+        timer: 2200,
         showConfirmButton: false,
       });
     } catch (err: any) {
@@ -460,7 +497,7 @@ export default function ManageReferencesWorkspace({
                                 ? "bg-amber-50 hover:bg-amber-100 text-amber-800"
                                 : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800"
                             }`}
-                            title={isRefActive ? "Deactivate Reference" : "Activate Reference"}
+                            title={isRefActive ? "Deactivate Reference (Preserves All Linked History)" : "Activate Reference"}
                           >
                             <Power className="w-3.5 h-3.5" />
                             <span>{isRefActive ? "Deactivate" : "Activate"}</span>
@@ -521,7 +558,7 @@ export default function ManageReferencesWorkspace({
                 This reference contains historical or inventory data and cannot be permanently deleted.
               </p>
               <p className="text-[11px] text-rose-800">
-                To protect system integrity and financial audit history, references with active records must be deactivated instead.
+                To protect audit integrity, references with historical records should be deactivated instead. All linked production logs, invoices, dispatches, and inventory data remain 100% preserved.
               </p>
             </div>
 
@@ -557,7 +594,7 @@ export default function ManageReferencesWorkspace({
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <Power className="w-4 h-4" />
-                <span>Deactivate Reference</span>
+                <span>Deactivate (Keep All History)</span>
               </button>
             </div>
           </div>

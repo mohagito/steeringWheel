@@ -43,7 +43,7 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
-import { getMoroccoTodayDateString, formatSystemTime, parseTimestampMs } from "../utils/timeUtils";
+import { getMoroccoTodayDateString, getMoroccoYesterdayDateString, formatSystemTime, parseTimestampMs } from "../utils/timeUtils";
 
 export interface DailyProductionBatch {
   id: string;
@@ -116,6 +116,9 @@ export default function DailyProductionDemo({
     });
   };
 
+  const todayStr = useMemo(() => getMoroccoTodayDateString(), []);
+  const yesterdayStr = useMemo(() => getMoroccoYesterdayDateString(), []);
+
   // State: Loaded rows (Starts empty at point zero)
   const [rows, setRows] = useState<DailyProductionRow[]>([]);
   const [currentSource, setCurrentSource] = useState<string>("");
@@ -123,7 +126,7 @@ export default function DailyProductionDemo({
   const [searchQuery, setSearchQuery] = useState("");
   const [isParsing, setIsParsing] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
-  const [productionDate, setProductionDate] = useState<string>(getMoroccoTodayDateString());
+  const [productionDate, setProductionDate] = useState<string>(todayStr);
   const [copiedStatus, setCopiedStatus] = useState<string | null>(null);
 
   // Clear staged rows back to point zero
@@ -964,7 +967,59 @@ export default function DailyProductionDemo({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
         {/* Drag & Drop Card (Takes 2 cols on lg) */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-3">
+          
+          {/* Production Date Selector Bar */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider block">
+                  Production Date
+                </span>
+                <span className="text-xs font-bold text-slate-800 font-mono">
+                  {productionDate === todayStr ? `Today (${todayStr})` : productionDate === yesterdayStr ? `Yesterday (${yesterdayStr})` : productionDate}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setProductionDate(todayStr)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                  productionDate === todayStr
+                    ? "bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/20"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+                }`}
+              >
+                Today
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProductionDate(yesterdayStr)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                  productionDate === yesterdayStr
+                    ? "bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/20"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+                }`}
+              >
+                Yesterday
+              </button>
+
+              <input
+                type="date"
+                value={productionDate}
+                onChange={(e) => setProductionDate(e.target.value)}
+                className="px-2.5 py-1 text-xs bg-slate-50 hover:bg-white border border-slate-200 rounded-xl font-mono text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-colors"
+                title="Select custom production date"
+              />
+            </div>
+          </div>
+
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -1027,6 +1082,20 @@ export default function DailyProductionDemo({
             </div>
 
             <div className="mt-3.5 space-y-3">
+              <div>
+                <div className="text-[11px] text-slate-500 font-medium">Production Date:</div>
+                <div className="text-xs font-mono font-bold text-blue-700 flex items-center gap-1.5 mt-0.5">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                  <span>
+                    {productionDate === todayStr
+                      ? `Today (${todayStr})`
+                      : productionDate === yesterdayStr
+                      ? `Yesterday (${yesterdayStr})`
+                      : productionDate}
+                  </span>
+                </div>
+              </div>
+
               <div>
                 <div className="text-[11px] text-slate-500 font-medium">Source / Origin:</div>
                 <div className="text-xs font-mono font-bold text-slate-800 break-all mt-0.5">
@@ -1093,8 +1162,11 @@ export default function DailyProductionDemo({
               <Layers className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider font-mono">
-                Converted Daily Data ({filteredRows.length} {filteredRows.length === 1 ? "reference" : "references"})
+              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider font-mono flex items-center gap-2">
+                <span>Converted Daily Data ({filteredRows.length} {filteredRows.length === 1 ? "reference" : "references"})</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+                  {productionDate === todayStr ? "Today" : productionDate === yesterdayStr ? "Yesterday" : productionDate}
+                </span>
               </h2>
             </div>
           </div>

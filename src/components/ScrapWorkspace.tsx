@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { ScrapEntry, Reference, User } from "../types";
 import { 
   getMoroccoTodayDateString, 
@@ -10,11 +10,13 @@ import {
 import { 
   Trash2, Calendar, Hash, AlertTriangle, CheckCircle2, 
   Search, ShieldAlert, FileText, RefreshCw, Plus,
-  Edit2, X, ChevronDown
+  Edit2, X, ChevronDown, Upload
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 import ScrapConColaCostDiagram from "./ScrapConColaCostDiagram";
+import ScrapPdfModal from "./ScrapPdfModal";
+import { parseScrapPDF, ParsedScrapDocument, ParsedScrapRowItem } from "../services/scrapPdfParser";
 
 interface ScrapRow {
   referenceCode: string;
@@ -72,6 +74,74 @@ export default function ScrapWorkspace({
   const [rows, setRows] = useState<ScrapRow[]>([
     { referenceCode: "", stock: "Stock 2", stock2Subtype: "normal", quantity: "", cola: "" }
   ]);
+
+  // PDF Scrap Import States
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [parsedPdfDoc, setParsedPdfDoc] = useState<ParsedScrapDocument | null>(null);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isParsingPdf, setIsParsingPdf] = useState(false);
+  const [isDraggingPdf, setIsDraggingPdf] = useState(false);
+
+  const handleProcessPdfFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      Swal.fire({
+        icon: "warning",
+        title: "PDF Format Required",
+        text: "Please select a valid PDF scrap return invoice."
+      });
+      return;
+    }
+
+    setIsParsingPdf(true);
+    try {
+      const doc = await parseScrapPDF(file, references);
+      if (doc.items.length === 0 && doc.allExtractedRows.length === 0) {
+        Swal.fire({
+          icon: "warning",
+          title: "No Line Items Found",
+          text: "Could not find valid references or quantities in this PDF. Please check the document format."
+        });
+        return;
+      }
+      setParsedPdfDoc(doc);
+      setIsPdfModalOpen(true);
+    } catch (err: any) {
+      console.error("Scrap PDF Parsing failed:", err);
+      Swal.fire({
+        icon: "error",
+        title: "PDF Read Error",
+        text: err?.message || "Failed to read scrap PDF."
+      });
+    } finally {
+      setIsParsingPdf(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleProcessPdfFile(file);
+  };
+
+  const handleLoadIntoForm = (
+    items: ParsedScrapRowItem[],
+    invNum: string,
+    wk: string
+  ) => {
+    setInvoiceNumber(invNum);
+    setWeek(wk);
+    if (items.length > 0) {
+      setRows(
+        items.map((it) => ({
+          referenceCode: it.reference,
+          stock: it.stock,
+          stock2Subtype: it.stock2Subtype || "normal",
+          quantity: it.quantity.toString(),
+          cola: it.cola
+        }))
+      );
+    }
+  };
 
   // UX Feedback States
   const [submitting, setSubmitting] = useState(false);
@@ -403,12 +473,66 @@ export default function ScrapWorkspace({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* NEW SCRAP ENTRY FORM */}
-        <div className="lg:col-span-5 bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-sm space-y-5">
-          <div className="border-b border-slate-100 pb-3">
+        <div className="lg:col-span-5 bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+          <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
             <h3 className="text-sm font-bold font-mono uppercase text-slate-900 flex items-center gap-2">
               <Trash2 className="w-4 h-4 text-rose-600" />
               <span>Log Scrap</span>
             </h3>
+
+            {/* PDF Upload Button */}
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".pdf"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isParsingPdf}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+                title="Upload Scrap Return PDF (MPT...-Dev) to auto-extract mesh quantities"
+              >
+                {isParsingPdf ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Reading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload PDF</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Drag & Drop PDF Bar */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDraggingPdf(true);
+            }}
+            onDragLeave={() => setIsDraggingPdf(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDraggingPdf(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) handleProcessPdfFile(file);
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            className={`p-2.5 rounded-xl border border-dashed transition-all cursor-pointer text-center flex items-center justify-center gap-2 text-xs font-mono select-none ${
+              isDraggingPdf
+                ? "bg-rose-50 border-rose-400 text-rose-800 scale-[1.01]"
+                : "bg-slate-50/70 hover:bg-slate-100/80 border-slate-200 text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5 text-rose-500" />
+            <span>Drop Scrap PDF here or click to upload</span>
           </div>
 
           {errorMsg && (
@@ -1047,6 +1171,18 @@ export default function ScrapWorkspace({
           </div>
         </div>
       )}
+
+      {/* PDF Scrap Import & Inspection Modal */}
+      <ScrapPdfModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        parsedDoc={parsedPdfDoc}
+        references={references}
+        onApplyScrap={async (scrapData) => {
+          await onSubmitScrap(scrapData);
+        }}
+        onLoadIntoForm={handleLoadIntoForm}
+      />
 
     </div>
   );

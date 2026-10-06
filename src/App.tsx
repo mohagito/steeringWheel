@@ -832,7 +832,9 @@ export default function App() {
 
       if (isStatusChange) {
         movementType = updatedFields.active ? "REFERENCE_ACTIVATED" : "REFERENCE_DEACTIVATED";
-        notes = `Changed active status of ${currentData.code} to ${updatedFields.active ? "ACTIVE" : "INACTIVE"}`;
+        notes = updatedFields.active 
+          ? `Activated reference ${currentData.code}` 
+          : `Deactivated reference ${currentData.code} (all linked production, invoices, and audit history safely preserved)`;
       } else if (isStockChange) {
         movementType = "STOCK ADJUSTMENT";
         notes = `Direct reference stock update for ${currentData.code}: S1=${s1}, S2=${s2} (Normal=${s2Norm}, Dis=${s2Dis}), S3=${s3}`;
