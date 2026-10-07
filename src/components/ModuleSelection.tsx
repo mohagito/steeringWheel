@@ -40,7 +40,7 @@ export default function ModuleSelection({
 
       {/* Main Module Selection Area */}
       <main className="w-full max-w-sm py-12 flex flex-col items-stretch gap-4 z-10">
-        {/* MESHES Button */}
+        {/* MALLAS Button */}
         <motion.button
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.98 }}
@@ -48,7 +48,7 @@ export default function ModuleSelection({
           id="btn-select-module-meshes"
           className="w-full h-20 sm:h-24 bg-[#0d223a] hover:bg-[#122e4e] text-white border-2 border-blue-500/60 hover:border-blue-400 rounded-xl flex items-center justify-center font-bold tracking-widest text-xl sm:text-2xl uppercase transition-all shadow-xl shadow-blue-950/40 cursor-pointer active:scale-98"
         >
-          MESHES
+          MALLAS
         </motion.button>
 
         {/* BEZEL Button */}
