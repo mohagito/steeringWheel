@@ -1430,51 +1430,47 @@ export default function DashboardOverview({
             </div>
             <div className="mt-3 pt-2 border-t border-rose-200/50 flex items-center justify-between text-[11px] font-mono text-slate-500">
               <span>Period: {scrapPeriod === "all" ? "All Time" : scrapPeriod === "today" ? "Today" : scrapPeriod === "week" ? "Last 7 Days" : "This Month"}</span>
-              <span className="font-bold text-rose-700">{scrapValuation.totalScrapPcs.toLocaleString()} PCS TOTAL</span>
+              <span className="font-bold text-rose-700 text-xs sm:text-sm font-mono">{scrapValuation.totalScrapPcs.toLocaleString()} PCS TOTAL</span>
             </div>
           </div>
 
           {/* Card 2: CON COLA Volume & Value */}
           <div className="p-5 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-mono font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  CON COLA
+              <span className="text-[11px] font-mono font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                CON COLA
+              </span>
+              <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 mt-1 flex items-baseline justify-between gap-3">
+                <span>{scrapValuation.formattedConColaValue}</span>
+                <span className="text-base sm:text-lg font-bold font-mono text-amber-700 shrink-0">
+                  {scrapValuation.conColaPcs.toLocaleString()} <span className="text-xs sm:text-sm font-semibold text-amber-600">PCS</span>
                 </span>
-                <span className="text-xs font-mono font-extrabold text-amber-900">
-                  {scrapValuation.formattedConColaValue}
-                </span>
-              </div>
-              <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 mt-1">
-                {scrapValuation.conColaPcs.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span>
               </div>
             </div>
             <div className="mt-3 pt-2 border-t border-slate-200/60 text-[11px] font-mono text-slate-500 flex items-center justify-between">
               <span>Valued with unit prices</span>
-              <span className="font-semibold text-slate-700">{scrapValuation.formattedConColaValue}</span>
+              <span className="font-bold text-amber-700 text-xs sm:text-sm font-mono">{scrapValuation.conColaPcs.toLocaleString()} PCS TOTAL</span>
             </div>
           </div>
 
           {/* Card 3: SIN COLA Volume & Value */}
           <div className="p-5 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-slate-500" />
-                  SIN COLA
+              <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-slate-500" />
+                SIN COLA
+              </span>
+              <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 mt-1 flex items-baseline justify-between gap-3">
+                <span>{scrapValuation.formattedSinColaValue}</span>
+                <span className="text-base sm:text-lg font-bold font-mono text-slate-700 shrink-0">
+                  {scrapValuation.sinColaPcs.toLocaleString()} <span className="text-xs sm:text-sm font-semibold text-slate-500">PCS</span>
                 </span>
-                <span className="text-xs font-mono font-extrabold text-slate-900">
-                  {scrapValuation.formattedSinColaValue}
-                </span>
-              </div>
-              <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 mt-1">
-                {scrapValuation.sinColaPcs.toLocaleString()} <span className="text-xs font-medium text-slate-400">PCS</span>
               </div>
             </div>
             <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-mono text-slate-500">
               <span>Valued with unit prices</span>
-              <span className="font-semibold text-slate-700">{scrapValuation.formattedSinColaValue}</span>
+              <span className="font-bold text-slate-700 text-xs sm:text-sm font-mono">{scrapValuation.sinColaPcs.toLocaleString()} PCS TOTAL</span>
             </div>
           </div>
         </div>

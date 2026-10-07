@@ -243,14 +243,14 @@ export default function ScrapConColaCostDiagram({
 
       {/* KPI Summary Tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-blue-50/70 border border-blue-100/90 p-4 rounded-2xl">
-          <div className="text-[10px] font-mono font-bold text-blue-600 uppercase tracking-wider">
+        <div className="bg-rose-50/60 border border-rose-200/80 p-4 rounded-2xl">
+          <div className="text-[10px] font-mono font-bold text-rose-600 uppercase tracking-wider">
             Total Con Cola Cost
           </div>
-          <div className="text-xl sm:text-2xl font-black text-blue-900 font-mono mt-0.5">
+          <div className="text-xl sm:text-2xl font-black text-rose-900 font-mono mt-0.5">
             € {kpis.totalConColaCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="text-[11px] text-blue-700/80 font-mono mt-0.5">
+          <div className="text-[11px] text-rose-700/80 font-mono mt-0.5">
             {kpis.totalConColaPcs} PCS rejected
           </div>
         </div>
