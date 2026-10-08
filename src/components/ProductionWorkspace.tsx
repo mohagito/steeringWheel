@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Production, Reference, User } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Factory, Search, Package, AlertCircle, Plus, Calendar, FileText, 
   BarChart2, User as UserIcon, CheckCircle, TrendingDown, ArrowUpRight, HelpCircle, 
-  Trash2, Edit2, X, RotateCcw, AlertTriangle, Layers, Clock
+  Trash2, Edit2, X, RotateCcw, AlertTriangle, Layers, Clock,
+  ChevronDown, ChevronRight, ChevronsUpDown
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
@@ -368,6 +369,91 @@ export default function ProductionWorkspace({
     return Array.from(dates).sort((a, b) => b.localeCompare(a));
   }, [productions]);
 
+  // Group filtered production records by date (each day in one line with dropdown)
+  const groupedProductions = useMemo(() => {
+    interface GroupedDayProduction {
+      date: string;
+      items: Production[];
+      totalQuantity: number;
+      uniqueReferences: string[];
+      operatorNames: string[];
+      latestTimestamp: any;
+      formattedDate: string;
+    }
+
+    const map = new Map<string, GroupedDayProduction>();
+
+    filteredProductions.forEach((p) => {
+      const dKey = p.date || "Unknown";
+      let group = map.get(dKey);
+      if (!group) {
+        group = {
+          date: dKey,
+          items: [],
+          totalQuantity: 0,
+          uniqueReferences: [],
+          operatorNames: [],
+          latestTimestamp: p.timestamp,
+          formattedDate: formatSystemTime(p.timestamp)
+        };
+        map.set(dKey, group);
+      }
+
+      group.items.push(p);
+      group.totalQuantity += p.quantity || 0;
+
+      const refCode = (p.reference || "").trim().toUpperCase();
+      if (refCode && !group.uniqueReferences.includes(refCode)) {
+        group.uniqueReferences.push(refCode);
+      }
+
+      const op = p.operatorName || "Operator";
+      if (op && !group.operatorNames.includes(op)) {
+        group.operatorNames.push(op);
+      }
+
+      if (compareTimestampsDesc(p.timestamp, group.latestTimestamp) < 0) {
+        group.latestTimestamp = p.timestamp;
+        group.formattedDate = formatSystemTime(p.timestamp);
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [filteredProductions]);
+
+  // Set of expanded dates
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(() => new Set());
+  const [hasInitializedExpanded, setHasInitializedExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!hasInitializedExpanded && groupedProductions.length > 0) {
+      setExpandedDates(new Set([groupedProductions[0].date]));
+      setHasInitializedExpanded(true);
+    }
+  }, [hasInitializedExpanded, groupedProductions]);
+
+  const toggleDateExpand = (date: string) => {
+    setExpandedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) {
+        next.delete(date);
+      } else {
+        next.add(date);
+      }
+      return next;
+    });
+  };
+
+  const allExpanded = groupedProductions.length > 0 && expandedDates.size === groupedProductions.length;
+
+  const handleToggleAllDates = () => {
+    if (allExpanded) {
+      setExpandedDates(new Set());
+    } else {
+      setExpandedDates(new Set(groupedProductions.map((g) => g.date)));
+    }
+  };
+
   // Selected reference object for the edit modal to display live stock preview
   const editingRefObj = useMemo(() => {
     if (!editReference) return null;
@@ -653,14 +739,18 @@ export default function ProductionWorkspace({
         </div>
 
         {/* Right Column: Daily Production Logs History */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="glass-panel p-5 sm:p-6" id="production-history-ledger-card">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-100">
-              <div>
+        <div className="lg:col-span-7">
+          <div className="glass-panel p-5 sm:p-6 flex flex-col h-[600px] lg:h-[630px] max-h-[640px] shadow-xs" id="production-history-ledger-card">
+            {/* Card Header (Fixed at top) */}
+            <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Consumption Ledger</h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200/60">
+                  {filteredProductions.length} logs • {groupedProductions.length} {groupedProductions.length === 1 ? "day" : "days"}
+                </span>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {/* Search */}
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
@@ -669,7 +759,7 @@ export default function ProductionWorkspace({
                     placeholder="Search refs, operators..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition-all w-full sm:w-48 text-slate-800"
+                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition-all w-36 sm:w-44 text-slate-800"
                   />
                 </div>
 
@@ -681,105 +771,194 @@ export default function ProductionWorkspace({
                     { value: "", label: "All Dates" },
                     ...uniqueDates.map((d) => ({ value: d, label: d }))
                   ]}
-                  className="w-36"
+                  className="w-32"
                   size="sm"
                 />
+
+                {/* Expand / Collapse All Toggle Button */}
+                {groupedProductions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleToggleAllDates}
+                    className="p-1.5 sm:px-2.5 sm:py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-xl text-xs font-mono font-semibold transition-all border border-slate-200 flex items-center gap-1 cursor-pointer shrink-0"
+                    title={allExpanded ? "Collapse all days" : "Expand all days"}
+                  >
+                    <ChevronsUpDown className="w-3.5 h-3.5 text-slate-500" />
+                    <span className="hidden sm:inline text-[11px]">{allExpanded ? "Collapse" : "Expand"}</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* List Table */}
-            <div className="overflow-x-auto rounded-xl border border-slate-200/80">
-              <table className="industrial-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Reference Code</th>
-                    <th>Consumed Qty</th>
-                    <th>Logged By</th>
-                    <th>Notes</th>
-                    <th>Timestamp</th>
-                    {(onUpdateProduction || onDeleteProduction) && (
-                      <th className="text-right">Actions</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredProductions.map((p) => {
-                    const formattedDate = formatSystemTime(p.timestamp);
+            {/* Internal Scroll Container: Limited Squared, scrolls inside this div */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-2 min-h-0">
+              {groupedProductions.map((group) => {
+                const isExpanded = expandedDates.has(group.date);
+                const isToday = group.date === getTodayString();
+                const isYesterday = group.date === getYesterdayString();
 
-                    return (
-                      <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="font-mono font-semibold text-slate-800 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-slate-400" />
-                            {p.date}
+                return (
+                  <div 
+                    key={group.date}
+                    className="border border-slate-200/80 rounded-xl overflow-hidden bg-white shadow-2xs transition-all hover:border-slate-300"
+                  >
+                    {/* Day Row Header: One Line with Dropdown */}
+                    <div
+                      onClick={() => toggleDateExpand(group.date)}
+                      className="w-full px-3.5 py-2.5 flex items-center justify-between gap-2.5 text-left cursor-pointer select-none bg-slate-50/70 hover:bg-slate-100/70 transition-colors"
+                      role="button"
+                      tabIndex={0}
+                    >
+                      {/* Left: Chevron + Date + Badges + Ref preview */}
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className={`p-0.5 rounded text-slate-400 transition-transform duration-200 ${isExpanded ? "rotate-90 text-blue-600" : ""}`}>
+                          <ChevronRight className="w-4 h-4" />
+                        </div>
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="font-mono font-bold text-xs text-slate-900 whitespace-nowrap">
+                          {group.date}
+                        </span>
+
+                        {isToday && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-blue-100 text-blue-700 shrink-0">
+                            TODAY
                           </span>
-                        </td>
-                        <td className="font-mono font-bold text-blue-700 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <span>{p.reference}</span>
-                            {p.status === "edited" && (
-                              <span 
-                                className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-200"
-                                title="This production record was modified"
-                              >
-                                EDITED
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="font-mono font-bold text-slate-900 text-xs whitespace-nowrap">
-                          {p.quantity.toLocaleString()} pcs
-                        </td>
-                        <td className="text-slate-600 font-sans font-medium text-xs whitespace-nowrap">
-                          {p.operatorName}
-                        </td>
-                        <td className="text-slate-500 max-w-[140px] truncate" title={p.notes || ""}>
-                          {p.notes || <span className="text-slate-300 italic">-</span>}
-                        </td>
-                        <td className="text-slate-400 font-mono text-[10px] whitespace-nowrap">
-                          {formattedDate}
-                        </td>
-                        {(onUpdateProduction || onDeleteProduction) && (
-                          <td className="text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1">
-                              {onUpdateProduction && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEdit(p)}
-                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Edit Production Record"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              {onDeleteProduction && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteRecord(p)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Delete & Revert Stock"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
                         )}
-                      </tr>
-                    );
-                  })}
+                        {isYesterday && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-slate-200 text-slate-700 shrink-0">
+                            YESTERDAY
+                          </span>
+                        )}
 
-                  {filteredProductions.length === 0 && (
-                    <tr>
-                      <td colSpan={onUpdateProduction || onDeleteProduction ? 7 : 6} className="py-12 text-center text-slate-400 bg-slate-50/20">
-                        <AlertCircle className="w-7 h-7 mx-auto mb-2 opacity-40 text-slate-500" />
-                        <p className="text-xs font-semibold">No production records found</p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-200/70 text-slate-600 shrink-0">
+                          {group.items.length} {group.items.length === 1 ? "entry" : "entries"}
+                        </span>
+
+                        {/* References Summary */}
+                        <div className="hidden md:flex items-center gap-1 overflow-hidden">
+                          {group.uniqueReferences.slice(0, 3).map((ref) => (
+                            <span 
+                              key={ref} 
+                              className="text-[10px] font-mono px-1.5 py-0.2 bg-white border border-slate-200 rounded text-slate-600 truncate max-w-[80px]"
+                            >
+                              {ref}
+                            </span>
+                          ))}
+                          {group.uniqueReferences.length > 3 && (
+                            <span className="text-[9px] font-mono text-slate-400">
+                              +{group.uniqueReferences.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Total PCS Consumed for this Day */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] font-mono text-slate-400 uppercase hidden sm:inline">Total:</span>
+                        <span className="font-mono font-bold text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                          {group.totalQuantity.toLocaleString()} pcs
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Day Dropdown: Table of that day's records */}
+                    {isExpanded && (
+                      <div className="border-t border-slate-100 bg-white">
+                        <div className="overflow-x-auto">
+                          <table className="industrial-table">
+                            <thead>
+                              <tr className="bg-slate-50/70 text-[10px]">
+                                <th className="py-2 px-3">Reference Code</th>
+                                <th className="py-2 px-3 text-right">Consumed Qty</th>
+                                <th className="py-2 px-3">Logged By</th>
+                                <th className="py-2 px-3">Notes</th>
+                                <th className="py-2 px-3">Timestamp</th>
+                                {(onUpdateProduction || onDeleteProduction) && (
+                                  <th className="py-2 px-3 text-right">Actions</th>
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-medium">
+                              {group.items.map((p) => {
+                                const formattedDate = formatSystemTime(p.timestamp);
+
+                                return (
+                                  <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                                    <td className="py-2 px-3 font-mono font-bold text-blue-700 whitespace-nowrap">
+                                      <div className="flex items-center gap-1.5">
+                                        <span>{p.reference}</span>
+                                        {p.status === "edited" && (
+                                          <span 
+                                            className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-200"
+                                            title="This production record was modified"
+                                          >
+                                            EDITED
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="py-2 px-3 font-mono font-bold text-slate-900 text-xs text-right whitespace-nowrap">
+                                      {p.quantity.toLocaleString()} pcs
+                                    </td>
+                                    <td className="py-2 px-3 text-slate-600 font-sans font-medium text-xs whitespace-nowrap">
+                                      {p.operatorName}
+                                    </td>
+                                    <td className="py-2 px-3 text-slate-500 max-w-[140px] truncate" title={p.notes || ""}>
+                                      {p.notes || <span className="text-slate-300 italic">-</span>}
+                                    </td>
+                                    <td className="py-2 px-3 text-slate-400 font-mono text-[10px] whitespace-nowrap">
+                                      {formattedDate}
+                                    </td>
+                                    {(onUpdateProduction || onDeleteProduction) && (
+                                      <td className="py-2 px-3 text-right whitespace-nowrap">
+                                        <div className="flex items-center justify-end gap-1">
+                                          {onUpdateProduction && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenEdit(p);
+                                              }}
+                                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                              title="Edit Production Record"
+                                            >
+                                              <Edit2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                          {onDeleteProduction && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteRecord(p);
+                                              }}
+                                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                              title="Delete & Revert Stock"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {groupedProductions.length === 0 && (
+                <div className="h-64 flex flex-col items-center justify-center text-center text-slate-400 bg-slate-50/40 rounded-xl border border-dashed border-slate-200">
+                  <AlertCircle className="w-8 h-8 mb-2 opacity-40 text-slate-500" />
+                  <p className="text-xs font-semibold">No production records found</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
