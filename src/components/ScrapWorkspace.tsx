@@ -321,21 +321,6 @@ export default function ScrapWorkspace({
       }
 
       const s2Subtype = row.stock2Subtype || "normal";
-      const disStock = refObj.stock2Disassembly || 0;
-      const normStock = refObj.stock2Normal !== undefined ? refObj.stock2Normal : Math.max(0, (refObj.stock2 || 0) - disStock);
-      const availableInStock =
-        row.stock === "Stock 1"
-          ? (refObj.stock1 || 0)
-          : row.stock === "Stock 2"
-          ? (s2Subtype === "disassembly" ? disStock : normStock)
-          : (refObj.stock3 || 0);
-
-      if (qtyVal > availableInStock) {
-        setErrorMsg(
-          `Item #${i + 1} (${cleanRef}): Scrapping ${qtyVal} PCS exceeds current available ${row.stock === "Stock 2" ? `${s2Subtype.toUpperCase()} Stock 2` : row.stock} inventory (${availableInStock} PCS). Negative stock is not allowed.`
-        );
-        return;
-      }
 
       if (!row.cola || (row.cola !== "CON_COLA" && row.cola !== "SIN_COLA")) {
         setErrorMsg(`Item #${i + 1} (${cleanRef}): COLA selection is required. Please select [ CON COLA ] or [ SIN COLA ].`);

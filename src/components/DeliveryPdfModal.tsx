@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { ParsedDeliveryDocument, ParsedDeliveryLineItem } from "../services/deliveryPdfParser";
-import { Delivery, Reference } from "../types";
-import { CheckCircle2, AlertCircle, ArrowRight, X, FileText, Layers, RefreshCw } from "lucide-react";
+import { Delivery, Reference, User } from "../types";
+import { CheckCircle2, AlertCircle, ArrowRight, X, FileText, Layers, RefreshCw, Archive } from "lucide-react";
 import Swal from "sweetalert2";
+import { saveArchivedInvoice } from "../services/invoiceArchiveService";
 
 interface DeliveryPdfModalProps {
   isOpen: boolean;
@@ -11,6 +12,10 @@ interface DeliveryPdfModalProps {
   references: Reference[];
   onApplyDelivery: (deliveriesData: Omit<Delivery, "id" | "timestamp" | "operatorName">[]) => Promise<void>;
   onLoadIntoForm: (doc: ParsedDeliveryDocument) => void;
+  pdfDataUrl?: string;
+  pdfFileName?: string;
+  pdfFileSize?: number;
+  currentUser?: User;
 }
 
 export default function DeliveryPdfModal({
@@ -19,9 +24,14 @@ export default function DeliveryPdfModal({
   parsedDoc,
   references,
   onApplyDelivery,
-  onLoadIntoForm
+  onLoadIntoForm,
+  pdfDataUrl,
+  pdfFileName,
+  pdfFileSize,
+  currentUser
 }: DeliveryPdfModalProps) {
   const [isApplying, setIsApplying] = useState(false);
+  const [isArchivingOnly, setIsArchivingOnly] = useState(false);
 
   if (!isOpen || !parsedDoc) return null;
 
@@ -31,6 +41,52 @@ export default function DeliveryPdfModal({
 
   const totalDeductionQty = meshItems.reduce((acc, i) => acc + i.quantity, 0);
   const hasInsufficientStock = meshItems.some((i) => i.status === "insufficient_stock");
+
+  const buildArchiveRecord = (status: "applied" | "archived") => {
+    const swItems = parsedDoc.items.map((item) => ({
+      orderNumber: item.orderNumber,
+      invoiceRef: item.invoiceRef,
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+      associatedMeshRef: item.associatedMeshRef
+    }));
+
+    const meshDeductions = meshItems.map((item) => ({
+      associatedMeshRef: item.associatedMeshRef!,
+      description: item.description,
+      quantity: item.quantity,
+      targetStock: item.targetStock,
+      sourceSWRef: item.invoiceRef,
+      applied: status === "applied"
+    }));
+
+    return {
+      invoiceNumber: parsedDoc.invoiceNumber,
+      invoiceDate: parsedDoc.invoiceDate || new Date().toISOString().slice(0, 10),
+      deliveryType: parsedDoc.deliveryType,
+      targetStock: parsedDoc.targetStock,
+      customer: "",
+      totalQuantity: parsedDoc.totalQuantity,
+      totalMeshQuantity: totalDeductionQty,
+      totalAmount: parsedDoc.totalAmount ?? null,
+      transportVia: parsedDoc.transportVia || "",
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: currentUser?.fullName || currentUser?.username || "Operator",
+      status,
+      swItems: swItems.map(s => ({
+        ...s,
+        unitPrice: s.unitPrice ?? null,
+        totalPrice: s.totalPrice ?? null
+      })),
+      meshItems: meshDeductions,
+      hasPdf: Boolean(pdfDataUrl),
+      pdfFileName: pdfFileName || `${parsedDoc.invoiceNumber}.pdf`,
+      pdfFileSize: pdfFileSize ?? null,
+      notes: status === "applied" ? "Stock deducted and archived" : "Archived without stock deduction"
+    };
+  };
 
   const handleConfirmApply = async () => {
     if (meshItems.length === 0) {
@@ -60,7 +116,7 @@ export default function DeliveryPdfModal({
       // Build payload for executeProtectedDeliveries
       const payload: Omit<Delivery, "id" | "timestamp" | "operatorName">[] = meshItems.map((item) => {
         const catRef = references.find((r) => r.code === item.associatedMeshRef);
-        const customer = catRef?.customer?.trim() || "Dalphimetal";
+        const customer = catRef?.customer?.trim() || "";
         return {
           invoiceNumber: parsedDoc.invoiceNumber,
           reference: item.associatedMeshRef!,
@@ -73,10 +129,17 @@ export default function DeliveryPdfModal({
 
       await onApplyDelivery(payload);
 
+      // Auto-archive in Invoice Directory
+      try {
+        await saveArchivedInvoice(buildArchiveRecord("applied"), pdfDataUrl);
+      } catch (archiveErr) {
+        console.warn("Auto-archive notice:", archiveErr);
+      }
+
       await Swal.fire({
         icon: "success",
-        title: "Delivery Applied",
-        text: `Invoice #${parsedDoc.invoiceNumber}: Deducted ${totalDeductionQty.toLocaleString()} PCS across ${meshItems.length} mesh references.`,
+        title: "Delivery Applied & Archived",
+        text: `Invoice #${parsedDoc.invoiceNumber}: Deducted ${totalDeductionQty.toLocaleString()} PCS across ${meshItems.length} mesh references and archived in Directory.`,
         timer: 1800,
         showConfirmButton: false
       });
@@ -91,6 +154,30 @@ export default function DeliveryPdfModal({
       });
     } finally {
       setIsApplying(false);
+    }
+  };
+
+  const handleArchiveOnly = async () => {
+    setIsArchivingOnly(true);
+    try {
+      await saveArchivedInvoice(buildArchiveRecord("archived"), pdfDataUrl);
+      await Swal.fire({
+        icon: "success",
+        title: "Invoice Archived",
+        text: `Invoice #${parsedDoc.invoiceNumber} saved to Invoice Directory without deducting stock.`,
+        timer: 1800,
+        showConfirmButton: false
+      });
+      onClose();
+    } catch (err: any) {
+      console.error(err);
+      Swal.fire({
+        icon: "error",
+        title: "Archive Failed",
+        text: err?.message || "Failed to save invoice to Directory."
+      });
+    } finally {
+      setIsArchivingOnly(false);
     }
   };
 
@@ -266,8 +353,18 @@ export default function DeliveryPdfModal({
             </button>
             <button
               type="button"
+              onClick={handleArchiveOnly}
+              disabled={isArchivingOnly || isApplying}
+              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+              title="Archive invoice with all references and PDF without modifying physical stock"
+            >
+              <Archive className="w-3.5 h-3.5 text-blue-400" />
+              <span>{isArchivingOnly ? "Archiving..." : "Archive Only"}</span>
+            </button>
+            <button
+              type="button"
               onClick={handleConfirmApply}
-              disabled={isApplying || meshItems.length === 0}
+              disabled={isApplying || isArchivingOnly || meshItems.length === 0}
               className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-mono font-bold text-xs tracking-wide shadow-sm flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
             >
               {isApplying ? (

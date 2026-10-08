@@ -14,6 +14,7 @@ export interface ParsedDeliveryLineItem {
   orderNumber?: string;
   invoiceRef: string;
   description: string;
+  customer?: string;
   quantity: number;
   unitPrice?: number;
   totalPrice?: number;
@@ -24,6 +25,101 @@ export interface ParsedDeliveryLineItem {
   currentAvailableStock?: number;
   catalogFound: boolean;
   status: "ready" | "no_mesh_needed" | "insufficient_stock" | "not_in_catalog";
+}
+
+/**
+ * Automatically infers real automotive OEM customer (RENAULT, STELLANTIS, FORD, VOLVO, OPEL, NISSAN)
+ * from reference code, description, and BOM mesh links.
+ */
+export function resolveOEMCustomer(
+  refCode: string,
+  desc?: string,
+  meshRef?: string,
+  catalogRefs?: Reference[]
+): string {
+  const upperRef = (refCode || "").toUpperCase().trim();
+  const upperDesc = (desc || "").toUpperCase().trim();
+  const upperMesh = (meshRef || "").toUpperCase().trim();
+
+  // 1. Direct match in catalog references
+  if (catalogRefs && catalogRefs.length > 0) {
+    const direct = catalogRefs.find((r) => r.code?.toUpperCase().trim() === upperRef);
+    if (direct?.customer && direct.customer.trim() && direct.customer.toUpperCase() !== "GENERAL") {
+      return direct.customer.trim().toUpperCase();
+    }
+    if (upperMesh) {
+      const meshCat = catalogRefs.find((r) => r.code?.toUpperCase().trim() === upperMesh);
+      if (meshCat?.customer && meshCat.customer.trim() && meshCat.customer.toUpperCase() !== "GENERAL") {
+        return meshCat.customer.trim().toUpperCase();
+      }
+    }
+  }
+
+  // 2. High-precision OEM project signatures
+  if (upperDesc.includes("VOLVO") || upperDesc.includes("V316") || upperDesc.includes("SPA")) {
+    return "VOLVO";
+  }
+  if (upperDesc.includes("PEUGEOT")) {
+    return "PEUGEOT";
+  }
+  if (upperDesc.includes("OPEL") || upperMesh === "A025M750B" || upperMesh === "A025M751B") {
+    return "OPEL";
+  }
+  if (
+    upperDesc.includes("STELLANTIS") || 
+    upperDesc.includes("CITROEN") || 
+    upperDesc.includes("CR3") || 
+    upperDesc.includes("OV64") || 
+    upperDesc.includes("K9") || 
+    upperDesc.includes("OVCTF") ||
+    upperMesh === "R000J600C" ||
+    upperMesh === "R000J601B" ||
+    upperMesh === "R002W094A" ||
+    upperMesh === "A026K122B"
+  ) {
+    return "STELLANTIS";
+  }
+  if (
+    upperDesc.includes("FORD") || 
+    upperDesc.includes("B479") || 
+    upperDesc.includes("C519") || 
+    upperDesc.includes("CX482") ||
+    upperMesh === "34340679A" ||
+    upperMesh === "34340681C" ||
+    upperMesh === "34340687B" ||
+    upperMesh === "34340689D"
+  ) {
+    return "FORD";
+  }
+  if (
+    upperDesc.includes("BJA") || 
+    upperDesc.includes("ALPINE") || 
+    upperDesc.includes("P64") || 
+    upperDesc.includes("P74") || 
+    upperDesc.includes("RENAULT") || 
+    upperDesc.includes("DACIA") ||
+    upperMesh === "A026L577A" ||
+    upperMesh === "34364719C"
+  ) {
+    return upperDesc.includes("ALPINE") ? "ALPINE" : "RENAULT";
+  }
+  if (
+    upperDesc.includes("P33B") || 
+    upperDesc.includes("PZ1D") || 
+    upperDesc.includes("NISSAN") || 
+    upperMesh === "34316011B" || 
+    upperMesh === "R000B630A" || 
+    upperMesh === "R000B629B"
+  ) {
+    return "NISSAN";
+  }
+
+  // 3. Prefix-based automotive standard mapping
+  if (upperRef.startsWith("343")) return "FORD";
+  if (upperRef.startsWith("A0")) return "RENAULT";
+  if (upperRef.startsWith("R0")) return "STELLANTIS";
+
+  return "GENERAL";
 }
 
 export interface ParsedDeliveryDocument {
@@ -135,23 +231,59 @@ export async function parseDeliveryPDF(
   // Matches: [Order optional] [RefCode] [Description] [Quantity] [Unit Price optional]
   const rowRegex = /(?:(\d{8,12})\s+)?([A-Z0-9]{8,12})\s+(.+?)\s+(\d{1,5})(?:\s+[\d.,]+)?(?:\s*€)?(?:\s+[\d.,]+)?$/i;
 
+  // Words that can never be part references (metadata, headers, footers, shipment data)
+  const invalidRefWords = new Set([
+    "STEERING", "WHEELS", "VOLANTES", "PLANTILLAS", "CONTENEDORES", 
+    "TOTAL", "MARRUECOS", "PORTUGAL", "TANGER", "BULTOS", "PESO", 
+    "BRUTO", "NETO", "PALETS", "PALLETS", "EXPEDICION", "MATRICULA", 
+    "CONDUCTOR", "ALBARAN", "CARGADOR", "DESTINATARIO", "TRANSPORTE",
+    "OBSERVACIONES", "CLIENTE", "PROVEEDOR", "FECHA", "HORA"
+  ]);
+
   for (const line of lines) {
-    // Skip headers and summary rows
-    if (/ORDER\s+REF/i.test(line) || /TOTAL\s+H\.T/i.test(line) || /TOTAL\s+VOLANTES/i.test(line) || /TOTAL\s+PLANTILLAS/i.test(line)) {
+    // Skip headers, footers, weight and summary rows
+    if (
+      /ORDER\s+REF/i.test(line) || 
+      /TOTAL\s+H\.T/i.test(line) || 
+      /TOTAL\s+VOLANTES/i.test(line) || 
+      /TOTAL\s+PLANTILLAS/i.test(line) ||
+      /\(KG\)/i.test(line) ||
+      /CONTENEDORES/i.test(line) ||
+      /BULTOS/i.test(line) ||
+      /PESO\s*(?:BRUTO|NETO)?/i.test(line) ||
+      /MATRICULA|EXPEDICION|CONDUCTOR/i.test(line)
+    ) {
       continue;
     }
 
     const match = line.match(rowRegex);
     if (match) {
-      const orderNumber = match[1];
-      const invoiceRef = match[2].toUpperCase().trim();
-      const rawDesc = match[3].trim();
+      let orderNumber = match[1];
+      let invoiceRef = match[2].toUpperCase().trim();
+      let rawDesc = match[3].trim();
       const quantity = parseInt(match[4], 10);
 
       if (isNaN(quantity) || quantity <= 0) continue;
 
-      // Filter out false positives (e.g., telephone numbers or postal codes)
-      if (invoiceRef === "TANGER" || invoiceRef === "MARRUECOS" || invoiceRef === "PORTUGAL") continue;
+      // Filter out false positive keyword references
+      if (invalidRefWords.has(invoiceRef)) continue;
+
+      // If the 10-digit order number (e.g. 5500231898) was captured as invoiceRef,
+      // extract the real part code from the beginning of description
+      if (/^55\d{8}$/.test(invoiceRef)) {
+        orderNumber = invoiceRef;
+        const descParts = rawDesc.split(/\s+/);
+        const potentialRef = descParts[0]?.toUpperCase().trim();
+        if (potentialRef && /^[A-Z0-9]{8,12}$/i.test(potentialRef) && !invalidRefWords.has(potentialRef)) {
+          invoiceRef = potentialRef;
+          rawDesc = descParts.slice(1).join(" ");
+        } else {
+          continue;
+        }
+      }
+
+      // Filter out false positives (e.g., telephone numbers, weights, or postal codes)
+      if (invalidRefWords.has(invoiceRef)) continue;
 
       // Resolve BOM Mesh
       const bomResolved = resolveMeshDeduction(invoiceRef, deliveryType);

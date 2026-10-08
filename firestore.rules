@@ -87,8 +87,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Invoices, Boxes, Adjustments
+    // Invoices, Boxes, Adjustments, Archived Invoices
     match /invoices/{invoiceId} {
+      allow read: if true;
+      allow create, update, delete: if isValidId(invoiceId);
+    }
+
+    match /archived_invoices/{invoiceId} {
       allow read: if true;
       allow create, update, delete: if isValidId(invoiceId);
     }

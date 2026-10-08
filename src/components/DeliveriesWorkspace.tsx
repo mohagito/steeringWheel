@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Truck, Search, AlertCircle, Plus, FileText, 
   TrendingDown, ArrowUpRight, Trash2, CheckCircle, Building2, Layers,
-  Edit2, X, Upload, FileUp
+  Edit2, X, Upload, FileUp, ChevronDown, ChevronRight
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
@@ -12,6 +12,7 @@ import { CustomSelect } from "./CustomSelect";
 import { formatSystemTime, compareTimestampsDesc } from "../utils/timeUtils";
 import DeliveryPdfModal from "./DeliveryPdfModal";
 import { parseDeliveryPDF, ParsedDeliveryDocument } from "../services/deliveryPdfParser";
+import { fileToDataUrl } from "../services/invoiceArchiveService";
 
 interface DeliveriesWorkspaceProps {
   deliveries: Delivery[];
@@ -51,6 +52,21 @@ export default function DeliveriesWorkspace({
     { referenceCode: "", quantity: "" }
   ]);
 
+  // Grouped Invoices Accordion State
+  const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
+
+  const toggleInvoiceExpand = (inv: string) => {
+    setExpandedInvoices((prev) => {
+      const next = new Set(prev);
+      if (next.has(inv)) {
+        next.delete(inv);
+      } else {
+        next.add(inv);
+      }
+      return next;
+    });
+  };
+
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -58,6 +74,9 @@ export default function DeliveriesWorkspace({
   // PDF Delivery Import States
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [parsedPdfDoc, setParsedPdfDoc] = useState<ParsedDeliveryDocument | null>(null);
+  const [uploadedPdfDataUrl, setUploadedPdfDataUrl] = useState<string | undefined>(undefined);
+  const [uploadedPdfFileName, setUploadedPdfFileName] = useState<string | undefined>(undefined);
+  const [uploadedPdfFileSize, setUploadedPdfFileSize] = useState<number | undefined>(undefined);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isParsingPdf, setIsParsingPdf] = useState(false);
   const [isDraggingPdf, setIsDraggingPdf] = useState(false);
@@ -74,7 +93,10 @@ export default function DeliveriesWorkspace({
 
     setIsParsingPdf(true);
     try {
-      const doc = await parseDeliveryPDF(file, references);
+      const [doc, dataUrl] = await Promise.all([
+        parseDeliveryPDF(file, references),
+        fileToDataUrl(file).catch(() => undefined)
+      ]);
       if (doc.items.length === 0) {
         Swal.fire({
           icon: "warning",
@@ -84,6 +106,9 @@ export default function DeliveriesWorkspace({
         return;
       }
       setParsedPdfDoc(doc);
+      setUploadedPdfDataUrl(dataUrl);
+      setUploadedPdfFileName(file.name);
+      setUploadedPdfFileSize(file.size);
       setIsPdfModalOpen(true);
     } catch (err: any) {
       console.error("PDF Parsing failed:", err);
@@ -395,6 +420,75 @@ export default function DeliveriesWorkspace({
     const customers = new Set(deliveries.map((d) => d.customer));
     return Array.from(customers).filter(Boolean);
   }, [deliveries]);
+
+  // Group deliveries by invoice number for cleaner ledger viewing
+  const groupedDeliveries = useMemo(() => {
+    interface GroupedInvoiceDelivery {
+      invoiceNumber: string;
+      items: Delivery[];
+      totalQuantity: number;
+      uniqueReferences: string[];
+      customers: string[];
+      stocks: ("Stock 2" | "Stock 3")[];
+      operatorName: string;
+      latestTimestamp: any;
+      formattedDate: string;
+    }
+
+    const groupsMap = new Map<string, GroupedInvoiceDelivery>();
+
+    filteredDeliveries.forEach((d) => {
+      const inv = (d.invoiceNumber || "NO-INVOICE").trim().toUpperCase();
+      let g = groupsMap.get(inv);
+      if (!g) {
+        g = {
+          invoiceNumber: d.invoiceNumber || "NO-INVOICE",
+          items: [],
+          totalQuantity: 0,
+          uniqueReferences: [],
+          customers: [],
+          stocks: [],
+          operatorName: d.operatorName || "Manager",
+          latestTimestamp: d.timestamp,
+          formattedDate: formatSystemTime(d.timestamp)
+        };
+        groupsMap.set(inv, g);
+      }
+
+      g.items.push(d);
+      g.totalQuantity += d.quantity || 0;
+
+      const refUpper = (d.reference || "").toUpperCase().trim();
+      if (refUpper && !g.uniqueReferences.includes(refUpper)) {
+        g.uniqueReferences.push(refUpper);
+      }
+
+      const cust = d.customer || "GENERAL";
+      if (cust && !g.customers.includes(cust)) {
+        g.customers.push(cust);
+      }
+
+      const stockName = d.deliveryType === "PRECOSIDO" ? "Stock 2" : "Stock 3";
+      if (!g.stocks.includes(stockName)) {
+        g.stocks.push(stockName);
+      }
+
+      if (compareTimestampsDesc(d.timestamp, g.latestTimestamp) < 0) {
+        g.latestTimestamp = d.timestamp;
+        g.formattedDate = formatSystemTime(d.timestamp);
+      }
+    });
+
+    return Array.from(groupsMap.values());
+  }, [filteredDeliveries]);
+
+  const handleToggleAll = () => {
+    if (expandedInvoices.size === groupedDeliveries.length) {
+      setExpandedInvoices(new Set());
+    } else {
+      setExpandedInvoices(new Set(groupedDeliveries.map((g) => g.invoiceNumber)));
+    }
+  };
 
   return (
     <div className="space-y-6" id="deliveries-workspace">
@@ -766,9 +860,20 @@ export default function DeliveriesWorkspace({
         <div className="lg:col-span-7 space-y-4">
           <div className="glass-panel p-5 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-100">
-              <div>
+              <div className="flex items-center gap-2">
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">Dispatches Ledger</h3>
-                
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-bold">
+                  {groupedDeliveries.length} {groupedDeliveries.length === 1 ? "invoice" : "invoices"}
+                </span>
+                {groupedDeliveries.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleToggleAll}
+                    className="text-[10px] font-mono font-bold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer ml-1"
+                  >
+                    {expandedInvoices.size === groupedDeliveries.length ? "Collapse all" : "Expand all"}
+                  </button>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -798,15 +903,15 @@ export default function DeliveriesWorkspace({
               </div>
             </div>
 
-            {/* Dispatches List Table */}
+            {/* Dispatches List Table Grouped By Invoice */}
             <div className="overflow-x-auto rounded-xl border border-slate-200/80">
               <table className="industrial-table min-w-full">
                 <thead>
                   <tr>
                     <th className="whitespace-nowrap">Invoice / Note</th>
                     <th className="whitespace-nowrap min-w-[72px]">Stock</th>
-                    <th className="whitespace-nowrap">Reference</th>
-                    <th className="whitespace-nowrap">Quantity</th>
+                    <th className="whitespace-nowrap">References</th>
+                    <th className="whitespace-nowrap">Total Qty</th>
                     <th className="whitespace-nowrap">Customer</th>
                     <th className="whitespace-nowrap">Dispatched By</th>
                     <th className="text-right whitespace-nowrap">Timestamp</th>
@@ -816,74 +921,233 @@ export default function DeliveriesWorkspace({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredDeliveries.map((delivery) => {
-                    const formattedDate = formatSystemTime(delivery.timestamp);
-
-                    const isItemPrecosido = delivery.deliveryType === "PRECOSIDO";
+                  {groupedDeliveries.map((group) => {
+                    const isExpanded = expandedInvoices.has(group.invoiceNumber);
+                    const isSingleItem = group.items.length === 1;
 
                     return (
-                      <tr key={delivery.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded text-[10px] whitespace-nowrap">
-                            <FileText className="w-3 h-3 shrink-0" />
-                            {delivery.invoiceNumber}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap">
-                          <span className={`inline-flex items-center justify-center whitespace-nowrap px-2 py-0.5 rounded font-mono text-[9px] font-bold uppercase border shrink-0 ${
-                            isItemPrecosido 
-                              ? "bg-amber-50 text-amber-800 border-amber-200/80" 
-                              : "bg-blue-50 text-blue-800 border-blue-200/80"
-                          }`}>
-                            {isItemPrecosido ? "Stock 2" : "Stock 3"}
-                          </span>
-                        </td>
-                        <td className="font-mono font-bold text-slate-900 whitespace-nowrap">
-                          {delivery.reference}
-                        </td>
-                        <td className="font-mono font-bold text-rose-700 text-xs whitespace-nowrap">
-                          -{delivery.quantity} pcs
-                        </td>
-                        <td className="whitespace-nowrap">
-                          <span className="inline-flex items-center px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200/80 rounded font-mono text-[9px] font-bold uppercase whitespace-nowrap">
-                            {delivery.customer || "GENERAL"}
-                          </span>
-                        </td>
-                        <td className="text-slate-600 font-sans font-medium text-xs whitespace-nowrap">
-                          {delivery.operatorName}
-                        </td>
-                        <td className="text-right text-slate-400 font-mono text-[10px] whitespace-nowrap">
-                          {formattedDate}
-                        </td>
-                        {(onUpdateDelivery || onDeleteDelivery) && (
-                          <td className="text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1">
-                              {onUpdateDelivery && (
-                                <button
-                                  onClick={() => handleOpenEdit(delivery)}
-                                  title="Modify Delivery Record"
-                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              {onDeleteDelivery && (
-                                <button
-                                  onClick={() => handleDeleteClick(delivery)}
-                                  title="Delete & Revert Delivery Record"
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
+                      <React.Fragment key={group.invoiceNumber}>
+                        {/* Main Grouped Invoice Row */}
+                        <tr
+                          onClick={() => toggleInvoiceExpand(group.invoiceNumber)}
+                          className={`cursor-pointer transition-colors ${
+                            isExpanded ? "bg-slate-50/90 font-bold" : "hover:bg-slate-50/70 bg-white"
+                          }`}
+                        >
+                          {/* 1. Invoice Number & Expand Icon & Items Count */}
+                          <td className="whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-400 hover:text-slate-700 transition-colors">
+                                {isExpanded ? (
+                                  <ChevronDown className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                ) : (
+                                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                )}
+                              </span>
+                              <span className="inline-flex items-center gap-1 font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded text-[10px] whitespace-nowrap shadow-2xs">
+                                <FileText className="w-3 h-3 shrink-0" />
+                                {group.invoiceNumber}
+                              </span>
+                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                {group.items.length} {group.items.length === 1 ? "ref" : "refs"}
+                              </span>
                             </div>
                           </td>
+
+                          {/* 2. Stock */}
+                          <td className="whitespace-nowrap">
+                            {group.stocks.length === 1 ? (
+                              <span
+                                className={`inline-flex items-center justify-center whitespace-nowrap px-2 py-0.5 rounded font-mono text-[9px] font-bold uppercase border shrink-0 ${
+                                  group.stocks[0] === "Stock 2"
+                                    ? "bg-amber-50 text-amber-800 border-amber-200/80"
+                                    : "bg-blue-50 text-blue-800 border-blue-200/80"
+                                }`}
+                              >
+                                {group.stocks[0]}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded font-mono text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                Mixed ({group.stocks.join("/")})
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 3. References Summary */}
+                          <td className="font-mono text-xs whitespace-nowrap">
+                            <span className="font-bold text-slate-900">
+                              {group.uniqueReferences.slice(0, 3).join(", ")}
+                              {group.uniqueReferences.length > 3 && (
+                                <span className="text-slate-400 text-[10px] ml-1">
+                                  +{group.uniqueReferences.length - 3} more
+                                </span>
+                              )}
+                            </span>
+                          </td>
+
+                          {/* 4. Total Quantity */}
+                          <td className="font-mono font-bold text-rose-700 text-xs whitespace-nowrap">
+                            -{group.totalQuantity.toLocaleString()} pcs
+                          </td>
+
+                          {/* 5. Customer */}
+                          <td className="whitespace-nowrap">
+                            {group.customers.length === 1 ? (
+                              <span className="inline-flex items-center px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200/80 rounded font-mono text-[9px] font-bold uppercase whitespace-nowrap">
+                                {group.customers[0]}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded font-mono text-[9px] font-bold">
+                                {group.customers.slice(0, 2).join(", ")}{group.customers.length > 2 ? ` +${group.customers.length - 2}` : ""}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 6. Dispatched By */}
+                          <td className="text-slate-600 font-sans font-medium text-xs whitespace-nowrap">
+                            {group.operatorName}
+                          </td>
+
+                          {/* 7. Timestamp */}
+                          <td className="text-right text-slate-400 font-mono text-[10px] whitespace-nowrap">
+                            {group.formattedDate}
+                          </td>
+
+                          {/* 8. Actions (Expand toggle hint or single item direct action) */}
+                          {(onUpdateDelivery || onDeleteDelivery) && (
+                            <td className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              {isSingleItem ? (
+                                <div className="flex items-center justify-end gap-1">
+                                  {onUpdateDelivery && (
+                                    <button
+                                      onClick={() => handleOpenEdit(group.items[0])}
+                                      title="Modify Delivery Record"
+                                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  {onDeleteDelivery && (
+                                    <button
+                                      onClick={() => handleDeleteClick(group.items[0])}
+                                      title="Delete & Revert Delivery Record"
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleInvoiceExpand(group.invoiceNumber)}
+                                  className="text-[11px] font-mono text-blue-600 hover:text-blue-800 font-bold px-2 py-0.5 rounded hover:bg-blue-50 transition-colors"
+                                >
+                                  {isExpanded ? "Hide" : "Details"}
+                                </button>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+
+                        {/* Expanded Details Sub-Table */}
+                        {isExpanded && (
+                          <tr className="bg-slate-50/70 border-b border-slate-200">
+                            <td colSpan={(onUpdateDelivery || onDeleteDelivery) ? 8 : 7} className="p-0">
+                              <div className="py-3 px-4 pl-8 sm:pl-10 pr-4 sm:pr-6 overflow-x-auto">
+                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs font-mono">
+                                  <div className="px-3 py-2 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between text-[11px] text-slate-500 font-bold uppercase">
+                                    <span>Invoice #{group.invoiceNumber} Items ({group.items.length})</span>
+                                    <span className="text-rose-700 font-bold font-mono">Total: -{group.totalQuantity.toLocaleString()} pcs</span>
+                                  </div>
+                                  <table className="w-full text-left border-collapse text-xs">
+                                    <thead className="bg-slate-50/40 text-[10px] uppercase text-slate-400 font-bold border-b border-slate-100">
+                                      <tr>
+                                        <th className="py-2 px-3">Reference</th>
+                                        <th className="py-2 px-3">Stock</th>
+                                        <th className="py-2 px-3 text-right">Quantity</th>
+                                        <th className="py-2 px-3">Customer</th>
+                                        <th className="py-2 px-3">Notes</th>
+                                        <th className="py-2 px-3 text-right">Time</th>
+                                        {(onUpdateDelivery || onDeleteDelivery) && (
+                                          <th className="py-2 px-3 text-right">Action</th>
+                                        )}
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 text-xs">
+                                      {group.items.map((delivery) => {
+                                        const isItemPrecosido = delivery.deliveryType === "PRECOSIDO";
+                                        const formattedTime = formatSystemTime(delivery.timestamp);
+
+                                        return (
+                                          <tr key={delivery.id} className="hover:bg-slate-50/80 transition-colors">
+                                            <td className="py-2 px-3 font-bold text-slate-900 whitespace-nowrap">
+                                              {delivery.reference}
+                                            </td>
+                                            <td className="py-2 px-3 whitespace-nowrap">
+                                              <span
+                                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${
+                                                  isItemPrecosido
+                                                    ? "bg-amber-50 text-amber-800 border-amber-200"
+                                                    : "bg-blue-50 text-blue-800 border-blue-200"
+                                                }`}
+                                              >
+                                                {isItemPrecosido ? "Stock 2" : "Stock 3"}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 px-3 text-right font-bold text-rose-700 whitespace-nowrap">
+                                              -{delivery.quantity} pcs
+                                            </td>
+                                            <td className="py-2 px-3 whitespace-nowrap">
+                                              <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[9px] font-bold uppercase">
+                                                {delivery.customer || "GENERAL"}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 px-3 text-slate-500 font-sans text-[11px] truncate max-w-xs" title={delivery.notes || ""}>
+                                              {delivery.notes || "—"}
+                                            </td>
+                                            <td className="py-2 px-3 text-right text-slate-400 text-[10px] whitespace-nowrap">
+                                              {formattedTime}
+                                            </td>
+                                            {(onUpdateDelivery || onDeleteDelivery) && (
+                                              <td className="py-2 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex items-center justify-end gap-1">
+                                                  {onUpdateDelivery && (
+                                                    <button
+                                                      onClick={() => handleOpenEdit(delivery)}
+                                                      title="Modify Delivery Record"
+                                                      className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                                                    >
+                                                      <Edit2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  )}
+                                                  {onDeleteDelivery && (
+                                                    <button
+                                                      onClick={() => handleDeleteClick(delivery)}
+                                                      title="Delete & Revert Delivery Record"
+                                                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                                    >
+                                                      <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              </td>
+                                            )}
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </tr>
+                      </React.Fragment>
                     );
                   })}
 
-                  {filteredDeliveries.length === 0 && (
+                  {groupedDeliveries.length === 0 && (
                     <tr>
                       <td colSpan={(onUpdateDelivery || onDeleteDelivery) ? 8 : 7} className="py-12 text-center text-slate-400 bg-slate-50/20">
                         <AlertCircle className="w-7 h-7 mx-auto mb-2 opacity-40 text-slate-500" />
@@ -1035,6 +1299,10 @@ export default function DeliveriesWorkspace({
         references={references}
         onApplyDelivery={onSubmitDeliveries}
         onLoadIntoForm={handleLoadIntoForm}
+        pdfDataUrl={uploadedPdfDataUrl}
+        pdfFileName={uploadedPdfFileName}
+        pdfFileSize={uploadedPdfFileSize}
+        currentUser={currentUser}
       />
 
     </div>

@@ -329,4 +329,52 @@ export interface MeshPhysicalInventoryParams {
   idempotencyKey?: string;
 }
 
+// ==========================================
+// INVOICE DIRECTORY & ARCHIVE CONTRACTS
+// ==========================================
+
+export interface ArchivedInvoiceSWItem {
+  orderNumber?: string;
+  invoiceRef: string; // The SW (Steering Wheel) reference
+  description: string;
+  customer?: string;
+  quantity: number;
+  unitPrice?: number;
+  totalPrice?: number;
+  associatedMeshRef?: string;
+}
+
+export interface ArchivedInvoiceMeshItem {
+  associatedMeshRef: string;
+  description?: string;
+  customer?: string;
+  quantity: number;
+  targetStock: "Stock 2" | "Stock 3" | string;
+  sourceSWRef?: string;
+  applied?: boolean;
+}
+
+export interface ArchivedInvoice {
+  id: string; // Unique invoice ID, e.g. "INV_09876"
+  invoiceNumber: string;
+  invoiceDate: string;
+  deliveryType: "STEERING WHEELS" | "PRECOSIDO" | string;
+  targetStock: "Stock 2" | "Stock 3" | string;
+  customer: string;
+  totalQuantity: number; // Total SW / Pieces
+  totalMeshQuantity: number; // Total Mesh Pieces
+  totalAmount?: number;
+  transportVia?: string;
+  uploadedAt: string;
+  uploadedBy: string;
+  status: "applied" | "archived";
+  swItems: ArchivedInvoiceSWItem[];
+  meshItems: ArchivedInvoiceMeshItem[];
+  hasPdf: boolean;
+  pdfFileName?: string;
+  pdfFileSize?: number;
+  pdfDataUrl?: string; // Stored inline if < 750KB
+  notes?: string;
+}
+
 

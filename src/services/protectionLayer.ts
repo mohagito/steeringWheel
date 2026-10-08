@@ -443,8 +443,14 @@ export async function executeProtectedStockOperation(
           for (const change of execResult.stockChanges) {
             const code = change.referenceCode.trim().toUpperCase();
             if (change.newStock1 < 0 || change.newStock2 < 0 || change.newStock3 < 0) {
-              if (allowNegativeStock || operationType === "DELIVERY" || operationType === "DELIVERY_UPDATE") {
-                // Negative stock allowed (e.g. customer deliveries)
+              if (
+                allowNegativeStock || 
+                operationType === "DELIVERY" || 
+                operationType === "DELIVERY_UPDATE" ||
+                operationType === "SCRAP" ||
+                operationType === "SCRAP_UPDATE"
+              ) {
+                // Negative stock allowed (e.g. customer deliveries, scrap)
               } else if (clampToZeroOnNegative) {
                 if (change.newStock1 < 0) change.newStock1 = 0;
                 if (change.newStock2 < 0) change.newStock2 = 0;
@@ -630,13 +636,29 @@ export async function executeProtectedStockOperation(
           if (d.delta2 !== undefined) {
             if (d.delta2Subtype === "disassembly") {
               cur.s2DisassemblyAfter += d.delta2;
-              if (cur.s2DisassemblyAfter < 0 && !allowNegativeStock && !clampToZeroOnNegative) {
+              if (
+                cur.s2DisassemblyAfter < 0 && 
+                !allowNegativeStock && 
+                !clampToZeroOnNegative &&
+                operationType !== "DELIVERY" &&
+                operationType !== "DELIVERY_UPDATE" &&
+                operationType !== "SCRAP" &&
+                operationType !== "SCRAP_UPDATE"
+              ) {
                 throw new Error(`PROTECTION_NEGATIVE_STOCK:Insufficient Disassembly Stock 2 for Reference "${code}". Available: ${cur.s2DisassemblyBefore} pcs, requested: ${Math.abs(d.delta2)} pcs.`);
               }
               if (cur.s2DisassemblyAfter < 0 && clampToZeroOnNegative) cur.s2DisassemblyAfter = 0;
             } else {
               cur.s2NormalAfter += d.delta2;
-              if (cur.s2NormalAfter < 0 && !allowNegativeStock && !clampToZeroOnNegative) {
+              if (
+                cur.s2NormalAfter < 0 && 
+                !allowNegativeStock && 
+                !clampToZeroOnNegative &&
+                operationType !== "DELIVERY" &&
+                operationType !== "DELIVERY_UPDATE" &&
+                operationType !== "SCRAP" &&
+                operationType !== "SCRAP_UPDATE"
+              ) {
                 throw new Error(`PROTECTION_NEGATIVE_STOCK:Insufficient Normal Stock 2 for Reference "${code}". Available: ${cur.s2NormalBefore} pcs, requested: ${Math.abs(d.delta2)} pcs.`);
               }
               if (cur.s2NormalAfter < 0 && clampToZeroOnNegative) cur.s2NormalAfter = 0;
@@ -647,8 +669,14 @@ export async function executeProtectedStockOperation(
         }
       }
 
-      // Step C: Strict Non-Negative Stock Validation (Bypassed for Deliveries to allow negative stock)
-      if (!allowNegativeStock && operationType !== "DELIVERY" && operationType !== "DELIVERY_UPDATE") {
+      // Step C: Strict Non-Negative Stock Validation (Bypassed for Deliveries and Scrap to allow negative stock)
+      if (
+        !allowNegativeStock && 
+        operationType !== "DELIVERY" && 
+        operationType !== "DELIVERY_UPDATE" &&
+        operationType !== "SCRAP" &&
+        operationType !== "SCRAP_UPDATE"
+      ) {
         for (const code of uniqueRefCodes) {
           const cur = accumulatedChanges[code];
           if (cur.s1After < 0 || cur.s2After < 0 || cur.s3After < 0) {
@@ -1232,6 +1260,7 @@ export async function executeProtectedScrap(
   await executeProtectedStockOperation({
     operationType: "SCRAP",
     idempotencyKey,
+    allowNegativeStock: true,
     deltas,
     operatorName,
     transactions,
@@ -1409,6 +1438,7 @@ export async function executeProtectedUpdateScrap(
 
   await executeProtectedStockOperation({
     operationType: "SCRAP_UPDATE",
+    allowNegativeStock: true,
     deltas,
     operatorName,
     transactions,

@@ -4,7 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedDatabaseIfNeeded, resetDatabaseToPristineState } from "./seeder";
-import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry, ReceivingInvoice, ScannedInvoiceBox, DisassemblyEntry } from "./types";
+import { Box, Adjustment, User, Reference, Delivery, Production, InventoryTransaction, ScrapEntry, ReceivingInvoice, ScannedInvoiceBox, DisassemblyEntry, ArchivedInvoice } from "./types";
 import { compareTimestampsDesc, getMoroccoTodayDateString, normalizeDocTimestamps } from "./utils/timeUtils";
 import RoleGate from "./components/RoleGate";
 import DashboardOverview from "./components/DashboardOverview";
@@ -13,6 +13,7 @@ import SupervisorWorkspace from "./components/SupervisorWorkspace";
 import AdminWorkspace from "./components/AdminWorkspace";
 import StockWorkspace from "./components/StockWorkspace";
 import DeliveriesWorkspace from "./components/DeliveriesWorkspace";
+import InvoiceArchiveWorkspace from "./components/InvoiceArchiveWorkspace";
 import ProductionWorkspace from "./components/ProductionWorkspace";
 import ScrapWorkspace from "./components/ScrapWorkspace";
 import ManageReferencesWorkspace from "./components/ManageReferencesWorkspace";
@@ -30,8 +31,9 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, Scan, ClipboardCheck, Settings, LogOut, 
   RefreshCw, CheckSquare, Shield, HelpCircle, Database, Truck, Factory, Trash2, FolderTree, FileText,
-  AlertTriangle, History, Layers, ArrowLeft, FileSpreadsheet, Hammer
+  AlertTriangle, History, Layers, ArrowLeft, FileSpreadsheet, Hammer, Archive
 } from "lucide-react";
+import { subscribeToArchivedInvoices } from "./services/invoiceArchiveService";
 import {
   executeProtectedDeliveries,
   executeProtectedTransfer,
@@ -80,11 +82,12 @@ export default function App() {
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [scraps, setScraps] = useState<ScrapEntry[]>([]);
   const [invoices, setInvoices] = useState<ReceivingInvoice[]>([]);
+  const [archivedInvoices, setArchivedInvoices] = useState<ArchivedInvoice[]>([]);
   const [disassemblies, setDisassemblies] = useState<DisassemblyEntry[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [stockInventoryInitialRef, setStockInventoryInitialRef] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "stock-inventory" | "invoices" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "desassemblage" | "scrap" | "manage-references">(() => {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "stock-inventory" | "invoices" | "invoice-archive" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "desassemblage" | "scrap" | "manage-references">(() => {
     try {
       const savedUser = sessionStorage.getItem("epp_current_user");
       const savedTab = sessionStorage.getItem("epp_active_tab") as any;
@@ -169,6 +172,7 @@ export default function App() {
     let unsubTransactions: (() => void) | null = null;
     let unsubScraps: (() => void) | null = null;
     let unsubInvoices: (() => void) | null = null;
+    let unsubArchivedInvoices: (() => void) | null = null;
     let unsubDisassemblies: (() => void) | null = null;
 
     const handleSnapshotError = (colName: string) => (error: any) => {
@@ -340,6 +344,14 @@ export default function App() {
         }
       );
 
+      // Subscribing to Archived Invoices repository
+      unsubArchivedInvoices = subscribeToArchivedInvoices(
+        (list) => {
+          setArchivedInvoices(list);
+        },
+        handleSnapshotError("archived_invoices")
+      );
+
       unsubDisassemblies = onSnapshot(
         collection(db, "disassemblies"),
         (snapshot) => {
@@ -385,6 +397,7 @@ export default function App() {
       if (unsubTransactions) unsubTransactions();
       if (unsubScraps) unsubScraps();
       if (unsubInvoices) unsubInvoices();
+      if (unsubArchivedInvoices) unsubArchivedInvoices();
       if (unsubDisassemblies) unsubDisassemblies();
       if (unsubUsers) unsubUsers();
     };
@@ -1186,6 +1199,22 @@ export default function App() {
               </div>
             </button>
 
+            {/* Invoice Directory / Archive Tab */}
+            <button
+              onClick={() => setActiveTab("invoice-archive")}
+              id="nav-tab-invoice-archive"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "invoice-archive"
+                  ? "text-blue-400 font-bold bg-[#0f1e36] border-blue-400"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Archive className="w-4 h-4 shrink-0 text-blue-400" />
+                <span>INVOICE ARCHIVE</span>
+              </div>
+            </button>
+
             {/* Production Tab */}
             <button
               onClick={() => setActiveTab("production")}
@@ -1546,6 +1575,15 @@ export default function App() {
                   onSubmitDeliveries={handleSubmitDeliveries}
                   onUpdateDelivery={handleUpdateDelivery}
                   onDeleteDelivery={handleDeleteDelivery}
+                />
+              )}
+
+              {activeTab === "invoice-archive" && (
+                <InvoiceArchiveWorkspace
+                  archivedInvoices={archivedInvoices}
+                  deliveries={deliveries}
+                  references={references}
+                  currentUser={currentUser}
                 />
               )}
 

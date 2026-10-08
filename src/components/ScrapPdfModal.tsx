@@ -122,25 +122,6 @@ export default function ScrapPdfModal({
       return;
     }
 
-    // Check for stock insufficiency
-    const shortItems = items.filter((it) => {
-      const avail = getSelectedStockBalance(it);
-      return it.quantity > avail;
-    });
-
-    if (shortItems.length > 0) {
-      const result = await Swal.fire({
-        icon: "warning",
-        title: "Insufficient Stock Warning",
-        text: `${shortItems.length} mesh row(s) exceed current available stock. Do you want to proceed with deduction?`,
-        showCancelButton: true,
-        confirmButtonText: "Proceed Anyway",
-        cancelButtonText: "Review Quantities",
-        confirmButtonColor: "#e11d48"
-      });
-      if (!result.isConfirmed) return;
-    }
-
     setIsApplying(true);
     try {
       const todayStr = getMoroccoTodayDateString();
