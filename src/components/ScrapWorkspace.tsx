@@ -5,7 +5,8 @@ import {
   formatSystemDate, 
   formatSystemTime,
   compareTimestampsDesc,
-  getISOWeekCode 
+  getISOWeekCode,
+  getScrapWeekCode
 } from "../utils/timeUtils";
 import { 
   Trash2, Calendar, Hash, AlertTriangle, CheckCircle2, 
@@ -48,6 +49,7 @@ interface ScrapWorkspaceProps {
       colaStatus?: "CON_COLA" | "SIN_COLA";
       invoiceNumber?: string;
       date?: string;
+      week?: string;
     },
     reason?: string
   ) => Promise<void>;
@@ -129,7 +131,7 @@ export default function ScrapWorkspace({
     wk: string
   ) => {
     setInvoiceNumber(invNum);
-    setWeek(wk);
+    setWeek(getISOWeekCode(wk));
     if (items.length > 0) {
       setRows(
         items.map((it) => ({
@@ -171,7 +173,7 @@ export default function ScrapWorkspace({
     setEditInvoiceNumber(s.invoiceNumber || "");
     const isCon = s.cola === "CON_COLA" || s.colaStatus === "CON_COLA" || s.condition === "CON COLA";
     setEditCola(isCon ? "CON_COLA" : "SIN_COLA");
-    const initialWeek = s.date?.startsWith("W") ? s.date : (s.date ? getISOWeekCode(s.date) : currentWeekCode);
+    const initialWeek = getScrapWeekCode(s);
     setEditDate(initialWeek);
     setEditReason("");
     setEditError("");
@@ -208,6 +210,7 @@ export default function ScrapWorkspace({
 
     try {
       setSavingEdit(true);
+      const cleanWeek = getISOWeekCode(editDate);
       await onUpdateScrap(
         editingScrap.id,
         {
@@ -218,7 +221,8 @@ export default function ScrapWorkspace({
           cola: editCola,
           colaStatus: editCola,
           invoiceNumber: cleanInvoice,
-          date: editDate
+          date: cleanWeek,
+          week: cleanWeek
         },
         editReason.trim() || "Scrap record updated"
       );
@@ -297,6 +301,7 @@ export default function ScrapWorkspace({
       return;
     }
 
+    const normalizedWeek = getISOWeekCode(week);
     const submissions: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[] = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -328,7 +333,8 @@ export default function ScrapWorkspace({
       }
 
       submissions.push({
-        date: week,
+        date: normalizedWeek,
+        week: normalizedWeek,
         reference: cleanRef,
         quantity: qtyVal,
         sourceStock: row.stock,
@@ -545,19 +551,24 @@ export default function ScrapWorkspace({
                   <span>W</span>
                 </label>
                 <div className="relative">
-                  <select
+                  <input
+                    type="text"
                     required
+                    list="scrap-week-options"
                     value={week}
-                    onChange={(e) => setWeek(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold cursor-pointer appearance-none pr-7"
-                    id="scrap-week-select"
-                  >
+                    onChange={(e) => setWeek(e.target.value.toUpperCase())}
+                    onBlur={() => {
+                      if (week.trim()) setWeek(getISOWeekCode(week));
+                    }}
+                    placeholder="e.g. W40"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all text-slate-800 font-mono font-bold pr-7"
+                    id="scrap-week-input"
+                  />
+                  <datalist id="scrap-week-options">
                     {WEEK_OPTIONS.map((w) => (
-                      <option key={w} value={w}>
-                        {w}
-                      </option>
+                      <option key={w} value={w} />
                     ))}
-                  </select>
+                  </datalist>
                   <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
@@ -887,7 +898,7 @@ export default function ScrapWorkspace({
                       <td className="py-3 px-3 font-mono text-slate-600 font-semibold whitespace-nowrap">
                         <div>
                           <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 font-bold font-mono text-xs border border-rose-200/80">
-                            {s.date?.startsWith("W") ? s.date : (s.date ? getISOWeekCode(s.date) : "—")}
+                            {getScrapWeekCode(s)}
                           </span>
                         </div>
                         {s.timestamp && (
@@ -1079,17 +1090,22 @@ export default function ScrapWorkspace({
                   <label className="block text-[11px] font-bold text-slate-600 uppercase font-mono mb-1">
                     W
                   </label>
-                  <select
+                  <input
+                    type="text"
+                    list="scrap-edit-week-options"
                     value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all cursor-pointer"
-                  >
+                    onChange={(e) => setEditDate(e.target.value.toUpperCase())}
+                    onBlur={() => {
+                      if (editDate.trim()) setEditDate(getISOWeekCode(editDate));
+                    }}
+                    placeholder="e.g. W40"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-all"
+                  />
+                  <datalist id="scrap-edit-week-options">
                     {WEEK_OPTIONS.map((w) => (
-                      <option key={w} value={w}>
-                        {w}
-                      </option>
+                      <option key={w} value={w} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
               </div>
 

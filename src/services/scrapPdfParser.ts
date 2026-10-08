@@ -173,32 +173,48 @@ export async function parseScrapPDF(
     invoiceNumber = `MPT-${Date.now().toString().slice(-6)}`;
   }
 
-  // 2. Detect Invoice Date & calculate ISO Week Code (e.g. W39)
+  // 2. Detect Invoice Date & calculate ISO Week Code (e.g. W40)
   let invoiceDate: string | undefined;
   let week = getISOWeekCode();
+
+  // Check for explicit week in text: SEMANA 40, SEM. 40, SEM 40, WEEK 40, W40, W 40
+  const explicitWeekMatch =
+    fullPlainText.match(/(?:SEMANA|SEMAINE|SEM\.?|WEEK|WK\.?)\s*[:#\-]?\s*(\d{1,2})\b/i) ||
+    fullPlainText.match(/\bW\s*(\d{1,2})\b/i);
+
+  if (explicitWeekMatch) {
+    const wNum = parseInt(explicitWeekMatch[1], 10);
+    if (wNum >= 1 && wNum <= 53) {
+      week = `W${wNum}`;
+    }
+  }
+
   const dateMatch = fullPlainText.match(/(\d{2}[\/\-]\d{2}[\/\-]\d{4})/) || fullPlainText.match(/(\d{4}[\/\-]\d{2}[\/\-]\d{2})/);
   if (dateMatch) {
     invoiceDate = dateMatch[1];
-    try {
-      let d = 1, m = 0, y = 2026;
-      if (invoiceDate.includes("/") || invoiceDate.includes("-")) {
-        const parts = invoiceDate.split(/[\/\-]/);
-        if (parts[0].length === 4) {
-          y = parseInt(parts[0], 10);
-          m = parseInt(parts[1], 10) - 1;
-          d = parseInt(parts[2], 10);
-        } else {
-          d = parseInt(parts[0], 10);
-          m = parseInt(parts[1], 10) - 1;
-          y = parseInt(parts[2], 10);
+    // Only calculate from date if no explicit week was found in document
+    if (!explicitWeekMatch) {
+      try {
+        let d = 1, m = 0, y = 2026;
+        if (invoiceDate.includes("/") || invoiceDate.includes("-")) {
+          const parts = invoiceDate.split(/[\/\-]/);
+          if (parts[0].length === 4) {
+            y = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10) - 1;
+            d = parseInt(parts[2], 10);
+          } else {
+            d = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10) - 1;
+            y = parseInt(parts[2], 10);
+          }
+          const dt = new Date(Date.UTC(y, m, d));
+          if (!isNaN(dt.getTime())) {
+            week = getISOWeekCode(dt);
+          }
         }
-        const dt = new Date(y, m, d);
-        if (!isNaN(dt.getTime())) {
-          week = getISOWeekCode(dt.toISOString());
-        }
+      } catch {
+        // fallback to current week
       }
-    } catch {
-      // fallback to current week
     }
   }
 

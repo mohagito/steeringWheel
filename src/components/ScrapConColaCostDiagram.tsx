@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { ScrapEntry, Reference } from "../types";
 import { MESHES_PRICE_LIST, isConColaScrap } from "../utils/stockValuation";
-import { getISOWeekCode, getISOWeekNumber } from "../utils/timeUtils";
+import { getISOWeekCode, getISOWeekNumber, getScrapWeekCode, getScrapWeekNumber } from "../utils/timeUtils";
 import { TrendingUp, BarChart2 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -46,22 +46,13 @@ export default function ScrapConColaCostDiagram({
       // Keep strictly CON COLA entries
       if (!isConColaScrap(s)) return;
 
-      let rawWeek = s.date?.startsWith("W") ? s.date.toUpperCase() : "";
-      let weekNum = 0;
-      let year = 2026;
+      const rawWeek = getScrapWeekCode(s);
+      const weekNum = getScrapWeekNumber(s);
+      const year = typeof s.date === "string" && /^\d{4}/.test(s.date)
+        ? parseInt(s.date.slice(0, 4), 10)
+        : 2026;
 
-      if (rawWeek && /^W\d+$/i.test(rawWeek)) {
-        weekNum = parseInt(rawWeek.replace(/\D/g, ""), 10);
-      } else {
-        const dStr = s.date || s.timestamp;
-        rawWeek = getISOWeekCode(dStr);
-        weekNum = getISOWeekNumber(dStr);
-        if (typeof s.date === "string" && /^\d{4}/.test(s.date)) {
-          year = parseInt(s.date.slice(0, 4), 10);
-        }
-      }
-
-      const weekKey = rawWeek || `W${weekNum}`;
+      const weekKey = rawWeek;
 
       if (!map[weekKey]) {
         map[weekKey] = {
@@ -109,8 +100,8 @@ export default function ScrapConColaCostDiagram({
 
     existingPoints.sort((a, b) => a.weekNum - b.weekNum);
 
-    const minWeek = Math.max(1, existingPoints[0].weekNum - 1);
-    const maxWeek = Math.min(53, existingPoints[existingPoints.length - 1].weekNum + 1);
+    const minWeek = existingPoints[0].weekNum;
+    const maxWeek = existingPoints[existingPoints.length - 1].weekNum;
 
     const fullTimeline: WeekDataPoint[] = [];
     for (let w = minWeek; w <= maxWeek; w++) {

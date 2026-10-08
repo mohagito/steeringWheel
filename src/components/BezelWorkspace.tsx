@@ -9,6 +9,7 @@ import { db } from "../firebase";
 import {
   BezelReference,
   BezelOperation,
+  BezelInvoice,
   User
 } from "../types";
 import { normalizeDocTimestamps } from "../utils/timeUtils";
@@ -24,6 +25,7 @@ import BezelHistoryTable from "./bezel/BezelHistoryTable";
 import BezelOperationsModals from "./bezel/BezelOperationsModals";
 import BezelSidebar from "./bezel/BezelSidebar";
 import BezelInventoryWorkspace from "./bezel/BezelInventoryWorkspace";
+import BezelInvoicesWorkspace from "./bezel/BezelInvoicesWorkspace";
 
 interface BezelWorkspaceProps {
   currentUser: User;
@@ -38,8 +40,9 @@ export default function BezelWorkspace({
 }: BezelWorkspaceProps) {
   const [references, setReferences] = useState<BezelReference[]>([]);
   const [operations, setOperations] = useState<BezelOperation[]>([]);
+  const [invoices, setInvoices] = useState<BezelInvoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState<string>("operations");
+  const [activeSection, setActiveSection] = useState<string>("invoices");
   const [activeTab, setActiveTab] = useState<"stock" | "history">("stock");
   const [activeModal, setActiveModal] = useState<BezelActiveModal>(null);
   const [selectedReferenceCode, setSelectedReferenceCode] = useState<string | undefined>(undefined);
@@ -110,10 +113,34 @@ export default function BezelWorkspace({
       }
     );
 
+    // 3. Subscribe to bezel_invoices
+    const unsubInvoices = onSnapshot(
+      collection(db, "bezel_invoices"),
+      (snapshot) => {
+        const invList: BezelInvoice[] = [];
+        snapshot.forEach((docSnap) => {
+          invList.push({
+            id: docSnap.id,
+            ...normalizeDocTimestamps(docSnap.data())
+          } as BezelInvoice);
+        });
+        invList.sort((a, b) => {
+          const timeA = new Date(a.timestamp || a.date).getTime();
+          const timeB = new Date(b.timestamp || b.date).getTime();
+          return timeB - timeA;
+        });
+        setInvoices(invList);
+      },
+      (error) => {
+        console.error("Error subscribing to bezel_invoices:", error);
+      }
+    );
+
     return () => {
       isMounted = false;
       unsubReferences();
       unsubOperations();
+      unsubInvoices();
     };
   }, []);
 
@@ -214,6 +241,7 @@ export default function BezelWorkspace({
           userRole={currentUser.role}
           referencesCount={references.length}
           operationsCount={operations.length}
+          invoicesCount={invoices.length}
         />
 
         {/* Section Content Area */}
@@ -245,8 +273,17 @@ export default function BezelWorkspace({
             </div>
           )}
 
-          {/* Section 1: STOCK INVENTORY */}
-          {activeSection === "inventory" ? (
+          {/* Section 1: INCOMING INVOICES */}
+          {activeSection === "invoices" ? (
+            <BezelInvoicesWorkspace
+              invoices={invoices}
+              references={references}
+              currentUser={currentUser}
+              onOpenNewTruckModal={() => handleOpenModal("new_truck")}
+              onSuccess={(msg) => showToast(msg, "success")}
+              onError={(err) => showToast(err, "error")}
+            />
+          ) : activeSection === "inventory" ? (
             <BezelInventoryWorkspace
               references={references}
               currentUser={currentUser}
@@ -254,7 +291,7 @@ export default function BezelWorkspace({
               onError={(err) => showToast(err, "error")}
             />
           ) : (
-            /* Section 2: OPERATIONS & OVERVIEW */
+            /* Section 3: OPERATIONS & OVERVIEW */
             <div className="space-y-6">
               {/* 1. Live Aggregate Inventory Metrics */}
               <BezelMetrics

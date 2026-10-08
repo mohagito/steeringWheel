@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronUp, FileText, Layers, Check 
 } from "lucide-react";
 import Swal from "sweetalert2";
-import { getMoroccoTodayDateString } from "../utils/timeUtils";
+import { getMoroccoTodayDateString, getISOWeekCode } from "../utils/timeUtils";
 
 interface ScrapPdfModalProps {
   isOpen: boolean;
@@ -124,7 +124,7 @@ export default function ScrapPdfModal({
 
     setIsApplying(true);
     try {
-      const todayStr = getMoroccoTodayDateString();
+      const cleanWeek = getISOWeekCode(week);
       const payload: Omit<ScrapEntry, "id" | "timestamp" | "supervisorName" | "stockBefore" | "stockAfter">[] =
         items.map((it) => ({
           reference: it.reference.trim().toUpperCase(),
@@ -135,8 +135,8 @@ export default function ScrapPdfModal({
           cola: it.cola,
           colaStatus: it.cola,
           invoiceNumber: invoiceNumber.trim().toUpperCase(),
-          date: todayStr,
-          week: week.trim().toUpperCase(),
+          date: cleanWeek,
+          week: cleanWeek,
           notes: `PDF Scrap Return [${invoiceNumber}] - ${it.statusDisplay}`
         }));
 
@@ -164,7 +164,7 @@ export default function ScrapPdfModal({
   };
 
   const handleTransferToForm = () => {
-    onLoadIntoForm(items, invoiceNumber.trim().toUpperCase(), week);
+    onLoadIntoForm(items, invoiceNumber.trim().toUpperCase(), getISOWeekCode(week));
     onClose();
   };
 
@@ -193,6 +193,9 @@ export default function ScrapPdfModal({
                   type="text"
                   value={week}
                   onChange={(e) => setWeek(e.target.value.toUpperCase())}
+                  onBlur={() => {
+                    if (week.trim()) setWeek(getISOWeekCode(week));
+                  }}
                   className="px-2 py-0.5 bg-white border border-slate-300 rounded-lg text-sm font-bold font-mono text-slate-900 w-20 focus:ring-1 focus:ring-rose-500 focus:outline-none"
                   placeholder="W40"
                 />

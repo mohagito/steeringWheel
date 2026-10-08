@@ -124,8 +124,12 @@ service cloud.firestore {
     match /bezel_operations/{opId} {
       allow read: if true;
       allow create: if isValidId(opId) && request.resource.data.quantity is number && request.resource.data.quantity >= 0;
-      // Immutable historical audit record: prevent modification or deletion
-      allow update, delete: if false;
+      allow update, delete: if isValidId(opId);
+    }
+
+    match /bezel_invoices/{invoiceId} {
+      allow read: if true;
+      allow create, update, delete: if isValidId(invoiceId);
     }
 
     match /test/{testId} {

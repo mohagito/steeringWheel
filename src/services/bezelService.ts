@@ -2,6 +2,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
   runTransaction,
   collection,
   getDocs,
@@ -14,7 +15,8 @@ import {
   BezelReference,
   BezelOperation,
   BezelTruckItem,
-  BezelOperationType
+  BezelOperationType,
+  BezelInvoice
 } from "../types";
 
 // In-Memory Idempotency & Duplicate Guard (Window: 5 seconds)
@@ -285,6 +287,42 @@ export async function executeBezelNewTruck(params: {
         serverTimestamp: serverTimestamp()
       }), { merge: true });
     }
+
+    // 5. Authoritatively record into bezel_invoices
+    const invNum = (params.invoiceNumber && params.invoiceNumber.trim()) 
+      ? params.invoiceNumber.trim().toUpperCase() 
+      : `TRK-${Date.now().toString().slice(-6)}`;
+    
+    const invoiceId = `bz-inv-${invNum.replace(/[^a-zA-Z0-9_-]/g, "_")}-${Date.now().toString().slice(-4)}`;
+    const invoiceDocRef = doc(db, "bezel_invoices", invoiceId);
+
+    const totalQty = params.items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+    const uniqueRefs = Array.from(new Set(params.items.map(it => it.reference.trim())));
+
+    const invoiceData: BezelInvoice = {
+      id: invoiceId,
+      invoiceNumber: invNum,
+      date: nowIso.slice(0, 10),
+      timestamp: nowIso,
+      operator: params.operatorName,
+      shift: (params as any).shift || "SHIFT A",
+      items: params.items.map((it, idx) => ({
+        id: `it-${idx + 1}-${Date.now()}`,
+        reference: it.reference.trim(),
+        quantity: Number(it.quantity) || 0,
+        destinationStock: it.destinationStock
+      })),
+      totalQuantity: totalQty,
+      totalBoxes: params.items.length,
+      references: uniqueRefs,
+      status: "approved",
+      createdAt: nowIso
+    };
+
+    transaction.set(invoiceDocRef, cleanData({
+      ...invoiceData,
+      serverTimestamp: serverTimestamp()
+    }), { merge: true });
   });
 
   return { success: true, operations: operationsCreated };
@@ -1005,3 +1043,19 @@ export async function executeBezelPhysicalInventory(
 
   return { success: true, operations: operationsCreated };
 }
+
+/**
+ * 7. BEZEL INVOICES MANAGEMENT
+ */
+export async function deleteBezelInvoice(invoiceId: string): Promise<void> {
+  const invoiceDocRef = doc(db, "bezel_invoices", invoiceId);
+  await deleteDoc(invoiceDocRef);
+}
+
+export async function clearAllBezelInvoices(): Promise<void> {
+  const snap = await getDocs(collection(db, "bezel_invoices"));
+  for (const d of snap.docs) {
+    await deleteDoc(d.ref);
+  }
+}
+

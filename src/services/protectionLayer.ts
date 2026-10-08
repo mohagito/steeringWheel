@@ -27,6 +27,7 @@ import {
   MeshInventoryAdjustment,
   MeshPhysicalInventoryParams
 } from "../types";
+import { getISOWeekCode } from "../utils/timeUtils";
 
 // In-Memory Idempotency / Duplicate Prevention Cache (Window: 10 seconds)
 const duplicateGuardCache = new Map<string, { timestamp: number; result: any }>();
@@ -1217,11 +1218,14 @@ export async function executeProtectedScrap(
     }
 
     const scrapId = (entry as any).id || `scrap-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+    const normalizedWeek = getISOWeekCode(entry.week || entry.date);
     scrapDocs.push({
       id: scrapId,
       doc: {
         ...entry,
         id: scrapId,
+        date: normalizedWeek,
+        week: normalizedWeek,
         operationId: scrapId,
         operationType: "SCRAP / NOK",
         reference: refCode,
@@ -1453,7 +1457,8 @@ export async function executeProtectedUpdateScrap(
           cola: updatedCola,
           colaStatus: updatedCola,
           invoiceNumber: updatedData.invoiceNumber !== undefined ? updatedData.invoiceNumber : (oldScrap?.invoiceNumber || ""),
-          date: updatedData.date || oldScrap?.date,
+          date: updatedData.date ? getISOWeekCode(updatedData.date) : (oldScrap?.date ? getISOWeekCode(oldScrap.date) : undefined),
+          week: (updatedData as any).week ? getISOWeekCode((updatedData as any).week) : (updatedData.date ? getISOWeekCode(updatedData.date) : (oldScrap?.week ? getISOWeekCode(oldScrap.week) : (oldScrap?.date ? getISOWeekCode(oldScrap.date) : undefined))),
           stockDeductedFrom: newStock,
           status: "edited",
           changeHistory: [...existingHistory, historyEntry]

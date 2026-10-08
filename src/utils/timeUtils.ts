@@ -319,24 +319,127 @@ export function compareTimestampsDesc(a: any, b: any): number {
 }
 
 /**
- * Calculates the ISO 8601 week number (1 - 53) strictly using Morocco (Africa/Casablanca) time.
+ * Parses an explicit week number from number or string format (e.g. 40, "40", "W40", "w40", "W 40", "WEEK 40", "SEM 40").
+ * Returns the numeric week (1 - 53) or null if input is not a recognized week pattern.
  */
-export function getISOWeekNumber(input?: any): number {
-  const ms = input !== undefined ? parseTimestampMs(input) : Date.now();
-  const d = ms !== null ? new Date(ms) : new Date();
-  const target = new Date(d.getTime());
-  target.setHours(0, 0, 0, 0);
-  target.setDate(target.getDate() + 3 - ((target.getDay() + 6) % 7));
-  const week1 = new Date(target.getFullYear(), 0, 4);
-  return 1 + Math.round(((target.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+export function parseWeekNumber(input: any): number | null {
+  if (input === null || input === undefined || input === "") return null;
+
+  // 1. Raw numeric week number (1 - 53)
+  if (typeof input === "number") {
+    if (!isNaN(input) && input >= 1 && input <= 53 && Number.isInteger(input)) {
+      return input;
+    }
+  }
+
+  // 2. String representation of week
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+
+    // Direct number e.g. "40"
+    if (/^\d{1,2}$/.test(trimmed)) {
+      const n = parseInt(trimmed, 10);
+      if (n >= 1 && n <= 53) return n;
+    }
+
+    // Week prefix: "W40", "w40", "W 40", "WEEK 40", "SEM 40", "SEMANA 40"
+    const match = trimmed.match(/^(?:W|WEEK|SEM|SEMANA)\s*(\d{1,2})$/i);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n >= 1 && n <= 53) return n;
+    }
+  }
+
+  return null;
 }
 
 /**
- * Returns formatted week code e.g. "W39", "W40"
+ * Standard ISO 8601 calendar week calculation from a date object (using UTC to prevent DST shifts).
+ */
+export function calculateISOWeekFromDate(d: Date): number {
+  const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNr = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - dayNr);
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  return Math.ceil((((target.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+/**
+ * Calculates the ISO 8601 week number (1 - 53).
+ * If input is already an explicit week code (e.g. 40, "40", "W40"), preserves it exactly without offset.
+ */
+export function getISOWeekNumber(input?: any): number {
+  const explicit = parseWeekNumber(input);
+  if (explicit !== null) return explicit;
+
+  if (input === null || input === undefined || input === "") {
+    return calculateISOWeekFromDate(new Date());
+  }
+
+  const ms = parseTimestampMs(input);
+  const d = ms !== null ? new Date(ms) : new Date(input);
+  if (isNaN(d.getTime())) return calculateISOWeekFromDate(new Date());
+  return calculateISOWeekFromDate(d);
+}
+
+/**
+ * Returns formatted week code e.g. "W39", "W40".
+ * Guarantees that "40", 40, "w40", "W40" all cleanly resolve to "W40" without +1 offset.
  */
 export function getISOWeekCode(input?: any): string {
-  if (typeof input === "string" && /^W\d+$/i.test(input.trim())) {
-    return input.trim().toUpperCase();
+  const explicit = parseWeekNumber(input);
+  if (explicit !== null) {
+    return `W${explicit}`;
   }
   return `W${getISOWeekNumber(input)}`;
 }
+
+/**
+ * Returns the authoritative week code for a scrap entry (e.g. "W40").
+ * Strictly prioritizes manual/explicit `week` property over falling back to timestamp calculation.
+ */
+export function getScrapWeekCode(entry?: { week?: string | number; date?: string; timestamp?: any } | null): string {
+  if (!entry) return getISOWeekCode();
+
+  // 1. Explicit week property (e.g. "W40", 40, "40", "w40")
+  if (entry.week !== undefined && entry.week !== null && String(entry.week).trim() !== "") {
+    return getISOWeekCode(entry.week);
+  }
+
+  // 2. Date property if stored as a week code or raw week number (e.g. "W40", "40", "Week 40")
+  if (entry.date !== undefined && entry.date !== null && String(entry.date).trim() !== "") {
+    const raw = String(entry.date).trim();
+    const explicit = parseWeekNumber(raw);
+    if (explicit !== null) {
+      return `W${explicit}`;
+    }
+  }
+
+  // 3. Fallback to computing from date string or timestamp
+  const dStr = entry.date || entry.timestamp;
+  return getISOWeekCode(dStr);
+}
+
+/**
+ * Returns the authoritative numeric week number for a scrap entry (e.g. 40).
+ */
+export function getScrapWeekNumber(entry?: { week?: string | number; date?: string; timestamp?: any } | null): number {
+  if (!entry) return getISOWeekNumber();
+
+  if (entry.week !== undefined && entry.week !== null) {
+    const parsed = parseWeekNumber(entry.week);
+    if (parsed !== null) return parsed;
+  }
+
+  if (entry.date !== undefined && entry.date !== null) {
+    const parsed = parseWeekNumber(entry.date);
+    if (parsed !== null) return parsed;
+  }
+
+  const code = getScrapWeekCode(entry);
+  const match = code.match(/\d+/);
+  if (match) return parseInt(match[0], 10);
+  return getISOWeekNumber(entry?.date || entry?.timestamp);
+}
+

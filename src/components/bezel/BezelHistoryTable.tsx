@@ -13,7 +13,7 @@ import {
   ClipboardCheck
 } from "lucide-react";
 import { BezelOperation, BezelOperationType, UserRole } from "../../types";
-import { formatSystemTime, MOROCCO_TIMEZONE_LABEL } from "../../utils/timeUtils";
+import { formatSystemTime } from "../../utils/timeUtils";
 import { reverseBezelOperation } from "../../services/bezelService";
 
 interface BezelHistoryTableProps {
@@ -135,9 +135,6 @@ export default function BezelHistoryTable({
               {filtered.length} of {operations.length}
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            Real-time audit trail in local {MOROCCO_TIMEZONE_LABEL}
-          </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">

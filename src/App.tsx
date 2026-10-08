@@ -469,6 +469,7 @@ export default function App() {
       colaStatus?: "CON_COLA" | "SIN_COLA";
       invoiceNumber?: string;
       date?: string;
+      week?: string;
     },
     reason?: string
   ) => {

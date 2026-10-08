@@ -1,5 +1,5 @@
 import React from "react";
-import { ClipboardCheck, Layers, ChevronRight } from "lucide-react";
+import { ClipboardCheck, Layers, ChevronRight, FileText } from "lucide-react";
 import { UserRole } from "../../types";
 
 export interface BezelSidebarSection {
@@ -17,6 +17,7 @@ interface BezelSidebarProps {
   userRole: UserRole;
   referencesCount: number;
   operationsCount: number;
+  invoicesCount?: number;
 }
 
 export default function BezelSidebar({
@@ -24,19 +25,19 @@ export default function BezelSidebar({
   onSelectSection,
   userRole,
   referencesCount,
-  operationsCount
+  operationsCount,
+  invoicesCount = 0
 }: BezelSidebarProps) {
   const isManager = userRole === "admin" || userRole === "supervisor";
 
   // Extensible section configuration designed so more Bezel sections can be plugged in seamlessly
   const sections: BezelSidebarSection[] = [
     {
-      id: "inventory",
-      label: "STOCK INVENTORY",
-      subtitle: "Physical count & reconciliation",
-      icon: ClipboardCheck,
-      badge: `${referencesCount} refs`,
-      managerOnly: true
+      id: "invoices",
+      label: "INCOMING INVOICES",
+      subtitle: "Truck receipts & records",
+      icon: FileText,
+      badge: `${invoicesCount} inv`
     },
     {
       id: "operations",
@@ -44,6 +45,14 @@ export default function BezelSidebar({
       subtitle: "Live stock & movements log",
       icon: Layers,
       badge: `${operationsCount} ops`
+    },
+    {
+      id: "inventory",
+      label: "STOCK INVENTORY",
+      subtitle: "Physical count & reconciliation",
+      icon: ClipboardCheck,
+      badge: `${referencesCount} refs`,
+      managerOnly: true
     }
   ];
 

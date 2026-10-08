@@ -110,7 +110,8 @@ export interface ScrapEntry {
   id: string;
   operationId?: string;
   operationType?: string; // "SCRAP / NOK"
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD or week code e.g. "W40"
+  week?: string; // Explicit week code e.g. "W40"
   reference: string;
   quantity: number;
   condition?: string; // Optional (legacy traceability e.g. "CON COLA" / "SIN COLA")
@@ -310,6 +311,31 @@ export interface BezelTruckItem {
   reference: string;
   quantity: number;
   destinationStock: "STOCK 1" | "STOCK 2";
+}
+
+export interface BezelInvoiceItem {
+  id: string;
+  reference: string;
+  quantity: number;
+  destinationStock: "STOCK 1" | "STOCK 2";
+  description?: string;
+  client?: string;
+}
+
+export interface BezelInvoice {
+  id: string; // Unique invoice ID, e.g. "INV-A905220382"
+  invoiceNumber: string;
+  date: string; // YYYY-MM-DD or formatted date
+  timestamp: string | any;
+  operator: string;
+  shift?: "SHIFT A" | "SHIFT B" | "ALL" | string;
+  items: BezelInvoiceItem[];
+  totalQuantity: number;
+  totalBoxes?: number;
+  references: string[]; // array of unique reference codes
+  status: "approved" | "pending";
+  notes?: string;
+  createdAt?: string | any;
 }
 
 export interface MeshInventoryAdjustment {
