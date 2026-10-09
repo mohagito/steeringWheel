@@ -167,6 +167,66 @@ export const STEERING_WHEEL_MESH_MAPPINGS: SteeringWheelMeshMapping[] = [
     description: "L74 SW TEP +HES/HOD MAT INTEG",
     meshRef: "R001W189B",
     targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "R002A665A",
+    description: "STEERING WHEEL P33B SYNTHETIC WRAPPED",
+    meshRef: "34316011B",
+    targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "R003A514A",
+    description: "VOL FORRADO K9 MCM PEUGEOT HEATED PADD",
+    meshRef: "A026K122B",
+    targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "R003A432A",
+    description: "VOLANTE FORRADO L74 TEP INTEGRALE",
+    meshRef: "R001W189B",
+    targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "A023V842C",
+    description: "VOL FORR P64-74 GT HTD+HOD (TOP BITONE)",
+    meshRef: "A026L577A",
+    targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "A024A609C",
+    description: "SW WRAPPTOP FERF P64 PD STITCH BITON GT",
+    meshRef: "A026L577A",
+    targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "A023V830B",
+    description: "VOLANTE FORRADO P64-74 ACTIVE SPLIT",
+    meshRef: "A026L577A",
+    targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "A023V834B",
+    description: "VOL FORRADO P64-74 ALLURE (TOP MONOTONE)",
+    meshRef: "A026L577A",
+    targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "34371819B",
+    description: "VOLANTE FORRADO V316 CALEF TEP MOMENTUM",
+    meshRef: "34340681C",
+    targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "A026K881A",
+    description: "SW BJA-ph2 Wrapped TEP1",
+    meshRef: "34364719C",
+    targetStock: "Stock 3"
+  },
+  {
+    steeringWheelRef: "A028L046A",
+    description: "VOLANTE FORRADO CMFB TEP 1 PADDELS",
+    meshRef: "A026L577A",
+    targetStock: "Stock 3"
   }
 ];
 
@@ -221,6 +281,42 @@ export const PRECOSIDO_MESH_MAPPINGS: PrecosidoMeshMapping[] = [
     plantillaRef: "R001F925A",
     description: "PLANT PRECOSIDA+ MALLA PCF C/DIMPLE OV64",
     meshRef: "A025M750B",
+    targetStock: "Stock 2"
+  },
+  {
+    plantillaRef: "A025P546A",
+    description: "CJTO PLANT S/PREC SPLIT K9 MCM PEUGEOT",
+    meshRef: "A026K122B",
+    targetStock: "Stock 2"
+  },
+  {
+    plantillaRef: "A026K160B",
+    description: "SET PLANT S/PREC HEATED K9 MCM OVCTF",
+    meshRef: "A026K122B",
+    targetStock: "Stock 2"
+  },
+  {
+    plantillaRef: "A025P562A",
+    description: "CJTO PLANTILLAS S/PREC TOP K9 MCMPEUGEOT",
+    meshRef: "A026K122B",
+    targetStock: "Stock 2"
+  },
+  {
+    plantillaRef: "A020M334B",
+    description: "CONJ. PLANTILLAS S/PRECOSER TOP P64-P74",
+    meshRef: "A026L577A",
+    targetStock: "Stock 2"
+  },
+  {
+    plantillaRef: "A020M341B",
+    description: "CONJ PLANTILLAS S/PREC TOP PERF P64-P74",
+    meshRef: "A026L577A",
+    targetStock: "Stock 2"
+  },
+  {
+    plantillaRef: "34340664A",
+    description: "SET MATERIAL SINTETICO C519",
+    meshRef: "34340679A",
     targetStock: "Stock 2"
   }
 ];
