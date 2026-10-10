@@ -17,7 +17,17 @@ import {
   seedBezelReferencesIfEmpty,
   INITIAL_BEZEL_SEEDS
 } from "../services/bezelService";
-import { ArrowLeft, LogOut, CheckCircle2, AlertCircle, Layers, History, RefreshCw } from "lucide-react";
+import { 
+  ArrowLeft, 
+  LogOut, 
+  CheckCircle2, 
+  AlertCircle, 
+  AlertTriangle,
+  ClipboardCheck,
+  Layers, 
+  History, 
+  RefreshCw 
+} from "lucide-react";
 import BezelMetrics from "./bezel/BezelMetrics";
 import BezelActionButtons, { BezelActiveModal } from "./bezel/BezelActionButtons";
 import BezelStockTable from "./bezel/BezelStockTable";
@@ -167,86 +177,95 @@ export default function BezelWorkspace({
     }
   };
 
+  const lowStockRefs = references.filter(r => (r.stock1 || 0) < 20);
+
+  const getHeaderTitle = () => {
+    switch (activeSection) {
+      case "deliveries":
+        return "Bezel Deliveries & Dispatches (SW → S2)";
+      case "invoices":
+        return "Stock 1 Incoming Invoices & Verification";
+      case "operations":
+        return "Operations & Live Stock Management";
+      case "inventory":
+        return "Stock Inventory — Physical Count & Reconciliation";
+      default:
+        return "Bezel Management Workspace";
+    }
+  };
+
   return (
     <div
-      className="min-h-screen bg-[#f8fafc] flex flex-col text-slate-800 font-sans"
+      className="min-h-screen bg-[#f1f5f9] flex flex-col md:flex-row text-slate-800 font-sans"
       id="bezel-workspace-root"
     >
-      {/* Top Header Bar */}
-      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 shrink-0 shadow-2xs">
-        <div className="flex items-center gap-3">
-          {/* Back to Modules Navigation */}
-          <button
-            onClick={onBackToModules}
-            id="bezel-back-to-modules-btn"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-300 text-xs font-semibold tracking-wide transition-all cursor-pointer shadow-2xs active:scale-95"
-            title="Return to module selection"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Modules</span>
-          </button>
+      {/* Full-Height Vertical Sidebar Matching Meshes Design */}
+      <BezelSidebar
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+        userRole={currentUser.role}
+        currentUser={currentUser}
+        onBackToModules={onBackToModules}
+        onLogout={onLogout}
+        referencesCount={references.length}
+        operationsCount={operations.length}
+        invoicesCount={invoices.length}
+      />
 
-          <div className="h-5 w-px bg-slate-200" />
-
-          <div className="flex items-center gap-2">
-            <h1
-              id="bezel-header-title"
-              className="text-base sm:text-lg font-bold text-slate-900 tracking-tight"
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        {/* Top Header Bar Matching Meshes Design */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sm:px-8 shrink-0">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <button
+              onClick={onBackToModules}
+              id="bezel-header-back-to-modules-btn"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 text-xs font-semibold tracking-wide transition-all cursor-pointer active:scale-95 shrink-0"
+              title="Return to module selection (MESHES / BEZEL)"
             >
-              BEZEL
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Modules</span>
+            </button>
+            <h1 className="text-base sm:text-lg font-bold text-slate-800 font-display">
+              {getHeaderTitle()}
             </h1>
-            <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold tracking-wide">
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Low Stock Real-Time Alert Pill */}
+            {lowStockRefs.length > 0 && (
+              <div 
+                id="bezel-header-low-stock-alert"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold font-mono tracking-wide shadow-2xs"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span>LOW STOCK: {lowStockRefs.length} REFS</span>
+              </div>
+            )}
+
+            {/* Stock Inventory Quick Access for Managers */}
+            {(currentUser.role === "admin" || currentUser.role === "supervisor") && activeSection !== "inventory" && (
+              <button
+                onClick={() => setActiveSection("inventory")}
+                id="bezel-header-stock-inventory-btn"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold text-xs shadow-md shadow-indigo-200 transition-all cursor-pointer active:scale-95"
+                title="Physical stock reconciliation (System Stock → Physical Count → Difference → Confirm)"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5" />
+                <span>STOCK INVENTORY</span>
+              </button>
+            )}
+
+            {/* Live Firestore pill indicator */}
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold tracking-wide">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              LIVE FIRESTORE
+              <span>LIVE FIRESTORE</span>
             </span>
           </div>
-        </div>
-
-        {/* User Badge & Session Controls */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-[#0a1322] text-white font-bold text-xs rounded-full flex items-center justify-center uppercase font-mono shadow-2xs">
-              {currentUser.fullName.slice(0, 2)}
-            </div>
-            <div className="hidden sm:block">
-              <div className="text-xs font-semibold text-slate-800 leading-tight">
-                {currentUser.fullName}
-              </div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">
-                {currentUser.role === "admin"
-                  ? "Manager"
-                  : currentUser.role === "supervisor"
-                  ? "Supervisor"
-                  : "Operator"}
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={onLogout}
-            id="bezel-logout-btn"
-            className="p-2 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 transition-all cursor-pointer"
-            title="Exit Session"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
-
-      {/* Main Workspace with Vertical Sidebar */}
-      <main className="flex-1 flex flex-col md:flex-row w-full bg-[#f8fafc]">
-        {/* Vertical Sidebar */}
-        <BezelSidebar
-          activeSection={activeSection}
-          onSelectSection={setActiveSection}
-          userRole={currentUser.role}
-          referencesCount={references.length}
-          operationsCount={operations.length}
-          invoicesCount={invoices.length}
-        />
+        </header>
 
         {/* Section Content Area */}
-        <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto overflow-y-auto">
           {/* Toast Notification */}
           {toast && (
             <div
@@ -366,8 +385,8 @@ export default function BezelWorkspace({
               )}
             </div>
           )}
-        </div>
-      </main>
+        </main>
+      </div>
 
       {/* 5. Operation Modals */}
       <BezelOperationsModals

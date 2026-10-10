@@ -297,6 +297,36 @@ export default function ReturnZdfModal({
               notes: `RETURN ZDF [${category}] (${it.docReference} -> ${it.meshReference}) Container: ${cleanContainer}`
             });
           });
+
+          // 3. Atomically record incoming invoice in invoices collection for complete traceability in Invoices workspace
+          const invoiceDocId = `inv-zdf-${cleanContainer}-${deliveryId}`;
+          const invRef = doc(db, "invoices", invoiceDocId);
+          transaction.set(invRef, {
+            id: invoiceDocId,
+            invoiceNumber: cleanContainer,
+            operator: operatorName,
+            operatorId: currentUser?.id || "operator",
+            createdAt: timestamp,
+            status: "approved",
+            approvedAt: timestamp,
+            approvedBy: operatorName,
+            totalBoxes: includedItems.length,
+            totalQuantity: totalIncludedPcs,
+            notes: `RETURN ZDF [${category}] -> ${targetStock}${note ? ` - ${note}` : ""}`,
+            sourceType: category === "RED_CAGE" ? "RETURN_ZDF_RED_CAGE" : "RETURN_ZDF_PRECOSIDO",
+            targetStock,
+            origin: "ZDF",
+            items: includedItems.map((it, i) => ({
+              id: `box-${deliveryId}-${i + 1}`,
+              reference: it.meshReference.trim().toUpperCase(),
+              quantity: it.quantity,
+              scannedAt: timestamp,
+              boxBarcode: cleanContainer,
+              destinationStock: targetStock,
+              description: it.description || (it.docReference ? `${it.docReference} -> ${it.meshReference}` : ""),
+              notes: `RETURN ZDF [${category}] (${it.docReference} -> ${it.meshReference})`
+            }))
+          });
         }
       });
 

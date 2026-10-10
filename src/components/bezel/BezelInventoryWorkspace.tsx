@@ -204,23 +204,28 @@ export default function BezelInventoryWorkspace({
       <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <ClipboardCheck className="w-6 h-6 text-emerald-400" />
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs">
+              <ClipboardCheck className="w-5 h-5 text-indigo-600" />
             </div>
             <div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                Stock Inventory & Physical Reconciliation
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                  Stock Inventory
+                </h2>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-100 text-indigo-700 uppercase border border-indigo-200">
+                  BEZEL
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Action Button: UPDATE INVENTORY */}
+          {/* Action Button: Confirm Inventory */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {Object.keys(counts).length > 0 && (
               <button
                 type="button"
                 onClick={handleResetCounts}
-                className="px-3 py-2 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-300 rounded-xl text-xs font-semibold font-mono transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-2 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-300 rounded-xl text-xs font-semibold font-mono transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
                 title="Clear all physical counts"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -233,16 +238,16 @@ export default function BezelInventoryWorkspace({
               id="bezel-update-inventory-btn"
               onClick={handleOpenUpdateModal}
               disabled={!isManager || plannedAdjustments.length === 0 || isSubmitting}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl font-bold font-mono text-xs sm:text-sm tracking-wide transition-all flex items-center gap-2 shadow-sm cursor-pointer ${
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm tracking-wide transition-all flex items-center gap-2 shadow-2xs cursor-pointer ${
                 isManager && plannedAdjustments.length > 0
-                  ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95"
-                  : "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed"
+                  ? "bg-slate-900 hover:bg-slate-800 text-white active:scale-95"
+                  : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
               }`}
             >
-              <ClipboardCheck className="w-4 h-4" />
-              <span>UPDATE INVENTORY</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span>Confirm Inventory</span>
               {plannedAdjustments.length > 0 && (
-                <span className="px-1.5 py-0.5 bg-emerald-800 text-emerald-100 rounded-full text-[10px] font-mono">
+                <span className="px-1.5 py-0.5 bg-emerald-600 text-white rounded-full text-[10px] font-mono font-bold">
                   {plannedAdjustments.length}
                 </span>
               )}

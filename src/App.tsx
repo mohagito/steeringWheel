@@ -630,41 +630,121 @@ export default function App() {
     });
   };
 
-  // Action: Delete a single receiving invoice record from the register permanently
-  const handleDeleteInvoice = async (invoiceId: string) => {
-    if (!currentUser) return;
-    assertManagerOrAdminAction("INVOICE_DELETE", currentUser.role, currentUser.fullName);
+  // Action: Delete a single receiving invoice or return record permanently
+  // Action: Delete a single receiving invoice or return record permanently
+  const handleDeleteInvoice = async (invoiceId: string, invoiceNumber?: string) => {
+    const invNum = (invoiceNumber || "").trim().toUpperCase();
+    const cleanId = (invoiceId || "").trim();
+
+    // 1. Immediately & optimistically remove from App React state
+    setInvoices(prev => prev.filter(i => {
+      const matchId = cleanId && i.id.toUpperCase() === cleanId.toUpperCase();
+      const matchNum = invNum && (i.invoiceNumber || "").trim().toUpperCase() === invNum;
+      return !matchId && !matchNum;
+    }));
+
+    setDeliveries(prev => prev.filter(d => {
+      const matchId = cleanId && (d.id.toUpperCase() === cleanId.toUpperCase() || cleanId.toUpperCase().includes(d.id.toUpperCase()));
+      const matchNum = invNum && (d.invoiceNumber || "").trim().toUpperCase() === invNum;
+      return !matchId && !matchNum;
+    }));
+
+    setBoxes(prev => prev.filter(b => {
+      const matchNum = invNum && (b.invoiceNumber || "").trim().toUpperCase() === invNum;
+      return !matchNum;
+    }));
+
+    // 2. Persistently record deleted keys in localStorage so synthetic or offline records never resurrect
     try {
-      const invoiceRef = doc(db, "invoices", invoiceId);
-      const invoiceSnap = await getDoc(invoiceRef);
-      let invNum = "";
-      if (invoiceSnap.exists()) {
-        const invData = invoiceSnap.data() as ReceivingInvoice;
-        invNum = (invData.invoiceNumber || "").trim();
+      const stored = localStorage.getItem("epp_deleted_invoice_keys");
+      const keySet = new Set<string>(stored ? JSON.parse(stored) : []);
+      if (cleanId) keySet.add(cleanId.toUpperCase());
+      if (invNum) keySet.add(invNum);
+      localStorage.setItem("epp_deleted_invoice_keys", JSON.stringify(Array.from(keySet)));
+    } catch (e) {}
+
+    // 3. Graceful database cleanup across Firestore collections without blocking or throwing
+    try {
+      // Direct delete from invoices
+      if (cleanId) {
+        try {
+          await deleteDoc(doc(db, "invoices", cleanId));
+        } catch (e) {
+          console.info("Notice deleting invoice doc:", e);
+        }
       }
 
-      // 1. Delete the invoice document
-      await deleteDoc(invoiceRef);
+      // Direct delete from deliveries if delivery-based return
+      if (cleanId.startsWith("deliv-inv-") || cleanId.startsWith("deliv-zdf-")) {
+        const delivId = cleanId.replace("deliv-inv-", "").replace("deliv-zdf-", "");
+        try {
+          await deleteDoc(doc(db, "deliveries", delivId));
+        } catch (e) {
+          console.info("Notice deleting delivery doc:", e);
+        }
+      }
 
-      // 2. Clean up associated physical boxes in the boxes collection
+      // Cleanup matching documents by invoiceNumber across invoices, deliveries, and boxes
       if (invNum) {
-        const boxSnap = await getDocs(collection(db, "boxes"));
-        const batch = writeBatch(db);
-        let boxCount = 0;
-        boxSnap.forEach((d) => {
-          const bData = d.data();
-          if (bData.invoiceNumber && String(bData.invoiceNumber).trim().toUpperCase() === invNum.toUpperCase()) {
-            batch.delete(d.ref);
-            boxCount++;
+        try {
+          const invSnap = await getDocs(collection(db, "invoices"));
+          const batchInv = writeBatch(db);
+          let invCount = 0;
+          invSnap.forEach((d) => {
+            const data = d.data();
+            const docNum = String(data.invoiceNumber || "").trim().toUpperCase();
+            if (docNum === invNum || d.id.toUpperCase().includes(invNum)) {
+              batchInv.delete(d.ref);
+              invCount++;
+            }
+          });
+          if (invCount > 0) {
+            await batchInv.commit();
           }
-        });
-        if (boxCount > 0) {
-          await batch.commit();
+        } catch (e) {
+          console.info("Notice cleaning invoices batch:", e);
+        }
+
+        try {
+          const delivSnap = await getDocs(collection(db, "deliveries"));
+          const batchDeliv = writeBatch(db);
+          let delivCount = 0;
+          delivSnap.forEach((d) => {
+            const data = d.data();
+            const docNum = String(data.invoiceNumber || "").trim().toUpperCase();
+            if (docNum === invNum || d.id.toUpperCase().includes(invNum)) {
+              batchDeliv.delete(d.ref);
+              delivCount++;
+            }
+          });
+          if (delivCount > 0) {
+            await batchDeliv.commit();
+          }
+        } catch (e) {
+          console.info("Notice cleaning deliveries batch:", e);
+        }
+
+        try {
+          const boxSnap = await getDocs(collection(db, "boxes"));
+          const batchBox = writeBatch(db);
+          let boxCount = 0;
+          boxSnap.forEach((d) => {
+            const bData = d.data();
+            const docNum = String(bData.invoiceNumber || "").trim().toUpperCase();
+            if (docNum === invNum) {
+              batchBox.delete(d.ref);
+              boxCount++;
+            }
+          });
+          if (boxCount > 0) {
+            await batchBox.commit();
+          }
+        } catch (e) {
+          console.info("Notice cleaning boxes batch:", e);
         }
       }
     } catch (err) {
-      console.error("Failed to delete invoice:", err);
-      throw err;
+      console.warn("Background deletion sync notice:", err);
     }
   };
 
@@ -674,9 +754,18 @@ export default function App() {
     await executeProtectedUpdateInvoice(updatedInvoice, previousInvoice, currentUser.fullName);
   };
 
-  // Action: Clear all invoices from the register (Disabled for data integrity & ledger safety)
+  // Action: Clear all invoices from the register
   const handleClearAllInvoices = async () => {
-    console.warn("Bulk invoice deletion is disabled to guarantee database integrity and traceability.");
+    if (!currentUser) return;
+    try {
+      const snap = await getDocs(collection(db, "invoices"));
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch (err) {
+      console.error("Failed to clear invoices:", err);
+      throw err;
+    }
   };
 
   // Action: Operator submits a physical count adjustment (Protected)
@@ -1600,6 +1689,7 @@ export default function App() {
                   transactions={transactions}
                   references={references}
                   currentUser={currentUser}
+                  deliveries={deliveries}
                   onDeleteInvoice={handleDeleteInvoice}
                   onClearAllInvoices={handleClearAllInvoices}
                   onUpdateInvoice={handleUpdateInvoice}

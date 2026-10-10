@@ -2355,13 +2355,14 @@ export async function executeProtectedUpdateInvoice(
       operatorName,
       transactions,
       additionalWrites: (transaction) => {
-        transaction.update(
+        transaction.set(
           invoiceRef,
           cleanDocData({
             ...safeInvoice,
             updatedAt: timestamp,
             updatedBy: operatorName
-          })
+          }),
+          { merge: true }
         );
       }
     });

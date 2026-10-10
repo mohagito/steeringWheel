@@ -182,6 +182,8 @@ export interface ScannedInvoiceBox {
   difference?: number;
   palletQuality?: string;
   destinationStock?: "Stock 1" | "Stock 2" | "Stock 3";
+  description?: string;
+  notes?: string;
 }
 
 export interface ScannedTransferItem {
@@ -192,6 +194,11 @@ export interface ScannedTransferItem {
   materialType?: string;
   description?: string;
 }
+
+export type InvoiceSourceType = 
+  | "RAW_MATERIAL"           // Stock 1 IN (MP)
+  | "RETURN_ZDF_PRECOSIDO"   // Stock 2 IN (Precosido Return ZDF)
+  | "RETURN_ZDF_RED_CAGE";   // Stock 3 IN (Red Cage Return ZDF)
 
 export interface ReceivingInvoice {
   id: string; // Unique session/invoice ID
@@ -208,6 +215,9 @@ export interface ReceivingInvoice {
   cancelledAt?: string;
   cancelledBy?: string;
   notes?: string;
+  sourceType?: InvoiceSourceType;
+  targetStock?: "Stock 1" | "Stock 2" | "Stock 3";
+  origin?: "RAW_MATERIAL" | "ZDF";
 }
 
 export interface ReferenceSummary {
