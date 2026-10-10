@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { DailyProductionRow } from "../data/dailyProductionDemoData";
 import { Reference } from "../types";
+import { resolveMeshDeduction, NON_MESH_STEERING_WHEEL_REFERENCES } from "../data/meshBOMMapping";
 
 export interface ParseResult {
   rows: DailyProductionRow[];
@@ -113,7 +114,15 @@ export function convertSheetDataToRows(
     }
 
     const refUpper = rawRef.toUpperCase();
-    const matchedRef = refMap.get(refUpper);
+
+    // Check if explicitly non-mesh reference (per user: ignore references outside the 23 verified list)
+    if (NON_MESH_STEERING_WHEEL_REFERENCES.has(refUpper)) {
+      continue;
+    }
+
+    const bomResolved = resolveMeshDeduction(refUpper);
+    const finalRefMaille = bomResolved ? bomResolved.meshRef : refUpper;
+    const matchedRef = refMap.get(finalRefMaille) || (bomResolved ? refMap.get(refUpper) : undefined);
 
     const isValid = parsedQty > 0;
     let validationError: string | undefined;
@@ -123,8 +132,8 @@ export function convertSheetDataToRows(
 
     parsedRows.push({
       id: `row-${i}-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`,
-      refMaille: refUpper,
-      libelle: rawLibelle || matchedRef?.description || "",
+      refMaille: finalRefMaille,
+      libelle: rawLibelle || bomResolved?.description || matchedRef?.description || "",
       qtyConsommes: parsedQty,
       matchedReference: matchedRef
         ? {

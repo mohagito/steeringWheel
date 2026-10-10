@@ -508,6 +508,181 @@ export async function executeBezelDelivery(params: {
   return { success: true, operation: createdOp! };
 }
 
+export interface BezelBatchDeliveryItem {
+  reference: string; // The Bezel reference to deduct from S2 (e.g. A025B907B)
+  quantity: number;
+  sourceSWRef?: string; // The SW reference that triggered the deduction (e.g. R001H666A)
+  description?: string;
+  orderNumber?: string;
+}
+
+/**
+ * 3B. BATCH DELIVERY (SW -> BEZEL STOCK 2 OUT)
+ * Executes batch dispatch of Bezels from Stock 2 derived from SW delivery invoice.
+ * Atomically validates Stock 2 balances, decrements S2, and logs operations & invoice.
+ */
+export async function executeBezelBatchDelivery(params: {
+  invoiceNumber: string;
+  items: BezelBatchDeliveryItem[];
+  operatorName: string;
+  operatorId?: string;
+  notes?: string;
+  idempotencyKey?: string;
+}): Promise<{
+  success: boolean;
+  totalQuantity: number;
+  operations: BezelOperation[];
+  invoiceId: string;
+}> {
+  if (!params.items || params.items.length === 0) {
+    throw new Error("No bezel items provided for delivery.");
+  }
+
+  const cleanInvoice = params.invoiceNumber?.trim().toUpperCase() || `BZ-DEL-${Date.now().toString().slice(-6)}`;
+  const key = params.idempotencyKey || `bz-del-batch-${cleanInvoice}-${Date.now()}`;
+  checkAndSetIdempotency(key);
+
+  const nowIso = new Date().toISOString();
+  const operationsCreated: BezelOperation[] = [];
+
+  // Group total quantities requested by bezel reference
+  const refTotals = new Map<string, number>();
+  for (const it of params.items) {
+    const code = it.reference.trim().toUpperCase();
+    const q = Number(it.quantity);
+    if (isNaN(q) || q <= 0) continue;
+    refTotals.set(code, (refTotals.get(code) || 0) + q);
+  }
+
+  if (refTotals.size === 0) {
+    throw new Error("All delivery items have zero or invalid quantities.");
+  }
+
+  let invoiceId = "";
+
+  await runTransaction(db, async (transaction) => {
+    // 1. Read all affected bezel reference docs
+    const refDocs = new Map<string, { docRef: any; currentData: BezelReference }>();
+
+    for (const [refCode, reqQty] of refTotals.entries()) {
+      const docRef = doc(db, "bezel_references", refCode);
+      const snap = await transaction.get(docRef);
+
+      if (!snap.exists()) {
+        throw new Error(`Bezel reference ${refCode} does not exist in catalog.`);
+      }
+
+      const currentData = snap.data() as BezelReference;
+      const currentS2 = currentData.stock2 || 0;
+
+      if (currentS2 < reqQty) {
+        throw new Error(
+          `Insufficient Stock 2 for ${refCode}. Available: ${currentS2}, Requested: ${reqQty}`
+        );
+      }
+
+      refDocs.set(refCode, { docRef, currentData });
+    }
+
+    // 2. Perform updates and operations
+    const totalQty = params.items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+
+    for (let idx = 0; idx < params.items.length; idx++) {
+      const it = params.items[idx];
+      const refCode = it.reference.trim().toUpperCase();
+      const qty = Number(it.quantity);
+      if (qty <= 0) continue;
+
+      const entry = refDocs.get(refCode)!;
+      const s1 = entry.currentData.stock1 || 0;
+      const currentS2 = entry.currentData.stock2 || 0;
+      const newS2 = currentS2 - qty;
+      entry.currentData.stock2 = newS2; // decrement for subsequent items of same ref
+
+      const opId = generateBezelOpId("bz-del");
+      const opRecord: BezelOperation = {
+        id: opId,
+        operationType: "BEZEL_DELIVERY",
+        reference: refCode,
+        quantity: qty,
+        sourceStock: "STOCK 2",
+        destinationStock: "OUT",
+        invoiceNumber: cleanInvoice,
+        operatorName: params.operatorName,
+        operatorId: params.operatorId || "",
+        timestamp: nowIso,
+        stock1Before: s1,
+        stock1After: s1,
+        stock2Before: currentS2,
+        stock2After: newS2,
+        status: "completed",
+        notes: `SW: ${it.sourceSWRef || "Direct"} (${it.description || ""}) -> Bezel S2: ${refCode}${params.notes ? ` - ${params.notes}` : ""}`
+      };
+
+      const opDocRef = doc(db, "bezel_operations", opId);
+      transaction.set(opDocRef, cleanData({
+        ...opRecord,
+        serverTimestamp: serverTimestamp()
+      }));
+
+      operationsCreated.push(opRecord);
+    }
+
+    // 3. Write updated references
+    for (const [refCode, entry] of refDocs.entries()) {
+      const s1 = entry.currentData.stock1 || 0;
+      const s2 = entry.currentData.stock2 || 0;
+      transaction.set(entry.docRef, cleanData({
+        ...entry.currentData,
+        stock1: s1,
+        stock2: s2,
+        totalStock: s1 + s2,
+        updatedAt: nowIso,
+        lastOperation: "BEZEL_DELIVERY",
+        serverTimestamp: serverTimestamp()
+      }), { merge: true });
+    }
+
+    // 4. Record into bezel_invoices
+    invoiceId = `bz-del-inv-${cleanInvoice.replace(/[^a-zA-Z0-9_-]/g, "_")}-${Date.now().toString().slice(-4)}`;
+    const invoiceDocRef = doc(db, "bezel_invoices", invoiceId);
+
+    const invoiceData: BezelInvoice = {
+      id: invoiceId,
+      invoiceNumber: cleanInvoice,
+      date: nowIso.slice(0, 10),
+      timestamp: nowIso,
+      operator: params.operatorName,
+      shift: "SHIFT A",
+      items: params.items.map((it, idx) => ({
+        id: `it-${idx + 1}-${Date.now()}`,
+        reference: it.reference.trim().toUpperCase(),
+        quantity: Number(it.quantity) || 0,
+        destinationStock: "STOCK 2",
+        description: it.sourceSWRef ? `SW: ${it.sourceSWRef} (${it.description || ""})` : it.description
+      })),
+      totalQuantity: totalQty,
+      totalBoxes: params.items.length,
+      references: Array.from(refTotals.keys()),
+      status: "approved",
+      notes: params.notes || `Delivery Dispatch: SW -> Bezel Stock 2`,
+      createdAt: nowIso
+    };
+
+    transaction.set(invoiceDocRef, cleanData({
+      ...invoiceData,
+      serverTimestamp: serverTimestamp()
+    }));
+  });
+
+  return {
+    success: true,
+    totalQuantity: operationsCreated.reduce((sum, op) => sum + op.quantity, 0),
+    operations: operationsCreated,
+    invoiceId
+  };
+}
+
 /**
  * 4. RETURN
  * Return Bezel material from Stock 2 back to Stock 1.

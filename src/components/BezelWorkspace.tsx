@@ -26,6 +26,7 @@ import BezelOperationsModals from "./bezel/BezelOperationsModals";
 import BezelSidebar from "./bezel/BezelSidebar";
 import BezelInventoryWorkspace from "./bezel/BezelInventoryWorkspace";
 import BezelInvoicesWorkspace from "./bezel/BezelInvoicesWorkspace";
+import BezelDeliveriesWorkspace from "./bezel/BezelDeliveriesWorkspace";
 
 interface BezelWorkspaceProps {
   currentUser: User;
@@ -273,8 +274,17 @@ export default function BezelWorkspace({
             </div>
           )}
 
-          {/* Section 1: INCOMING INVOICES */}
-          {activeSection === "invoices" ? (
+          {/* Section 1: DELIVERIES (SW -> S2) */}
+          {activeSection === "deliveries" ? (
+            <BezelDeliveriesWorkspace
+              invoices={invoices}
+              operations={operations}
+              references={references}
+              currentUser={currentUser}
+              onSuccess={(msg) => showToast(msg, "success")}
+              onError={(err) => showToast(err, "error")}
+            />
+          ) : activeSection === "invoices" ? (
             <BezelInvoicesWorkspace
               invoices={invoices}
               references={references}

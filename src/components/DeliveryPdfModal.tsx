@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ParsedDeliveryDocument, ParsedDeliveryLineItem } from "../services/deliveryPdfParser";
 import { Delivery, Reference, User } from "../types";
-import { CheckCircle2, AlertCircle, ArrowRight, X, FileText, Layers, RefreshCw, Archive } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, X, FileText, Layers, RefreshCw, Archive, CheckSquare, Square } from "lucide-react";
 import Swal from "sweetalert2";
 import { saveArchivedInvoice } from "../services/invoiceArchiveService";
 
@@ -32,18 +32,37 @@ export default function DeliveryPdfModal({
 }: DeliveryPdfModalProps) {
   const [isApplying, setIsApplying] = useState(false);
   const [isArchivingOnly, setIsArchivingOnly] = useState(false);
+  const [items, setItems] = useState<ParsedDeliveryLineItem[]>([]);
+
+  useEffect(() => {
+    if (parsedDoc?.items) {
+      setItems(parsedDoc.items.map((i) => ({ ...i, included: i.included !== false })));
+    } else {
+      setItems([]);
+    }
+  }, [parsedDoc]);
 
   if (!isOpen || !parsedDoc) return null;
 
-  // Filter items: Mesh deduction items are the ones that affect stock
-  const meshItems = parsedDoc.items.filter((item) => item.isMeshDeduction && item.associatedMeshRef);
-  const nonMeshItems = parsedDoc.items.filter((item) => !item.isMeshDeduction);
+  const toggleItem = (idx: number) => {
+    setItems((prev) =>
+      prev.map((item, i) => (i === idx ? { ...item, included: !item.included } : item))
+    );
+  };
 
+  const toggleAll = () => {
+    const allSelected = items.every((i) => i.included);
+    setItems((prev) => prev.map((item) => ({ ...item, included: !allSelected })));
+  };
+
+  const activeItems = items.filter((item) => item.included);
+  const meshItems = activeItems.filter((item) => item.isMeshDeduction && item.associatedMeshRef);
   const totalDeductionQty = meshItems.reduce((acc, i) => acc + i.quantity, 0);
+  const totalSelectedInvoicedQty = activeItems.reduce((acc, i) => acc + i.quantity, 0);
   const hasInsufficientStock = meshItems.some((i) => i.status === "insufficient_stock");
 
   const buildArchiveRecord = (status: "applied" | "archived") => {
-    const swItems = parsedDoc.items.map((item) => ({
+    const swItems = activeItems.map((item) => ({
       orderNumber: item.orderNumber,
       invoiceRef: item.invoiceRef,
       description: item.description,
@@ -68,14 +87,14 @@ export default function DeliveryPdfModal({
       deliveryType: parsedDoc.deliveryType,
       targetStock: parsedDoc.targetStock,
       customer: "",
-      totalQuantity: parsedDoc.totalQuantity,
+      totalQuantity: totalSelectedInvoicedQty,
       totalMeshQuantity: totalDeductionQty,
       totalAmount: parsedDoc.totalAmount ?? null,
       transportVia: parsedDoc.transportVia || "",
       uploadedAt: new Date().toISOString(),
       uploadedBy: currentUser?.fullName || currentUser?.username || "Operator",
       status,
-      swItems: swItems.map(s => ({
+      swItems: swItems.map((s) => ({
         ...s,
         unitPrice: s.unitPrice ?? null,
         totalPrice: s.totalPrice ?? null
@@ -93,7 +112,7 @@ export default function DeliveryPdfModal({
       Swal.fire({
         icon: "warning",
         title: "No Mesh Deductions",
-        text: "None of the references in this invoice require mesh stock deduction."
+        text: "None of the selected references in this invoice require mesh stock deduction."
       });
       return;
     }
@@ -116,7 +135,7 @@ export default function DeliveryPdfModal({
       // Build payload for executeProtectedDeliveries
       const payload: Omit<Delivery, "id" | "timestamp" | "operatorName">[] = meshItems.map((item) => {
         const catRef = references.find((r) => r.code === item.associatedMeshRef);
-        const customer = catRef?.customer?.trim() || "";
+        const customer = item.customer || catRef?.customer?.trim() || "";
         return {
           invoiceNumber: parsedDoc.invoiceNumber,
           reference: item.associatedMeshRef!,
@@ -138,8 +157,8 @@ export default function DeliveryPdfModal({
 
       await Swal.fire({
         icon: "success",
-        title: "Delivery Applied & Archived",
-        text: `Invoice #${parsedDoc.invoiceNumber}: Deducted ${totalDeductionQty.toLocaleString()} PCS across ${meshItems.length} mesh references and archived in Directory.`,
+        title: "Delivery Applied",
+        text: `Invoice #${parsedDoc.invoiceNumber}: Deducted ${totalDeductionQty.toLocaleString()} PCS across ${meshItems.length} references.`,
         timer: 1800,
         showConfirmButton: false
       });
@@ -182,7 +201,10 @@ export default function DeliveryPdfModal({
   };
 
   const handleTransferToForm = () => {
-    onLoadIntoForm(parsedDoc);
+    onLoadIntoForm({
+      ...parsedDoc,
+      items: activeItems
+    });
     onClose();
   };
 
@@ -210,6 +232,11 @@ export default function DeliveryPdfModal({
                 >
                   {parsedDoc.deliveryType === "PRECOSIDO" ? "Precosido (Stock 2)" : "Steering Wheels (Stock 3)"}
                 </span>
+                {parsedDoc.invoiceDate && (
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {parsedDoc.invoiceDate}
+                  </span>
+                )}
               </div>
               <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                 {parsedDoc.rawCategoryText} • {parsedDoc.items.length} lines parsed
@@ -232,7 +259,7 @@ export default function DeliveryPdfModal({
           <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs font-mono text-center">
             <div>
               <span className="text-[10px] text-slate-400 block uppercase">Total Invoiced</span>
-              <strong className="text-slate-800 font-bold">{parsedDoc.totalQuantity.toLocaleString()} PCS</strong>
+              <strong className="text-slate-800 font-bold">{totalSelectedInvoicedQty.toLocaleString()} PCS</strong>
             </div>
             <div>
               <span className="text-[10px] text-slate-400 block uppercase">Mesh Deductions</span>
@@ -250,6 +277,20 @@ export default function DeliveryPdfModal({
               <table className="w-full text-left border-collapse text-xs font-mono">
                 <thead className="bg-slate-100/80 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-600">
                   <tr>
+                    <th className="py-2.5 px-3 w-8 text-center">
+                      <button
+                        type="button"
+                        onClick={toggleAll}
+                        className="text-slate-500 hover:text-slate-800 cursor-pointer"
+                        title="Toggle all items"
+                      >
+                        {items.every((i) => i.included) ? (
+                          <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <Square className="w-3.5 h-3.5 text-slate-400" />
+                        )}
+                      </button>
+                    </th>
                     <th className="py-2.5 px-3">INVOICE ITEM</th>
                     <th className="py-2.5 px-3">DEDUCTED MESH</th>
                     <th className="py-2.5 px-3 text-right">QTY</th>
@@ -258,17 +299,38 @@ export default function DeliveryPdfModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {parsedDoc.items.map((item, idx) => {
+                  {items.map((item, idx) => {
                     return (
                       <tr
                         key={idx}
                         className={`hover:bg-slate-50/70 transition-colors ${
-                          !item.isMeshDeduction ? "opacity-50 bg-slate-50/30" : ""
+                          !item.included
+                            ? "opacity-40 bg-slate-50/40"
+                            : !item.isMeshDeduction
+                            ? "opacity-60 bg-slate-50/20"
+                            : ""
                         }`}
                       >
+                        {/* Checkbox */}
+                        <td className="py-2 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={item.included}
+                            onChange={() => toggleItem(idx)}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                        </td>
+
                         {/* 1. Invoice Ref */}
                         <td className="py-2 px-3">
-                          <div className="font-bold text-slate-900">{item.invoiceRef}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900">{item.invoiceRef}</span>
+                            {item.customer && item.customer !== "GENERAL" && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                {item.customer}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-slate-500 font-sans truncate max-w-[200px]" title={item.description}>
                             {item.description}
                           </div>

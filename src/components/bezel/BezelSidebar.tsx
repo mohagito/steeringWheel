@@ -1,5 +1,5 @@
 import React from "react";
-import { ClipboardCheck, Layers, ChevronRight, FileText } from "lucide-react";
+import { ClipboardCheck, Layers, ChevronRight, FileText, Send } from "lucide-react";
 import { UserRole } from "../../types";
 
 export interface BezelSidebarSection {
@@ -32,6 +32,13 @@ export default function BezelSidebar({
 
   // Extensible section configuration designed so more Bezel sections can be plugged in seamlessly
   const sections: BezelSidebarSection[] = [
+    {
+      id: "deliveries",
+      label: "DELIVERIES (SW → S2)",
+      subtitle: "Decomposition & S2 out",
+      icon: Send,
+      badge: "PDF"
+    },
     {
       id: "invoices",
       label: "INCOMING INVOICES",

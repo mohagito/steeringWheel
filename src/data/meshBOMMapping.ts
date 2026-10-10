@@ -167,66 +167,6 @@ export const STEERING_WHEEL_MESH_MAPPINGS: SteeringWheelMeshMapping[] = [
     description: "L74 SW TEP +HES/HOD MAT INTEG",
     meshRef: "R001W189B",
     targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "R002A665A",
-    description: "STEERING WHEEL P33B SYNTHETIC WRAPPED",
-    meshRef: "34316011B",
-    targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "R003A514A",
-    description: "VOL FORRADO K9 MCM PEUGEOT HEATED PADD",
-    meshRef: "A026K122B",
-    targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "R003A432A",
-    description: "VOLANTE FORRADO L74 TEP INTEGRALE",
-    meshRef: "R001W189B",
-    targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "A023V842C",
-    description: "VOL FORR P64-74 GT HTD+HOD (TOP BITONE)",
-    meshRef: "A026L577A",
-    targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "A024A609C",
-    description: "SW WRAPPTOP FERF P64 PD STITCH BITON GT",
-    meshRef: "A026L577A",
-    targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "A023V830B",
-    description: "VOLANTE FORRADO P64-74 ACTIVE SPLIT",
-    meshRef: "A026L577A",
-    targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "A023V834B",
-    description: "VOL FORRADO P64-74 ALLURE (TOP MONOTONE)",
-    meshRef: "A026L577A",
-    targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "34371819B",
-    description: "VOLANTE FORRADO V316 CALEF TEP MOMENTUM",
-    meshRef: "34340681C",
-    targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "A026K881A",
-    description: "SW BJA-ph2 Wrapped TEP1",
-    meshRef: "34364719C",
-    targetStock: "Stock 3"
-  },
-  {
-    steeringWheelRef: "A028L046A",
-    description: "VOLANTE FORRADO CMFB TEP 1 PADDELS",
-    meshRef: "A026L577A",
-    targetStock: "Stock 3"
   }
 ];
 
@@ -321,6 +261,22 @@ export const PRECOSIDO_MESH_MAPPINGS: PrecosidoMeshMapping[] = [
   }
 ];
 
+/**
+ * Known references that DO NOT have meshes.
+ * If these references appear on invoices or documents, they MUST BE IGNORED for mesh deduction.
+ */
+export const NON_MESH_STEERING_WHEEL_REFERENCES = new Set<string>([
+  "A026K881A",
+  "A028L046A",
+  "34358454B",
+  "R002A665A",
+  "A023V830B",
+  "A023V834B",
+  "A023V842C",
+  "R003A514A",
+  "R003Y829A"
+]);
+
 // Normalized lookup maps for instant O(1) resolution
 const normalizedSWMap = new Map<string, SteeringWheelMeshMapping>();
 for (const item of STEERING_WHEEL_MESH_MAPPINGS) {
@@ -333,7 +289,17 @@ for (const item of PRECOSIDO_MESH_MAPPINGS) {
 }
 
 /**
+ * Checks if a reference is known to NOT have meshes.
+ */
+export function isExplicitNonMeshReference(ref: string): boolean {
+  if (!ref) return false;
+  return NON_MESH_STEERING_WHEEL_REFERENCES.has(ref.trim().toUpperCase());
+}
+
+/**
  * Resolve mesh and target stock by reference and optional delivery context.
+ * Strict rule: ONLY the 23 verified SW references and verified Precosido references have meshes.
+ * All others (including A026K881A, A028L046A, etc.) return null.
  */
 export function resolveMeshDeduction(reference: string, deliveryType?: "STEERING WHEELS" | "PRECOSIDO" | string): {
   meshRef: string;
@@ -341,7 +307,13 @@ export function resolveMeshDeduction(reference: string, deliveryType?: "STEERING
   description: string;
   sourceType: "STEERING_WHEEL" | "PRECOSIDO";
 } | null {
+  if (!reference) return null;
   const cleanRef = reference.trim().toUpperCase();
+
+  // If in explicit non-mesh list, always return null
+  if (NON_MESH_STEERING_WHEEL_REFERENCES.has(cleanRef)) {
+    return null;
+  }
 
   // If explicitly specified as Precosido, check precosido map first
   if (deliveryType === "PRECOSIDO") {
@@ -356,7 +328,7 @@ export function resolveMeshDeduction(reference: string, deliveryType?: "STEERING
     }
   }
 
-  // If explicitly specified as Steering Wheel, check SW map first
+  // If explicitly specified as Steering Wheel, check SW map only
   if (deliveryType === "STEERING WHEELS") {
     const swMatch = normalizedSWMap.get(cleanRef);
     if (swMatch) {
@@ -367,6 +339,7 @@ export function resolveMeshDeduction(reference: string, deliveryType?: "STEERING
         sourceType: "STEERING_WHEEL"
       };
     }
+    return null;
   }
 
   // Automatic detection: check SW first, then Precosido
@@ -392,3 +365,4 @@ export function resolveMeshDeduction(reference: string, deliveryType?: "STEERING
 
   return null;
 }
+

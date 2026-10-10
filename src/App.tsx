@@ -130,6 +130,30 @@ export default function App() {
     });
   }, [references]);
 
+  // Unified production records synchronization between Production & Daily Production
+  // Brings all records from both collections, de-duplicates by ID, and orders them chronologically
+  const synchronizedProductions = useMemo(() => {
+    const recordMap = new Map<string, Production>();
+    // First include standard productions
+    productions.forEach((p) => {
+      if (p.id) recordMap.set(p.id, p);
+    });
+    // Then merge daily productions
+    dailyProductions.forEach((dp) => {
+      if (dp.id && !recordMap.has(dp.id)) {
+        recordMap.set(dp.id, dp);
+      }
+    });
+
+    const combined = Array.from(recordMap.values());
+    combined.sort((a, b) => {
+      const dateDiff = compareTimestampsDesc(a.date, b.date);
+      if (dateDiff !== 0) return dateDiff;
+      return compareTimestampsDesc(a.timestamp, b.timestamp);
+    });
+    return combined;
+  }, [productions, dailyProductions]);
+
   useEffect(() => {
     if (currentUser) {
       sessionStorage.setItem("epp_current_user", JSON.stringify(currentUser));
@@ -478,24 +502,41 @@ export default function App() {
   };
 
   // Action: Delete / Revert a production entry (moves quantity back from Stock 3 Finished Goods to Stock 2 WIP) (Protected)
+  // Smart-routed: Checks whether record resides in daily_productions or productions
   const handleDeleteProduction = async (productionId: string, reason?: string) => {
-    await executeProtectedDeleteProduction(productionId, currentUser?.fullName || "System", productions, reason);
+    const isDaily = dailyProductions.some(dp => dp.id === productionId);
+    if (isDaily) {
+      await executeProtectedDeleteDailyProduction(productionId, currentUser?.fullName || "System", reason, false);
+    } else {
+      await executeProtectedDeleteProduction(productionId, currentUser?.fullName || "System", productions, reason);
+    }
   };
 
   // Action: Delete / Revert an entire batch of production entries from a daily drag intake (Protected)
   const handleDeleteProductionBatch = async (batchRecords: Production[], reason?: string) => {
     if (!currentUser) throw new Error("No authenticated user session.");
-    await executeProtectedDeleteBatch(batchRecords, currentUser.fullName, reason);
+    const isDaily = batchRecords.some(r => dailyProductions.some(dp => dp.id === r.id));
+    if (isDaily) {
+      await executeProtectedDeleteDailyProductionBatch(batchRecords, currentUser.fullName, reason, false);
+    } else {
+      await executeProtectedDeleteBatch(batchRecords, currentUser.fullName, reason);
+    }
   };
 
   // Action: Modify an existing production entry (Protected)
+  // Smart-routed: Checks whether record resides in daily_productions or productions
   const handleUpdateProduction = async (
     productionId: string,
     updatedData: { date: string; reference: string; quantity: number; notes?: string },
     reason?: string
   ) => {
     if (!currentUser) throw new Error("No authenticated user session.");
-    await executeProtectedUpdateProduction(productionId, updatedData, currentUser.fullName, reason);
+    const isDaily = dailyProductions.some(dp => dp.id === productionId);
+    if (isDaily) {
+      await executeProtectedUpdateDailyProduction(productionId, updatedData, currentUser.fullName, reason);
+    } else {
+      await executeProtectedUpdateProduction(productionId, updatedData, currentUser.fullName, reason);
+    }
   };
 
   // Dedicated Daily Production handlers (Isolated to daily_productions collection)
@@ -1590,7 +1631,7 @@ export default function App() {
 
               {activeTab === "production" && (
                 <ProductionWorkspace
-                  productions={productions}
+                  productions={synchronizedProductions}
                   references={references}
                   currentUser={currentUser}
                   onSubmitProduction={handleSubmitProduction}
@@ -1603,7 +1644,7 @@ export default function App() {
                 <DailyProductionDemo
                   references={references}
                   currentUser={currentUser}
-                  productions={dailyProductions}
+                  productions={synchronizedProductions}
                   onNavigateToProduction={() => setActiveTab("production")}
                   onSubmitProduction={handleSubmitProduction}
                   onValidateToStock3={handleValidateDailyProductionToStock3}

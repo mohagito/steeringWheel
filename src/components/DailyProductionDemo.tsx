@@ -10,6 +10,7 @@ import {
   parsePastedSheetText, 
   ParseResult 
 } from "../utils/sheetParser";
+import { parseDeliveryPDF } from "../services/deliveryPdfParser";
 import { 
   FileSpreadsheet, 
   Upload, 
@@ -396,6 +397,61 @@ export default function DailyProductionDemo({
   const processUploadedFile = async (file: File) => {
     setIsParsing(true);
     try {
+      const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+
+      if (isPdf) {
+        const doc = await parseDeliveryPDF(file, references);
+        if (doc.items.length === 0) {
+          Swal.fire({
+            icon: "warning",
+            title: "No Matching References",
+            text: "No references with valid mesh mappings were found. References outside the verified list were ignored."
+          });
+          return;
+        }
+
+        const convertedRows: DailyProductionRow[] = doc.items.map((item, idx) => {
+          const meshCode = item.associatedMeshRef || item.invoiceRef;
+          const catRef = references.find((r) => r.code?.toUpperCase().trim() === meshCode.toUpperCase().trim());
+          return {
+            id: `row-pdf-${idx}-${Date.now().toString(36)}`,
+            refMaille: meshCode,
+            libelle: item.description || catRef?.description || "",
+            qtyConsommes: item.quantity,
+            matchedReference: catRef
+              ? {
+                  code: catRef.code,
+                  description: catRef.description,
+                  customer: catRef.customer,
+                  stock2: catRef.stock2 || 0,
+                  stock3: catRef.stock3 || 0
+                }
+              : null,
+            isValid: item.quantity > 0,
+            validationError: item.quantity > 0 ? undefined : "Quantity must be greater than 0"
+          };
+        });
+
+        setRows(convertedRows);
+        setCurrentSource(`Invoice ${doc.invoiceNumber} (${convertedRows.length} items parsed)`);
+
+        Swal.fire({
+          icon: "success",
+          title: "Invoice Mesh Data Loaded",
+          html: `
+            <div style="font-family: monospace; font-size: 13px; text-align: left; line-height: 1.6; padding: 10px; background: #f8fafc; border-radius: 6px;">
+              <p><strong>File:</strong> ${file.name}</p>
+              <p><strong>Invoice #:</strong> ${doc.invoiceNumber}</p>
+              <p><strong>Rows:</strong> <span style="color: #2563eb; font-weight: bold;">${convertedRows.length} items</span></p>
+              <p><strong>Total Consumed:</strong> <span style="color: #059669; font-weight: bold;">${convertedRows.reduce((s, r) => s + r.qtyConsommes, 0).toLocaleString()} PCS</span></p>
+            </div>
+          `,
+          timer: 2000,
+          showConfirmButton: false
+        });
+        return;
+      }
+
       const result: ParseResult = await parseGoogleSheetsFile(file, references);
       if (result.rows.length === 0) {
         Swal.fire({
@@ -411,12 +467,12 @@ export default function DailyProductionDemo({
 
       Swal.fire({
         icon: "success",
-        title: "Google Sheets File Loaded!",
+        title: "File Loaded",
         html: `
           <div style="font-family: monospace; font-size: 13px; text-align: left; line-height: 1.6; padding: 10px; background: #f8fafc; border-radius: 6px;">
-            <p><strong>File Name:</strong> ${file.name}</p>
-            <p><strong>Rows Converted:</strong> <span style="color: #2563eb; font-weight: bold;">${result.rows.length} items</span></p>
-            <p><strong>Total Consumed Quantity:</strong> <span style="color: #059669; font-weight: bold;">${result.totalQuantity.toLocaleString()} PCS</span></p>
+            <p><strong>File:</strong> ${file.name}</p>
+            <p><strong>Rows:</strong> <span style="color: #2563eb; font-weight: bold;">${result.rows.length} items</span></p>
+            <p><strong>Total:</strong> <span style="color: #059669; font-weight: bold;">${result.totalQuantity.toLocaleString()} PCS</span></p>
           </div>
         `,
         timer: 2000,
@@ -427,7 +483,7 @@ export default function DailyProductionDemo({
       Swal.fire({
         icon: "error",
         title: "Parsing Failed",
-        text: err.message || "Failed to read the file. Please ensure it is a valid CSV or Excel file exported from Google Sheets."
+        text: err.message || "Failed to read the file. Please ensure it is a valid PDF, CSV or Excel file."
       });
     } finally {
       setIsParsing(false);
@@ -1026,32 +1082,36 @@ export default function DailyProductionDemo({
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
             id="google-sheets-dropzone"
-            className={`border-2 border-dashed rounded-2xl p-8 sm:p-10 transition-all text-center cursor-pointer flex flex-col items-center justify-center min-h-[220px] ${
+            className={`border-2 border-dashed rounded-2xl p-6 sm:p-7 transition-all text-center cursor-pointer flex flex-col items-center justify-center min-h-[175px] ${
               isDragging
-                ? "border-blue-500 bg-blue-50/60 scale-[1.01] shadow-md ring-4 ring-blue-500/10"
-                : "border-slate-300 hover:border-blue-400 bg-white hover:bg-slate-50/50 shadow-2xs"
+                ? "border-blue-500 bg-blue-50/70 scale-[1.01] shadow-md ring-4 ring-blue-500/10"
+                : "border-slate-300 hover:border-blue-500 bg-white hover:bg-slate-50/60 shadow-2xs"
             }`}
           >
             <input
               type="file"
               ref={fileInputRef}
               onChange={handleFileInputChange}
-              accept=".csv,.xlsx,.xls,.tsv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              accept=".csv,.xlsx,.xls,.tsv,.pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf"
               className="hidden"
             />
 
-            <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3.5 shadow-2xs border border-blue-100 group-hover:scale-105 transition-transform">
-              <Upload className="w-7 h-7" />
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-2 shadow-2xs border border-blue-100">
+              <Upload className="w-4 h-4" />
             </div>
 
-            <h3 className="text-base font-bold text-slate-800">
-              {isDragging ? "Drop your Google Sheets file here!" : "Drag & Drop Google Sheets File Here"}
+            <h3 className="text-sm font-bold text-slate-800 font-mono">
+              {isDragging ? "Drop file to import" : "Drop Google Sheets, Excel or PDF Invoice"}
             </h3>
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+              CSV, XLSX, TSV, PDF
+            </p>
+
+            <div className="mt-3 flex items-center justify-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs">
                 <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Browse Files</span>
+                <span>Browse</span>
               </span>
               <button
                 type="button"
@@ -1062,7 +1122,7 @@ export default function DailyProductionDemo({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 cursor-pointer"
               >
                 <ClipboardPaste className="w-3.5 h-3.5 text-slate-600" />
-                <span>Paste Google Sheets Cells</span>
+                <span>Paste</span>
               </button>
             </div>
           </div>
@@ -1581,6 +1641,9 @@ export default function DailyProductionDemo({
                                     <th className="py-2 px-3">Movement</th>
                                     <th className="py-2 px-3">Operator</th>
                                     <th className="py-2 px-3 text-right">Time</th>
+                                    {(onUpdateProduction || onDeleteProduction) && (
+                                      <th className="py-2 px-3 text-right">Actions</th>
+                                    )}
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 text-xs">
@@ -1590,7 +1653,19 @@ export default function DailyProductionDemo({
                                     const timeStr = item.timestamp ? formatSystemTime(item.timestamp).split(" ")[1] || "—" : "—";
                                     return (
                                       <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                                        <td className="py-2 px-3 font-bold text-slate-900">{item.reference}</td>
+                                        <td className="py-2 px-3 font-bold text-slate-900">
+                                          <div className="flex items-center gap-1.5">
+                                            <span>{item.reference}</span>
+                                            {item.status === "edited" && (
+                                              <span 
+                                                className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-200"
+                                                title="This record was modified"
+                                              >
+                                                EDITED
+                                              </span>
+                                            )}
+                                          </div>
+                                        </td>
                                         <td className="py-2 px-3 text-slate-500 truncate max-w-xs" title={desc}>{desc}</td>
                                         <td className="py-2 px-3 text-right font-black text-emerald-700">
                                           {item.quantity?.toLocaleString()} PCS
@@ -1602,6 +1677,38 @@ export default function DailyProductionDemo({
                                         </td>
                                         <td className="py-2 px-3 text-slate-600 truncate max-w-[140px]">{item.operatorName || currentUser.fullName}</td>
                                         <td className="py-2 px-3 text-right text-slate-400 text-[10px]">{timeStr}</td>
+                                        {(onUpdateProduction || onDeleteProduction) && (
+                                          <td className="py-2 px-3 text-right whitespace-nowrap">
+                                            <div className="flex items-center justify-end gap-1">
+                                              {onUpdateProduction && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleStartEditProduction(item);
+                                                  }}
+                                                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                                                  title="Edit Record"
+                                                >
+                                                  <Edit2 className="w-3 h-3" />
+                                                </button>
+                                              )}
+                                              {onDeleteProduction && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteProductionRecord(item);
+                                                  }}
+                                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                                  title="Delete & Revert Record"
+                                                >
+                                                  <Trash2 className="w-3 h-3" />
+                                                </button>
+                                              )}
+                                            </div>
+                                          </td>
+                                        )}
                                       </tr>
                                     );
                                   })}
@@ -1663,6 +1770,108 @@ export default function DailyProductionDemo({
                 Convert & Import
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Validated Record Modal */}
+      {editingProduction && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-5 sm:p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shadow-xs">
+                  <Edit2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 font-mono">Edit Validated Production Record</h3>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    Update production details for {editingProduction.reference}.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingProduction(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProductionEdit} className="p-5 sm:p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
+                    Reference
+                  </label>
+                  <input
+                    type="text"
+                    value={editProdRef}
+                    onChange={(e) => setEditProdRef(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editProdDate}
+                    onChange={(e) => setEditProdDate(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
+                  Quantity (PCS)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={editProdQty}
+                  onChange={(e) => setEditProdQty(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono font-black text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 font-mono">
+                  Reason for Adjustment <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Typo correction, inventory count adjustment..."
+                  value={editProdReason}
+                  onChange={(e) => setEditProdReason(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingProduction(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit || !editProdReason.trim()}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-sm disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSavingEdit ? "Saving..." : "Save Changes"}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
