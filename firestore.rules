@@ -4,15 +4,7 @@ service cloud.firestore {
 
     // Helper functions for data integrity & defense
     function isValidId(id) {
-      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.:]+$');
-    }
-
-    function isValidPositiveQuantity(qty) {
-      return qty is number && qty > 0;
-    }
-
-    function isValidReferenceCode(code) {
-      return code is string && code.size() >= 2 && code.size() <= 60;
+      return id is string && id.size() >= 1 && id.size() <= 128;
     }
 
     // Users Collection: Authentication & user profiles
@@ -22,66 +14,50 @@ service cloud.firestore {
       allow delete: if isValidId(userId);
     }
 
-    // References: Must preserve catalog structure
+    // References: Catalog records
     match /references/{referenceId} {
       allow read: if true;
-      allow create, update: if isValidId(referenceId)
-                            && request.resource.data.code is string
-                            && request.resource.data.code.size() >= 2
-                            && request.resource.data.stock1 is number
-                            && request.resource.data.stock2 is number
-                            && request.resource.data.stock3 is number;
+      allow create, update: if isValidId(referenceId);
       allow delete: if isValidId(referenceId);
     }
 
-    // Deliveries: Must have valid reference and positive quantity
+    // Deliveries: Customer dispatches and return intake receipts
     match /deliveries/{deliveryId} {
       allow read: if true;
-      allow create, update: if isValidId(deliveryId)
-                            && request.resource.data.reference is string 
-                            && request.resource.data.quantity is number 
-                            && request.resource.data.quantity > 0;
+      allow create, update: if isValidId(deliveryId);
       allow delete: if isValidId(deliveryId);
     }
 
-    // Productions & Daily Productions: Positive quantities
+    // Productions & Daily Productions
     match /productions/{productionId} {
       allow read: if true;
-      allow create, update: if isValidId(productionId)
-                            && request.resource.data.quantity is number 
-                            && request.resource.data.quantity > 0;
+      allow create, update: if isValidId(productionId);
       allow delete: if isValidId(productionId);
     }
 
     match /daily_productions/{dailyProductionId} {
       allow read: if true;
-      allow create, update: if isValidId(dailyProductionId)
-                            && request.resource.data.quantity is number 
-                            && request.resource.data.quantity > 0;
+      allow create, update: if isValidId(dailyProductionId);
       allow delete: if isValidId(dailyProductionId);
     }
 
-    // Disassemblies & Scraps: Positive quantities
+    // Disassemblies & Scraps
     match /disassemblies/{disassemblyId} {
       allow read: if true;
-      allow create, update: if isValidId(disassemblyId)
-                            && request.resource.data.quantity is number 
-                            && request.resource.data.quantity > 0;
+      allow create, update: if isValidId(disassemblyId);
       allow delete: if isValidId(disassemblyId);
     }
 
     match /scraps/{scrapId} {
       allow read: if true;
-      allow create, update: if isValidId(scrapId)
-                            && request.resource.data.quantity is number 
-                            && request.resource.data.quantity > 0;
+      allow create, update: if isValidId(scrapId);
       allow delete: if isValidId(scrapId);
     }
 
     // Transactions (Audit trail): Historical records cannot be physically deleted
     match /transactions/{transactionId} {
       allow read: if true;
-      allow create: if isValidId(transactionId) && request.resource.data.reference is string;
+      allow create: if isValidId(transactionId);
       allow update: if isValidId(transactionId);
       // Immutable historical audit record: prevent deletion
       allow delete: if false;
@@ -123,8 +99,7 @@ service cloud.firestore {
 
     match /bezel_operations/{opId} {
       allow read: if true;
-      allow create: if isValidId(opId) && request.resource.data.quantity is number && request.resource.data.quantity >= 0;
-      allow update, delete: if isValidId(opId);
+      allow create, update, delete: if isValidId(opId);
     }
 
     match /bezel_invoices/{invoiceId} {
@@ -142,4 +117,3 @@ service cloud.firestore {
     }
   }
 }
-

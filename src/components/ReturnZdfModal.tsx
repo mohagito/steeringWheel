@@ -238,22 +238,25 @@ export default function ReturnZdfModal({
         reason: `RETURN ZDF [${category}]: ${cleanContainer} -> ${targetStock} (${includedItems.length} items, ${totalIncludedPcs} pcs)`,
         transactions,
         additionalWrites: (transaction, timestamp) => {
-          // Record delivery receipt in deliveries collection
+          // 1. Record container summary in deliveries collection
           const delivRef = doc(db, "deliveries", deliveryId);
           transaction.set(delivRef, {
             id: deliveryId,
             deliveryId,
             invoiceNumber: cleanContainer,
+            reference: includedItems[0]?.meshReference.trim().toUpperCase() || "RED_CAGE",
+            quantity: totalIncludedPcs,
+            totalQuantity: totalIncludedPcs,
             deliveryType: category === "RED_CAGE" ? "RETURN_ZDF_RED_CAGE" : "RETURN_ZDF_PRECOSIDO",
             deliveryCategory: category === "RED_CAGE" ? "STEERING WHEELS" : "PRECOSIDO",
             targetStock,
             destinationStock: targetStock,
             date: now.slice(0, 10),
             createdAt: timestamp,
+            timestamp: now,
             registeredBy: operatorName,
             operatorName,
             status: "approved",
-            totalQuantity: totalIncludedPcs,
             totalBoxes: includedItems.length,
             notes: note ? `RETURN ZDF (${category}): ${note}` : `RETURN ZDF (${category})`,
             items: includedItems.map((it, i) => ({
@@ -265,6 +268,34 @@ export default function ReturnZdfModal({
               client: it.client,
               targetStock
             }))
+          });
+
+          // 2. Also record line-item entries in deliveries collection for complete ledger traceability
+          includedItems.forEach((it, i) => {
+            const itemDelivId = `deliv-zdf-item-${deliveryId}-${i + 1}`;
+            const itemRef = doc(db, "deliveries", itemDelivId);
+            transaction.set(itemRef, {
+              id: itemDelivId,
+              deliveryId: itemDelivId,
+              parentDeliveryId: deliveryId,
+              invoiceNumber: cleanContainer,
+              reference: it.meshReference.trim().toUpperCase(),
+              originalRef: it.docReference,
+              description: it.description,
+              quantity: it.quantity,
+              customer: it.client || (category === "RED_CAGE" ? "ZDF RED CAGE" : "ZDF PRECOSIDO"),
+              deliveryType: category === "RED_CAGE" ? "RETURN_ZDF_RED_CAGE" : "RETURN_ZDF_PRECOSIDO",
+              deliveryCategory: category === "RED_CAGE" ? "STEERING WHEELS" : "PRECOSIDO",
+              targetStock,
+              destinationStock: targetStock,
+              date: now.slice(0, 10),
+              createdAt: timestamp,
+              timestamp: now,
+              registeredBy: operatorName,
+              operatorName,
+              status: "approved",
+              notes: `RETURN ZDF [${category}] (${it.docReference} -> ${it.meshReference}) Container: ${cleanContainer}`
+            });
           });
         }
       });
