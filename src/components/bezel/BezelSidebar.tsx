@@ -1,9 +1,10 @@
 import React from "react";
 import { 
+  Database,
   Truck, 
   FileText, 
-  Layers, 
   ClipboardCheck, 
+  History,
   ArrowLeft, 
   LogOut 
 } from "lucide-react";
@@ -16,6 +17,7 @@ export interface BezelSidebarSection {
   badge?: string | number;
   managerOnly?: boolean;
   isSpecialIndigo?: boolean;
+  isSpecialAmber?: boolean;
 }
 
 interface BezelSidebarProps {
@@ -46,9 +48,16 @@ export default function BezelSidebar({
 
   const sections: BezelSidebarSection[] = [
     {
-      id: "deliveries",
-      label: "Deliveries",
-      icon: Truck
+      id: "stock",
+      label: "Stock",
+      icon: Database
+    },
+    {
+      id: "inventory",
+      label: "STOCK INVENTORY",
+      icon: ClipboardCheck,
+      managerOnly: true,
+      isSpecialIndigo: true
     },
     {
       id: "invoices",
@@ -57,17 +66,16 @@ export default function BezelSidebar({
       badge: invoicesCount > 0 ? invoicesCount : undefined
     },
     {
-      id: "operations",
-      label: "Operations & Stock",
-      icon: Layers,
-      badge: referencesCount > 0 ? `${referencesCount} refs` : undefined
+      id: "deliveries",
+      label: "Deliveries",
+      icon: Truck
     },
     {
-      id: "inventory",
-      label: "STOCK INVENTORY",
-      icon: ClipboardCheck,
-      managerOnly: true,
-      isSpecialIndigo: true
+      id: "records",
+      label: "RECORDS",
+      icon: History,
+      isSpecialAmber: true,
+      badge: operationsCount > 0 ? operationsCount : undefined
     }
   ];
 
@@ -106,13 +114,14 @@ export default function BezelSidebar({
           </span>
         </button>
 
-        {/* Navigation Items */}
+        {/* Navigation Items Matching Meshes Visual System */}
         <nav className="flex md:flex-col flex-row flex-wrap md:space-y-1 gap-1" id="bezel-primary-navigation-tabs">
           {sections.map((section) => {
             if (section.managerOnly && !isManager) return null;
             const Icon = section.icon;
             const isActive = activeSection === section.id;
             const isSpecial = section.isSpecialIndigo;
+            const isAmber = section.isSpecialAmber;
 
             return (
               <button
@@ -123,15 +132,17 @@ export default function BezelSidebar({
                   isActive
                     ? isSpecial
                       ? "text-indigo-400 font-bold bg-[#0f1e36] border-indigo-400"
-                      : "text-white font-bold bg-[#0f1e36] border-brand-500"
+                      : isAmber
+                        ? "text-amber-400 font-bold bg-[#0f1e36] border-amber-400"
+                        : "text-white font-bold bg-[#0f1e36] border-brand-500"
                     : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Icon className={`w-4 h-4 shrink-0 ${isSpecial ? "text-indigo-400" : ""}`} />
+                  <Icon className={`w-4 h-4 shrink-0 ${isSpecial ? "text-indigo-400" : isAmber && isActive ? "text-amber-400" : ""}`} />
                   <span>{section.label}</span>
                 </div>
-                {section.badge && (
+                {section.badge !== undefined && (
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#14233c] text-slate-400 border border-[#1e293b]">
                     {section.badge}
                   </span>
@@ -142,11 +153,11 @@ export default function BezelSidebar({
         </nav>
       </div>
 
-      {/* User Profile Card & Signout at Bottom */}
-      <div className="pt-4 border-t border-[#14233c] shrink-0 mt-4">
+      {/* User Session Footer Matching Meshes Design */}
+      <div className="border-t border-slate-800 pt-4 mt-4 md:mt-0">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 bg-slate-700 text-white font-bold text-sm rounded-full flex items-center justify-center uppercase shrink-0 font-mono">
+            <div className="w-9 h-9 bg-slate-700 text-white font-bold text-sm rounded-full flex items-center justify-center uppercase shrink-0">
               {currentUser.fullName.slice(0, 2)}
             </div>
             <div className="min-w-0">
@@ -162,8 +173,8 @@ export default function BezelSidebar({
           <button
             onClick={onLogout}
             id="bezel-sidebar-signout-btn"
-            className="p-2 rounded-lg bg-slate-800 hover:bg-rose-950/30 text-slate-400 hover:text-rose-400 transition-all cursor-pointer"
-            title="Exit Session"
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Logout"
           >
             <LogOut className="w-4 h-4" />
           </button>

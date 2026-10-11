@@ -1,10 +1,10 @@
 import React, { useState, useRef, useMemo } from "react";
 import { Reference, User, DisassemblyEntry } from "../types";
 import { 
-  parseGoogleSheetsFile, 
-  parsePastedSheetText, 
-  ParseResult 
-} from "../utils/sheetParser";
+  parseSpreadsheetFile, 
+  parsePastedSpreadsheetText, 
+  SpreadsheetParseResult 
+} from "../utils/excelParser";
 import { 
   Hammer, 
   Upload, 
@@ -141,7 +141,7 @@ export default function DesassemblageWorkspace({
   const handleFileUpload = async (file: File) => {
     setIsParsing(true);
     try {
-      const result: ParseResult = await parseGoogleSheetsFile(file);
+      const result: SpreadsheetParseResult = await parseSpreadsheetFile(file);
       if (result.rows.length === 0) {
         Swal.fire({
           icon: "warning",
@@ -184,7 +184,7 @@ export default function DesassemblageWorkspace({
   const handleProcessPastedText = () => {
     if (!pastedText.trim()) return;
     try {
-      const result = parsePastedSheetText(pastedText);
+      const result = parsePastedSpreadsheetText(pastedText);
       if (result.rows.length === 0) {
         Swal.fire({
           icon: "warning",
@@ -890,7 +890,7 @@ export default function DesassemblageWorkspace({
           <div className="bg-white border border-slate-100 rounded-3xl shadow-2xl max-w-lg w-full p-6 animate-fadeIn">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <h3 className="text-base font-extrabold text-slate-900">
-                Paste Desassemblage Sheet Data
+                Paste Desassemblage Spreadsheet Data
               </h3>
               <button
                 onClick={() => setPasteModalOpen(false)}
@@ -900,7 +900,7 @@ export default function DesassemblageWorkspace({
               </button>
             </div>
             <p className="text-xs text-slate-500 font-mono mb-3">
-              Paste rows directly from Excel or Google Sheets (Ref, Description, Quantity):
+              Paste rows directly from Excel or CSV (Ref, Description, Quantity):
             </p>
             <textarea
               rows={8}

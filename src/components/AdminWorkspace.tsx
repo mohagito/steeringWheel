@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 
+import GoogleSheetsBackupManager from "./GoogleSheetsBackupManager";
+
 interface AdminWorkspaceProps {
   users: User[];
   onAddUser: (userData: User) => Promise<void>;
@@ -15,6 +17,7 @@ interface AdminWorkspaceProps {
   onCleanDatabase: () => Promise<void>;
   onAuditDatabase?: () => Promise<{ repairedRefs: number; repairedUsers: number }>;
   onClearInvoices?: () => Promise<void>;
+  currentUser?: User;
 }
 
 export default function AdminWorkspace({
@@ -25,6 +28,7 @@ export default function AdminWorkspace({
   onCleanDatabase,
   onAuditDatabase,
   onClearInvoices,
+  currentUser = { id: "admin", username: "admin", fullName: "Manager", role: "admin", pin: "0000" }
 }: AdminWorkspaceProps) {
   const [isResetting, setIsResetting] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
@@ -627,6 +631,9 @@ export default function AdminWorkspace({
           </div>
         </div>
       )}
+
+      {/* Google Sheets Live Backup Mirror (Manager / Admin disaster-recovery copy) */}
+      <GoogleSheetsBackupManager currentUser={currentUser} />
 
       {/* Danger Zone: Database Reset & Invoices Clearing */}
       <div className="glass-panel p-5 mt-4 border-rose-200/80 bg-rose-50/20 space-y-4">

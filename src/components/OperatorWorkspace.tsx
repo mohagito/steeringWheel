@@ -51,8 +51,8 @@ export default function OperatorWorkspace({
     } catch (e) {}
   }, []);
   
-  // Operation Mode: INTAKE vs TRANSFER (Pegadas) vs RETURN vs INCOMPLETA
-  const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER" | "RETURN" | "INCOMPLETA">("INTAKE");
+  // Operation Mode: TRANSFER (Pegadas) vs RETURN vs INCOMPLETA
+  const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER" | "RETURN" | "INCOMPLETA">("TRANSFER");
 
   // Local optimistic pending invoice for instant (0ms) UI updates during rapid scanning (INTAKE mode)
   const [localPendingInvoice, setLocalPendingInvoice] = useState<ReceivingInvoice | null>(null);
@@ -1155,26 +1155,7 @@ export default function OperatorWorkspace({
         </div>
 
         {/* Operation Mode Selector Tabs */}
-        <div className="grid grid-cols-4 gap-1.5 sm:gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 font-mono">
-          <button
-            type="button"
-            onClick={() => {
-              setOpMode("INTAKE");
-              setErrorMsg("");
-              setSuccessMsg("");
-              setAutoCorrectNotice("");
-              setTimeout(() => referenceRef.current?.focus(), 50);
-            }}
-            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
-              opMode === "INTAKE"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-            }`}
-            id="op-tab-new-truck"
-          >
-            <span>🚛</span>
-            <span className="truncate">New Truck</span>
-          </button>
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 font-mono">
           <button
             type="button"
             onClick={() => {

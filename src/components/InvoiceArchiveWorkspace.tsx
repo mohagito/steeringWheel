@@ -28,7 +28,6 @@ export default function InvoiceArchiveWorkspace({
 }: InvoiceArchiveWorkspaceProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
-  const [onlyPdfFilter, setOnlyPdfFilter] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<ArchivedInvoice | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<"sw" | "meshes">("sw");
   
@@ -53,7 +52,6 @@ export default function InvoiceArchiveWorkspace({
   const filteredInvoices = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return allInvoices.filter((inv) => {
-      if (onlyPdfFilter && !inv.hasPdf && !inv.pdfDataUrl) return false;
       if (typeFilter !== "ALL") {
         const t = (inv.deliveryType || "").toUpperCase();
         if (typeFilter === "SW" && !t.includes("STEERING")) return false;
@@ -81,7 +79,7 @@ export default function InvoiceArchiveWorkspace({
 
       return matchesNum || matchesCust || matchesDate || matchesSw || matchesMesh;
     });
-  }, [allInvoices, searchQuery, typeFilter, onlyPdfFilter]);
+  }, [allInvoices, searchQuery, typeFilter]);
 
   // Summary Metrics (100% real mathematical calculation from line items)
   const metrics = useMemo(() => {
@@ -318,19 +316,7 @@ export default function InvoiceArchiveWorkspace({
             </button>
           </div>
 
-          {/* Toggle PDF Only */}
-          <button
-            type="button"
-            onClick={() => setOnlyPdfFilter(!onlyPdfFilter)}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              onlyPdfFilter
-                ? "bg-rose-50 border-rose-300 text-rose-700 shadow-2xs"
-                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5 text-rose-600" />
-            <span>PDF Only</span>
-          </button>
+
 
           {allInvoices.length > 0 && currentUser.role !== "operator" && (
             <button
