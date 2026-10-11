@@ -101,7 +101,6 @@ export async function seedBezelReferencesIfEmpty(): Promise<boolean> {
     const dummyIds = ["BZ-F150-L", "BZ-F150-R", "BZ-V363-U", "BZ-V363-D"];
     for (const d of snap.docs) {
       if (dummyIds.includes(d.id)) {
-        const { deleteDoc } = await import("firebase/firestore");
         await deleteDoc(d.ref);
         modified = true;
       }

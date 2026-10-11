@@ -26,7 +26,6 @@
     "react-dom": "^19.0.1",
     "recharts": "^3.9.0",
     "sweetalert2": "^11.26.25",
-    "vite": "^6.2.3",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
