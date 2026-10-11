@@ -1,10 +1,68 @@
 import React, { useState, useRef, useMemo } from "react";
+import * as XLSX from "xlsx";
 import { Reference, User, DisassemblyEntry } from "../types";
-import { 
-  parseSpreadsheetFile, 
-  parsePastedSpreadsheetText, 
-  SpreadsheetParseResult 
-} from "../utils/excelParser";
+
+
+interface ParseRow {
+  refMaille: string;
+  libelle: string;
+  qtyConsommes: number;
+}
+
+interface ParseResult {
+  rows: ParseRow[];
+  totalQuantity: number;
+}
+
+function parseSpreadsheetRows(sheetRows: any[][]): ParseResult {
+  if (!sheetRows || sheetRows.length === 0) return { rows: [], totalQuantity: 0 };
+  let headerIdx = 0;
+  while (headerIdx < sheetRows.length && (!sheetRows[headerIdx] || sheetRows[headerIdx].every((c) => !c && c !== 0))) {
+    headerIdx++;
+  }
+  if (headerIdx >= sheetRows.length) return { rows: [], totalQuantity: 0 };
+  const headers = sheetRows[headerIdx].map((h) => String(h || "").trim().toLowerCase());
+  let refIdx = headers.findIndex((h) => h.includes("ref") || h.includes("code") || h.includes("maille") || h === "item");
+  let libIdx = headers.findIndex((h) => h.includes("libelle") || h.includes("desc") || h.includes("designation"));
+  let qtyIdx = headers.findIndex((h) => h.includes("qty") || h.includes("quantite") || h.includes("consomme") || h.includes("total") || h === "qte");
+  if (refIdx === -1) refIdx = 0;
+  if (libIdx === -1) libIdx = 1;
+  if (qtyIdx === -1) qtyIdx = 2;
+
+  const rows: ParseRow[] = [];
+  let totalQuantity = 0;
+  for (let i = headerIdx + 1; i < sheetRows.length; i++) {
+    const row = sheetRows[i];
+    if (!row || row.every((c) => !c && c !== 0)) continue;
+    const ref = String(row[refIdx] || "").trim().toUpperCase();
+    const lib = String(row[libIdx] || "").trim();
+    const qty = parseInt(String(row[qtyIdx] || "0").replace(/[^0-9]/g, ""), 10) || 0;
+    if (ref && qty > 0) {
+      rows.push({ refMaille: ref, libelle: lib, qtyConsommes: qty });
+      totalQuantity += qty;
+    }
+  }
+  return { rows, totalQuantity };
+}
+
+async function parseGoogleSheetsFile(file: File): Promise<ParseResult> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array" });
+  const sheetName = wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const data: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+  return parseSpreadsheetRows(data);
+}
+
+function parsePastedSheetText(text: string): ParseResult {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const rows: any[][] = lines.map((line) => {
+    if (line.includes("\t")) return line.split("\t");
+    if (line.includes(";")) return line.split(";");
+    return line.split(",");
+  });
+  return parseSpreadsheetRows(rows);
+}
 import { 
   Hammer, 
   Upload, 
@@ -26,7 +84,6 @@ import {
   ChevronUp
 } from "lucide-react";
 import Swal from "sweetalert2";
-import * as XLSX from "xlsx";
 import { getMoroccoTodayDateString, formatSystemTime, parseTimestampMs } from "../utils/timeUtils";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
 
@@ -141,7 +198,7 @@ export default function DesassemblageWorkspace({
   const handleFileUpload = async (file: File) => {
     setIsParsing(true);
     try {
-      const result: SpreadsheetParseResult = await parseSpreadsheetFile(file);
+      const result: ParseResult = await parseGoogleSheetsFile(file);
       if (result.rows.length === 0) {
         Swal.fire({
           icon: "warning",
@@ -184,7 +241,7 @@ export default function DesassemblageWorkspace({
   const handleProcessPastedText = () => {
     if (!pastedText.trim()) return;
     try {
-      const result = parsePastedSpreadsheetText(pastedText);
+      const result = parsePastedSheetText(pastedText);
       if (result.rows.length === 0) {
         Swal.fire({
           icon: "warning",
@@ -890,7 +947,7 @@ export default function DesassemblageWorkspace({
           <div className="bg-white border border-slate-100 rounded-3xl shadow-2xl max-w-lg w-full p-6 animate-fadeIn">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <h3 className="text-base font-extrabold text-slate-900">
-                Paste Desassemblage Spreadsheet Data
+                Paste Desassemblage Sheet Data
               </h3>
               <button
                 onClick={() => setPasteModalOpen(false)}
@@ -900,7 +957,7 @@ export default function DesassemblageWorkspace({
               </button>
             </div>
             <p className="text-xs text-slate-500 font-mono mb-3">
-              Paste rows directly from Excel or CSV (Ref, Description, Quantity):
+              Paste rows directly from Excel or Google Sheets (Ref, Description, Quantity):
             </p>
             <textarea
               rows={8}

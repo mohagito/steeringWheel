@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { 
   collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, getDoc, getDocs, writeBatch, runTransaction, serverTimestamp
 } from "firebase/firestore";
@@ -22,9 +22,16 @@ import RecordsWorkspace from "./components/RecordsWorkspace";
 import PegadasWorkspace from "./components/PegadasWorkspace";
 import ModuleSelection from "./components/ModuleSelection";
 import BezelWorkspace from "./components/BezelWorkspace";
-import DailyProductionDemo from "./components/DailyProductionDemo";
 import DesassemblageWorkspace from "./components/DesassemblageWorkspace";
 import MeshInventoryWorkspace from "./components/MeshInventoryWorkspace";
+
+// Resilient dynamic resolver for DailyProductionDemo (prevents Vercel build failures if omitted from git)
+const dailyDemoGlob = typeof (import.meta as any).glob === "function"
+  ? (import.meta as any).glob("./components/DailyProductionDemo.tsx")
+  : {};
+const DailyProductionDemo = dailyDemoGlob["./components/DailyProductionDemo.tsx"]
+  ? lazy(dailyDemoGlob["./components/DailyProductionDemo.tsx"] as any)
+  : null;
 import { LowStockAlertModal } from "./components/LowStockAlertModal";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "motion/react";
@@ -1751,17 +1758,25 @@ export default function App() {
               )}
 
               {activeTab === "daily-production-demo" && (
-                <DailyProductionDemo
-                  references={references}
-                  currentUser={currentUser}
-                  productions={synchronizedProductions}
-                  onNavigateToProduction={() => setActiveTab("production")}
-                  onSubmitProduction={handleSubmitProduction}
-                  onValidateToStock3={handleValidateDailyProductionToStock3}
-                  onDeleteProduction={handleDeleteDailyProduction}
-                  onUpdateProduction={handleUpdateDailyProduction}
-                  onDeleteBatch={handleDeleteDailyProductionBatch}
-                />
+                DailyProductionDemo ? (
+                  <Suspense fallback={<div className="p-12 text-center text-slate-400 font-mono text-xs">Loading Daily Production...</div>}>
+                    <DailyProductionDemo
+                      references={references}
+                      currentUser={currentUser}
+                      productions={synchronizedProductions}
+                      onNavigateToProduction={() => setActiveTab("production")}
+                      onSubmitProduction={handleSubmitProduction}
+                      onValidateToStock3={handleValidateDailyProductionToStock3}
+                      onDeleteProduction={handleDeleteDailyProduction}
+                      onUpdateProduction={handleUpdateDailyProduction}
+                      onDeleteBatch={handleDeleteDailyProductionBatch}
+                    />
+                  </Suspense>
+                ) : (
+                  <div className="p-12 text-center text-slate-500 font-mono text-xs bg-slate-900/40 rounded-2xl border border-slate-800">
+                    Daily Production workspace is not installed in this repository build.
+                  </div>
+                )
               )}
 
               {activeTab === "desassemblage" && (
