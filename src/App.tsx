@@ -22,6 +22,7 @@ import RecordsWorkspace from "./components/RecordsWorkspace";
 import PegadasWorkspace from "./components/PegadasWorkspace";
 import ModuleSelection from "./components/ModuleSelection";
 import BezelWorkspace from "./components/BezelWorkspace";
+import DailyProductionDemo from "./components/DailyProductionDemo";
 import DesassemblageWorkspace from "./components/DesassemblageWorkspace";
 import MeshInventoryWorkspace from "./components/MeshInventoryWorkspace";
 import { LowStockAlertModal } from "./components/LowStockAlertModal";
@@ -86,7 +87,7 @@ export default function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [stockInventoryInitialRef, setStockInventoryInitialRef] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "stock-inventory" | "invoices" | "invoice-archive" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "desassemblage" | "scrap" | "manage-references">(() => {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "stock-inventory" | "invoices" | "invoice-archive" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "desassemblage" | "scrap" | "manage-references">(() => {
     try {
       const savedUser = sessionStorage.getItem("epp_current_user");
       const savedTab = sessionStorage.getItem("epp_active_tab") as any;
@@ -206,17 +207,44 @@ export default function App() {
       }
     };
 
-    // 1. Run background seeding and self-healing audit asynchronously without blocking listeners
+    // Safety timeout: Ensure loading screen NEVER freezes or traps the application (guaranteed transition within 1s)
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 1000);
+
+    // 1. Run background seeding asynchronously without blocking listeners
     (async () => {
       try {
         await seedDatabaseIfNeeded();
-        await handleAuditDatabase();
       } catch (err) {
-        console.warn("Background seed/audit notice:", err);
+        console.warn("Background seed notice:", err);
       }
     })();
 
-    // 2. Real-time subscriptions to Firestore collections
+    // 2. Subscribe to Users FIRST so authentication is available immediately
+    try {
+      unsubUsers = onSnapshot(
+        collection(db, "users"), 
+        (snapshot) => {
+          const usersList: User[] = [];
+          snapshot.forEach((doc) => {
+            usersList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as User);
+          });
+          setUsers(usersList);
+          setLoading(false);
+        },
+        (error) => {
+          console.warn("Notice subscribing to users:", error);
+          setLoading(false);
+        }
+      );
+    } catch (err) {
+      console.warn("Could not initialize users subscription:", err);
+      setLoading(false);
+    }
+
+    // 3. Real-time subscriptions to remaining Firestore collections
+    try {
       unsubBoxes = onSnapshot(
         collection(db, "boxes"), 
         (snapshot) => {
@@ -394,23 +422,12 @@ export default function App() {
         }
       );
 
-      unsubUsers = onSnapshot(
-        collection(db, "users"), 
-        (snapshot) => {
-          const usersList: User[] = [];
-          snapshot.forEach((doc) => {
-            usersList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as User);
-          });
-          setUsers(usersList);
-          setLoading(false);
-        },
-        (error) => {
-          console.error("Error subscribing to users:", error);
-          setLoading(false); // Make sure we stop loading even on error
-        }
-      );
+    } catch (err) {
+      console.warn("Notice subscribing to Firestore collections:", err);
+    }
 
     return () => {
+      clearTimeout(safetyTimeout);
       if (unsubBoxes) unsubBoxes();
       if (unsubAdjustments) unsubAdjustments();
       if (unsubReferences) unsubReferences();
@@ -536,6 +553,34 @@ export default function App() {
     } else {
       await executeProtectedUpdateProduction(productionId, updatedData, currentUser.fullName, reason);
     }
+  };
+
+  // Dedicated Daily Production handlers (Isolated to daily_productions collection)
+  const handleValidateDailyProductionToStock3 = async (
+    entries: { date: string; reference: string; quantity: number; description?: string; notes?: string }[],
+    mode: "DIRECT_STOCK_3" | "TRANSFER_S2_TO_S3" = "TRANSFER_S2_TO_S3"
+  ) => {
+    if (!currentUser) return;
+    await executeProtectedValidateToStock3(entries, currentUser.fullName, mode, "daily_productions");
+  };
+
+  const handleDeleteDailyProductionBatch = async (batchRecords: Production[], reason?: string) => {
+    if (!currentUser) throw new Error("No authenticated user session.");
+    await executeProtectedDeleteDailyProductionBatch(batchRecords, currentUser.fullName, reason, false);
+  };
+
+  const handleDeleteDailyProduction = async (productionId: string, reason?: string) => {
+    if (!currentUser) return;
+    await executeProtectedDeleteDailyProduction(productionId, currentUser.fullName, reason, false);
+  };
+
+  const handleUpdateDailyProduction = async (
+    productionId: string,
+    updatedData: { date: string; reference: string; quantity: number; notes?: string },
+    reason?: string
+  ) => {
+    if (!currentUser) throw new Error("No authenticated user session.");
+    await executeProtectedUpdateDailyProduction(productionId, updatedData, currentUser.fullName, reason);
   };
 
   // Dedicated Désassemblage Handlers (S3 -> S2 Disassembly)
@@ -1113,7 +1158,11 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#070e18] flex flex-col items-center justify-center p-4">
+      <div 
+        onClick={() => setLoading(false)}
+        className="min-h-screen bg-[#070e18] flex flex-col items-center justify-center p-4 cursor-pointer select-none"
+        title="Click to enter"
+      >
         <img 
           src="https://www.eppnatur.es/media/yootheme/cache/1c/logo_eppnatur_3-1ce587ca.webp" 
           alt="Loading EPP Natur" 
@@ -1331,6 +1380,20 @@ export default function App() {
               <span>Production</span>
             </button>
 
+            {/* Daily Production Tab */}
+            <button
+              onClick={() => setActiveTab("daily-production-demo")}
+              id="nav-tab-daily-production-demo"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "daily-production-demo"
+                  ? "text-emerald-400 font-bold bg-[#0f1e36] border-emerald-400"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span>Daily Production</span>
+            </button>
+
             {/* Desassemblage Tab */}
             <button
               onClick={() => setActiveTab("desassemblage")}
@@ -1525,6 +1588,7 @@ export default function App() {
               {activeTab === "invoices" && "Stock 1 Incoming Invoices & Verification"}
               {activeTab === "deliveries" && "Customer Deliveries & Dispatches"}
               {activeTab === "production" && "Daily Production Consumption"}
+              {activeTab === "daily-production-demo" && "Daily Production — Sheets Intake & Stock 3 Validation"}
               {activeTab === "desassemblage" && "Désassemblage — S3 → S2 Disassembly & Recovery"}
               {activeTab === "scrap" && "SCRAP & NOK Mesh Management"}
               {activeTab === "manage-references" && "Manage References Catalog"}
@@ -1683,6 +1747,20 @@ export default function App() {
                   onSubmitProduction={handleSubmitProduction}
                   onDeleteProduction={handleDeleteProduction}
                   onUpdateProduction={handleUpdateProduction}
+                />
+              )}
+
+              {activeTab === "daily-production-demo" && (
+                <DailyProductionDemo
+                  references={references}
+                  currentUser={currentUser}
+                  productions={synchronizedProductions}
+                  onNavigateToProduction={() => setActiveTab("production")}
+                  onSubmitProduction={handleSubmitProduction}
+                  onValidateToStock3={handleValidateDailyProductionToStock3}
+                  onDeleteProduction={handleDeleteDailyProduction}
+                  onUpdateProduction={handleUpdateDailyProduction}
+                  onDeleteBatch={handleDeleteDailyProductionBatch}
                 />
               )}
 

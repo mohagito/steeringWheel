@@ -240,7 +240,7 @@ export const DEFAULT_REFERENCES: Reference[] = [
 ];
 
 // Seed data - Exactly 3 active operational users
-const DEFAULT_USERS: User[] = [
+export const DEFAULT_USERS: User[] = [
   {
     id: "user_shifta",
     username: "shifta",

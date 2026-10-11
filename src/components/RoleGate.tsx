@@ -8,23 +8,33 @@ import {
   Shield, Check, AlertCircle, ArrowLeft, Lock, Factory
 } from "lucide-react";
 
+import { DEFAULT_USERS } from "../seeder";
+
 interface RoleGateProps {
   onLogin: (user: User) => void;
 }
 
 export default function RoleGate({ onLogin }: RoleGateProps) {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Pre-seed with DEFAULT_USERS immediately so UI renders with zero lag
+  const [users, setUsers] = useState<User[]>(() => {
+    return DEFAULT_USERS.map((u) => ({
+      ...u,
+      fullName: (u.username === "gonzalo" || u.fullName === "GONZALO") ? "Manager" : (u.fullName === "SHIFT A" ? "Shift A" : u.fullName === "SHIFT B" ? "Shift B" : u.fullName)
+    }));
+  });
+  const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  // Fetch users from Firestore
+  // Fetch updated users from Firestore in background
   useEffect(() => {
+    let isMounted = true;
     async function loadUsers() {
       try {
         const querySnapshot = await getDocs(collection(db, "users"));
+        if (!isMounted) return;
         const userList: User[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data() as User;
@@ -32,18 +42,19 @@ export default function RoleGate({ onLogin }: RoleGateProps) {
           userList.push({ id: doc.id, ...data, fullName });
         });
         
-        // Sorting users so operator is first, supervisor second, admin last
-        const roleOrder = { operator: 0, supervisor: 1, admin: 2 };
-        userList.sort((a, b) => roleOrder[a.role] - roleOrder[b.role]);
-        
-        setUsers(userList);
+        if (userList.length > 0) {
+          const roleOrder = { operator: 0, supervisor: 1, admin: 2 };
+          userList.sort((a, b) => roleOrder[a.role] - roleOrder[b.role]);
+          setUsers(userList);
+        }
       } catch (err) {
-        console.error("Error loading users in RoleGate:", err);
+        console.warn("Notice loading remote users in RoleGate (using default profiles):", err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
     loadUsers();
+    return () => { isMounted = false; };
   }, []);
 
   // Theme styling matching the exact visual design in the provided mockup

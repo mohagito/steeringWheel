@@ -13,15 +13,20 @@ import firebaseConfig from "../firebase-applet-config.json";
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 
-// Initialize Firestore with robust HTTP long polling and multi-tab offline cache to eliminate WebSocket & stream failures in iframe/sandbox environments
+// Initialize Firestore with robust multi-environment resilience
 let db: any;
 const firestoreDbId = (firebaseConfig as any).firestoreDatabaseId || "(default)";
+
+// Enable long-polling on cloud-run preview iframes where WebSocket proxies might disconnect, while allowing standard fast WebSockets on production Vercel
+const isCloudRunPreview = typeof window !== "undefined" && (
+  window.location.hostname.includes("run.app")
+);
 
 try {
   db = initializeFirestore(
     app,
     {
-      experimentalForceLongPolling: true,
+      experimentalForceLongPolling: isCloudRunPreview,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
       })
