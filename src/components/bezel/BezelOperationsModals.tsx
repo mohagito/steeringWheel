@@ -155,7 +155,12 @@ function NewTruckModal({
   initialRefCode?: string;
 }) {
   const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [items, setItems] = useState<BezelTruckItem[]>([
+  const [items, setItems] = useState<{
+    id: string;
+    reference: string;
+    quantity: number | string;
+    destinationStock: "STOCK 1" | "STOCK 2";
+  }[]>([
     {
       id: "item-1",
       reference: initialRefCode || (references.length > 0 ? references[0].code : ""),
@@ -182,7 +187,12 @@ function NewTruckModal({
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const updateItem = (index: number, patch: Partial<BezelTruckItem>) => {
+  const updateItem = (index: number, patch: Partial<{
+    id: string;
+    reference: string;
+    quantity: number | string;
+    destinationStock: "STOCK 1" | "STOCK 2";
+  }>) => {
     setItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ...patch } : item))
     );
@@ -198,11 +208,12 @@ function NewTruckModal({
     }
 
     for (const item of items) {
+      const q = typeof item.quantity === "number" ? item.quantity : parseInt(item.quantity, 10) || 0;
       if (!item.reference.trim()) {
         onError("Please select or enter a reference for all items.");
         return;
       }
-      if (item.quantity <= 0) {
+      if (q <= 0) {
         onError("Quantities must be greater than zero.");
         return;
       }
@@ -210,9 +221,13 @@ function NewTruckModal({
 
     setIsSubmitting(true);
     try {
+      const normalizedItems: BezelTruckItem[] = items.map((it) => ({
+        ...it,
+        quantity: typeof it.quantity === "number" ? it.quantity : parseInt(it.quantity, 10) || 1
+      }));
       const res = await executeBezelNewTruck({
         invoiceNumber: invoiceNumber.trim(),
-        items,
+        items: normalizedItems,
         operatorName: currentUser.fullName,
         operatorId: currentUser.id
       });
@@ -327,11 +342,19 @@ function NewTruckModal({
                     </label>
                     <input
                       type="number"
+                      inputMode="numeric"
                       min="1"
                       value={item.quantity}
                       onChange={(e) =>
-                        updateItem(idx, { quantity: Math.max(1, parseInt(e.target.value) || 0) })
+                        updateItem(idx, { quantity: e.target.value })
                       }
+                      onBlur={() => {
+                        const q = typeof item.quantity === "number" ? item.quantity : parseInt(item.quantity, 10) || 0;
+                        if (item.quantity === "" || q < 1) {
+                          updateItem(idx, { quantity: 1 });
+                        }
+                      }}
+                      autoComplete="off"
                       className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-mono font-bold"
                     />
                   </div>
@@ -420,12 +443,13 @@ function AssemblageModal({
   const [refCode, setRefCode] = useState(
     initialRefCode || (references.length > 0 ? references[0].code : "")
   );
-  const [quantity, setQuantity] = useState(25);
+  const [quantity, setQuantity] = useState<string | number>(25);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedRef = references.find((r) => r.code === refCode);
   const availableS1 = selectedRef?.stock1 || 0;
   const currentS2 = selectedRef?.stock2 || 0;
+  const numQuantity = typeof quantity === "number" ? quantity : parseInt(quantity, 10) || 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -433,12 +457,12 @@ function AssemblageModal({
       onError("Select a reference.");
       return;
     }
-    if (quantity <= 0) {
+    if (numQuantity <= 0) {
       onError("Quantity must be greater than zero.");
       return;
     }
-    if (quantity > availableS1) {
-      onError(`Insufficient Stock 1 (Available: ${availableS1}, Requested: ${quantity}).`);
+    if (numQuantity > availableS1) {
+      onError(`Insufficient Stock 1 (Available: ${availableS1}, Requested: ${numQuantity}).`);
       return;
     }
 
@@ -446,11 +470,11 @@ function AssemblageModal({
     try {
       const res = await executeBezelAssemblage({
         reference: refCode,
-        quantity,
+        quantity: numQuantity,
         operatorName: currentUser.fullName,
         operatorId: currentUser.id,
       });
-      onSuccess(`Assemblage executed: ${quantity} units of ${refCode} transferred from Stock 1 to Stock 2.`);
+      onSuccess(`Assemblage executed: ${numQuantity} units of ${refCode} transferred from Stock 1 to Stock 2.`);
       onClose();
     } catch (err: any) {
       onError(err.message || "Failed to execute assemblage.");
@@ -503,7 +527,7 @@ function AssemblageModal({
             <div className="text-[10px] uppercase font-bold text-amber-800">STOCK 1 (Raw)</div>
             <div className="font-mono font-bold text-base text-slate-900">{availableS1}</div>
             <div className="text-[10px] text-rose-600 font-semibold">
-              - {quantity} → {Math.max(0, availableS1 - quantity)}
+              - {numQuantity} → {Math.max(0, availableS1 - numQuantity)}
             </div>
           </div>
 
@@ -518,7 +542,7 @@ function AssemblageModal({
             <div className="text-[10px] uppercase font-bold text-emerald-800">STOCK 2 (Ready)</div>
             <div className="font-mono font-bold text-base text-slate-900">{currentS2}</div>
             <div className="text-[10px] text-emerald-600 font-semibold">
-              + {quantity} → {currentS2 + quantity}
+              + {numQuantity} → {currentS2 + numQuantity}
             </div>
           </div>
         </div>
@@ -538,13 +562,21 @@ function AssemblageModal({
           </div>
           <input
             type="number"
+            inputMode="numeric"
             min="1"
             max={availableS1}
             value={quantity}
-            onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+            onChange={(e) => setQuantity(e.target.value)}
+            onBlur={() => {
+              if (quantity === "" || numQuantity < 1) {
+                setQuantity(1);
+              }
+            }}
+            placeholder="Enter quantity"
+            autoComplete="off"
             className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
-          {quantity > availableS1 && (
+          {numQuantity > availableS1 && (
             <p className="text-xs text-rose-600 font-medium mt-1">
               Quantity exceeds available Stock 1 ({availableS1})
             </p>
@@ -561,7 +593,7 @@ function AssemblageModal({
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || quantity <= 0 || quantity > availableS1}
+            disabled={isSubmitting || numQuantity <= 0 || numQuantity > availableS1}
             id="bezel-confirm-assemblage-btn"
             className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
           >
@@ -606,12 +638,13 @@ function DeliveryModal({
   const [refCode, setRefCode] = useState(
     initialRefCode || (references.length > 0 ? references[0].code : "")
   );
-  const [quantity, setQuantity] = useState(20);
+  const [quantity, setQuantity] = useState<string | number>(20);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedRef = references.find((r) => r.code === refCode);
   const availableS2 = selectedRef?.stock2 || 0;
+  const numQuantity = typeof quantity === "number" ? quantity : parseInt(quantity, 10) || 0;
 
   // Active bezel deduction items
   const activeBezelItems = pdfItems.filter(
@@ -738,12 +771,12 @@ function DeliveryModal({
       onError("Select a reference.");
       return;
     }
-    if (quantity <= 0) {
+    if (numQuantity <= 0) {
       onError("Quantity must be greater than zero.");
       return;
     }
-    if (quantity > availableS2) {
-      onError(`Insufficient Stock 2 (Available: ${availableS2}, Requested: ${quantity}).`);
+    if (numQuantity > availableS2) {
+      onError(`Insufficient Stock 2 (Available: ${availableS2}, Requested: ${numQuantity}).`);
       return;
     }
 
@@ -751,12 +784,12 @@ function DeliveryModal({
     try {
       await executeBezelDelivery({
         reference: refCode,
-        quantity,
+        quantity: numQuantity,
         invoiceNumber: invoiceNumber.trim(),
         operatorName: currentUser.fullName,
         operatorId: currentUser.id
       });
-      onSuccess(`Delivery dispatched: ${quantity} units of ${refCode} shipped from Stock 2.`);
+      onSuccess(`Delivery dispatched: ${numQuantity} units of ${refCode} shipped from Stock 2.`);
       onClose();
     } catch (err: any) {
       onError(err.message || "Failed to execute delivery.");
@@ -1060,7 +1093,7 @@ function DeliveryModal({
               <div className="text-[10px] uppercase font-bold text-purple-800">STOCK 2 (Ready)</div>
               <div className="font-mono font-bold text-base text-slate-900">{availableS2}</div>
               <div className="text-[10px] text-rose-600 font-semibold">
-                - {quantity} → {Math.max(0, availableS2 - quantity)}
+                - {numQuantity} → {Math.max(0, availableS2 - numQuantity)}
               </div>
             </div>
 
@@ -1073,7 +1106,7 @@ function DeliveryModal({
 
             <div className="text-center">
               <div className="text-[10px] uppercase font-bold text-slate-600">DELIVERED</div>
-              <div className="font-mono font-bold text-base text-purple-700">{quantity} units</div>
+              <div className="font-mono font-bold text-base text-purple-700">{numQuantity} units</div>
               <div className="text-[10px] text-emerald-600 font-semibold">Dispatched</div>
             </div>
           </div>
@@ -1094,10 +1127,18 @@ function DeliveryModal({
               </div>
               <input
                 type="number"
+                inputMode="numeric"
                 min="1"
                 max={availableS2}
                 value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+                onChange={(e) => setQuantity(e.target.value)}
+                onBlur={() => {
+                  if (quantity === "" || numQuantity < 1) {
+                    setQuantity(1);
+                  }
+                }}
+                placeholder="Enter quantity"
+                autoComplete="off"
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
@@ -1126,7 +1167,7 @@ function DeliveryModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || quantity <= 0 || quantity > availableS2}
+              disabled={isSubmitting || numQuantity <= 0 || numQuantity > availableS2}
               id="bezel-confirm-delivery-btn"
               className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
             >
@@ -1161,12 +1202,13 @@ function ReturnModal({
   const [refCode, setRefCode] = useState(
     initialRefCode || (references.length > 0 ? references[0].code : "")
   );
-  const [quantity, setQuantity] = useState(10);
+  const [quantity, setQuantity] = useState<string | number>(10);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedRef = references.find((r) => r.code === refCode);
   const availableS2 = selectedRef?.stock2 || 0;
   const currentS1 = selectedRef?.stock1 || 0;
+  const numQuantity = typeof quantity === "number" ? quantity : parseInt(quantity, 10) || 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1174,12 +1216,12 @@ function ReturnModal({
       onError("Select a reference.");
       return;
     }
-    if (quantity <= 0) {
+    if (numQuantity <= 0) {
       onError("Quantity must be greater than zero.");
       return;
     }
-    if (quantity > availableS2) {
-      onError(`Insufficient Stock 2 (Available: ${availableS2}, Requested: ${quantity}).`);
+    if (numQuantity > availableS2) {
+      onError(`Insufficient Stock 2 (Available: ${availableS2}, Requested: ${numQuantity}).`);
       return;
     }
 
@@ -1187,11 +1229,11 @@ function ReturnModal({
     try {
       const res = await executeBezelReturn({
         reference: refCode,
-        quantity,
+        quantity: numQuantity,
         operatorName: currentUser.fullName,
         operatorId: currentUser.id,
       });
-      onSuccess(`Return executed: ${quantity} units of ${refCode} returned from Stock 2 back to Stock 1.`);
+      onSuccess(`Return executed: ${numQuantity} units of ${refCode} returned from Stock 2 back to Stock 1.`);
       onClose();
     } catch (err: any) {
       onError(err.message || "Failed to execute return.");
@@ -1244,7 +1286,7 @@ function ReturnModal({
             <div className="text-[10px] uppercase font-bold text-emerald-800">STOCK 2 (Ready)</div>
             <div className="font-mono font-bold text-base text-slate-900">{availableS2}</div>
             <div className="text-[10px] text-rose-600 font-semibold">
-              - {quantity} → {Math.max(0, availableS2 - quantity)}
+              - {numQuantity} → {Math.max(0, availableS2 - numQuantity)}
             </div>
           </div>
 
@@ -1259,7 +1301,7 @@ function ReturnModal({
             <div className="text-[10px] uppercase font-bold text-amber-800">STOCK 1 (Raw)</div>
             <div className="font-mono font-bold text-base text-slate-900">{currentS1}</div>
             <div className="text-[10px] text-emerald-600 font-semibold">
-              + {quantity} → {currentS1 + quantity}
+              + {numQuantity} → {currentS1 + numQuantity}
             </div>
           </div>
         </div>
@@ -1279,10 +1321,18 @@ function ReturnModal({
           </div>
           <input
             type="number"
+            inputMode="numeric"
             min="1"
             max={availableS2}
             value={quantity}
-            onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+            onChange={(e) => setQuantity(e.target.value)}
+            onBlur={() => {
+              if (quantity === "" || numQuantity < 1) {
+                setQuantity(1);
+              }
+            }}
+            placeholder="Enter quantity"
+            autoComplete="off"
             className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
         </div>
@@ -1297,7 +1347,7 @@ function ReturnModal({
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || quantity <= 0 || quantity > availableS2}
+            disabled={isSubmitting || numQuantity <= 0 || numQuantity > availableS2}
             id="bezel-confirm-return-btn"
             className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
           >
@@ -1332,7 +1382,7 @@ function ScrapModal({
     initialRefCode || (references.length > 0 ? references[0].code : "")
   );
   const [sourceStock, setSourceStock] = useState<"STOCK 1" | "STOCK 2">("STOCK 1");
-  const [quantity, setQuantity] = useState(5);
+  const [quantity, setQuantity] = useState<string | number>(5);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // PDF Upload & Parsing States
@@ -1343,6 +1393,7 @@ function ScrapModal({
 
   const selectedRef = references.find((r) => r.code === refCode);
   const availableStock = sourceStock === "STOCK 1" ? selectedRef?.stock1 || 0 : selectedRef?.stock2 || 0;
+  const numQuantity = typeof quantity === "number" ? quantity : parseInt(quantity, 10) || 0;
 
   const handleProcessPdfFile = async (file: File) => {
     if (!file) return;
@@ -1416,12 +1467,12 @@ function ScrapModal({
       onError("Select a reference.");
       return;
     }
-    if (quantity <= 0) {
+    if (numQuantity <= 0) {
       onError("Quantity must be greater than zero.");
       return;
     }
-    if (quantity > availableStock) {
-      onError(`Insufficient ${sourceStock} (Available: ${availableStock}, Requested: ${quantity}).`);
+    if (numQuantity > availableStock) {
+      onError(`Insufficient ${sourceStock} (Available: ${availableStock}, Requested: ${numQuantity}).`);
       return;
     }
 
@@ -1429,13 +1480,13 @@ function ScrapModal({
     try {
       await executeBezelScrap({
         reference: refCode,
-        quantity,
+        quantity: numQuantity,
         sourceStock,
         reason: "SCRAP / NOK",
         operatorName: currentUser.fullName,
         operatorId: currentUser.id,
       });
-      onSuccess(`Scrap recorded: ${quantity} NOK units of ${refCode} removed from ${sourceStock}.`);
+      onSuccess(`Scrap recorded: ${numQuantity} NOK units of ${refCode} removed from ${sourceStock}.`);
       onClose();
     } catch (err: any) {
       onError(err.message || "Failed to record scrap.");
@@ -1584,13 +1635,21 @@ function ScrapModal({
             </div>
             <input
               type="number"
+              inputMode="numeric"
               min="1"
               max={availableStock}
               value={quantity}
-              onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+              onChange={(e) => setQuantity(e.target.value)}
+              onBlur={() => {
+                if (quantity === "" || numQuantity < 1) {
+                  setQuantity(1);
+                }
+              }}
+              placeholder="Enter quantity"
+              autoComplete="off"
               className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
-            {quantity > availableStock && (
+            {numQuantity > availableStock && (
               <p className="text-xs text-rose-600 font-medium mt-1">
                 Quantity exceeds available {sourceStock} ({availableStock})
               </p>
@@ -1607,7 +1666,7 @@ function ScrapModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || quantity <= 0 || quantity > availableStock}
+              disabled={isSubmitting || numQuantity <= 0 || numQuantity > availableStock}
               id="bezel-confirm-scrap-btn"
               className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
             >
@@ -1652,8 +1711,8 @@ function AddReferenceModal({
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
   const [client, setClient] = useState("");
-  const [initialStock1, setInitialStock1] = useState(0);
-  const [initialStock2, setInitialStock2] = useState(0);
+  const [initialStock1, setInitialStock1] = useState<string | number>(0);
+  const [initialStock2, setInitialStock2] = useState<string | number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1663,14 +1722,17 @@ function AddReferenceModal({
       return;
     }
 
+    const s1 = typeof initialStock1 === "number" ? initialStock1 : parseInt(initialStock1, 10) || 0;
+    const s2 = typeof initialStock2 === "number" ? initialStock2 : parseInt(initialStock2, 10) || 0;
+
     setIsSubmitting(true);
     try {
       const ref = await createBezelReference({
         code: code.trim(),
         description: description.trim(),
         client: client.trim(),
-        initialStock1,
-        initialStock2,
+        initialStock1: Math.max(0, s1),
+        initialStock2: Math.max(0, s2),
         operatorName: currentUser.fullName
       });
       onSuccess(`Bezel Reference ${ref.code} created successfully.`);
@@ -1750,9 +1812,14 @@ function AddReferenceModal({
             </label>
             <input
               type="number"
+              inputMode="numeric"
               min="0"
               value={initialStock1}
-              onChange={(e) => setInitialStock1(Math.max(0, parseInt(e.target.value) || 0))}
+              onChange={(e) => setInitialStock1(e.target.value)}
+              onBlur={() => {
+                if (initialStock1 === "") setInitialStock1(0);
+              }}
+              autoComplete="off"
               className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
           </div>
@@ -1763,9 +1830,14 @@ function AddReferenceModal({
             </label>
             <input
               type="number"
+              inputMode="numeric"
               min="0"
               value={initialStock2}
-              onChange={(e) => setInitialStock2(Math.max(0, parseInt(e.target.value) || 0))}
+              onChange={(e) => setInitialStock2(e.target.value)}
+              onBlur={() => {
+                if (initialStock2 === "") setInitialStock2(0);
+              }}
+              autoComplete="off"
               className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
           </div>

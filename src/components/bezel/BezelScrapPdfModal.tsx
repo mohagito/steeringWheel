@@ -247,10 +247,18 @@ export default function BezelScrapPdfModal({
                           <td className="py-2.5 px-3 text-right">
                             <input
                               type="number"
+                              inputMode="numeric"
                               min={1}
-                              value={item.quantity}
-                              onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value, 10) || 1)}
+                              value={item.quantity === 0 ? "" : item.quantity}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                handleQuantityChange(item.id, val === "" ? 0 : parseInt(val, 10) || 0);
+                              }}
+                              onBlur={() => {
+                                if (item.quantity < 1) handleQuantityChange(item.id, 1);
+                              }}
                               disabled={!item.included}
+                              autoComplete="off"
                               className="w-20 px-2 py-1 text-right font-bold text-slate-900 bg-white border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-rose-500 focus:outline-none disabled:bg-slate-100 font-mono"
                             />
                           </td>

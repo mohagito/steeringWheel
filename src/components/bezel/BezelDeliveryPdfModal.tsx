@@ -288,9 +288,17 @@ export default function BezelDeliveryPdfModal({
                         <td className="py-2 px-3 text-right">
                           <input
                             type="number"
+                            inputMode="numeric"
                             min="1"
-                            value={it.quantity}
-                            onChange={(e) => handleUpdateQty(it.id, parseInt(e.target.value) || 1)}
+                            value={it.quantity === 0 ? "" : it.quantity}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleUpdateQty(it.id, val === "" ? 0 : parseInt(val, 10) || 0);
+                            }}
+                            onBlur={() => {
+                              if (it.quantity < 1) handleUpdateQty(it.id, 1);
+                            }}
+                            autoComplete="off"
                             className="w-20 px-2 py-1 text-right text-xs font-mono font-bold rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-purple-500 text-slate-900"
                           />
                         </td>
