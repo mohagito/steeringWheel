@@ -50,11 +50,34 @@ export function generateBezelOpId(prefix = "bz-op"): string {
 }
 
 /**
+ * Official Unit Price List for Bezel Components
+ * - A015E335A: 2.32 € (PSA)
+ * - A024H181B: 2.71 € (PSA)
+ * - A025B907B: 1.38 € (OPEL)
+ */
+export const BEZEL_PRICES: Record<string, number> = {
+  "A015E335A": 2.32,
+  "A024H181B": 2.71,
+  "A025B907B": 1.38
+};
+
+export function getBezelPrice(refOrCode: BezelReference | string | undefined): number {
+  if (!refOrCode) return 0;
+  if (typeof refOrCode === "object") {
+    if (typeof refOrCode.price === "number" && refOrCode.price > 0) return refOrCode.price;
+    const key = (refOrCode.code || refOrCode.id || "").toUpperCase().trim();
+    return BEZEL_PRICES[key] || 0;
+  }
+  const key = String(refOrCode).toUpperCase().trim();
+  return BEZEL_PRICES[key] || 0;
+}
+
+/**
  * Official Bezel Reference Seed Data (From EPP Natur Specification)
  * 3 Official References:
- * - A015E335A: Rim Badge GT P64-P74 (support + letters) | Client: PSA
- * - A024H181B: BEZEL R8 STW | Client: PSA
- * - A025B907B: BEZEL ASSY OV64 SW 6H SPOKE | Client: OPEL
+ * - A015E335A: Rim Badge GT P64-P74 (support + letters) | Client: PSA | Price: 2.32 €
+ * - A024H181B: BEZEL R8 STW | Client: PSA | Price: 2.71 €
+ * - A025B907B: BEZEL ASSY OV64 SW 6H SPOKE | Client: OPEL | Price: 1.38 €
  */
 export const INITIAL_BEZEL_SEEDS: Omit<BezelReference, "createdAt" | "updatedAt">[] = [
   {
@@ -62,6 +85,7 @@ export const INITIAL_BEZEL_SEEDS: Omit<BezelReference, "createdAt" | "updatedAt"
     code: "A015E335A",
     description: "Rim Badge GT P64-P74 (support + letters)",
     client: "PSA",
+    price: 2.32,
     stock1: 0,
     stock2: 0,
     active: true
@@ -71,6 +95,7 @@ export const INITIAL_BEZEL_SEEDS: Omit<BezelReference, "createdAt" | "updatedAt"
     code: "A024H181B",
     description: "BEZEL R8 STW",
     client: "PSA",
+    price: 2.71,
     stock1: 0,
     stock2: 0,
     active: true
@@ -80,6 +105,7 @@ export const INITIAL_BEZEL_SEEDS: Omit<BezelReference, "createdAt" | "updatedAt"
     code: "A025B907B",
     description: "BEZEL ASSY OV64 SW 6H SPOKE",
     client: "OPEL",
+    price: 1.38,
     stock1: 0,
     stock2: 0,
     active: true
@@ -127,12 +153,13 @@ export async function seedBezelReferencesIfEmpty(): Promise<boolean> {
         const existingDoc = snap.docs.find((d) => d.id === seed.id);
         if (existingDoc) {
           const data = existingDoc.data();
-          if (!data.client || data.description !== seed.description) {
+          if (!data.client || data.description !== seed.description || data.price !== seed.price) {
             await setDoc(
               existingDoc.ref,
               cleanData({
                 description: seed.description,
                 client: seed.client,
+                price: seed.price,
                 updatedAt: now
               }),
               { merge: true }

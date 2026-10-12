@@ -275,6 +275,7 @@ export interface BezelReference {
   stock1: number; // Incoming / available Bezel material
   stock2: number; // Assemblage / ready for delivery
   totalStock?: number; // stock1 + stock2
+  price?: number; // Unit valuation in €
   active: boolean;
   createdAt: string | any;
   updatedAt: string | any;

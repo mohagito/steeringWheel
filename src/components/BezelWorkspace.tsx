@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   collection,
-  onSnapshot,
-  query,
-  orderBy
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -14,24 +12,23 @@ import {
 } from "../types";
 import { normalizeDocTimestamps } from "../utils/timeUtils";
 import {
-  seedBezelReferencesIfEmpty,
-  INITIAL_BEZEL_SEEDS
+  seedBezelReferencesIfEmpty
 } from "../services/bezelService";
 import { 
   ArrowLeft, 
-  LogOut, 
   CheckCircle2, 
   AlertCircle, 
   AlertTriangle,
   ClipboardCheck,
   Layers, 
   History, 
-  RefreshCw 
+  Euro
 } from "lucide-react";
 import BezelMetrics from "./bezel/BezelMetrics";
 import BezelActionButtons, { BezelActiveModal } from "./bezel/BezelActionButtons";
 import BezelStockTable from "./bezel/BezelStockTable";
 import BezelHistoryTable from "./bezel/BezelHistoryTable";
+import BezelEvaluationView from "./bezel/BezelEvaluationView";
 import BezelOperationsModals from "./bezel/BezelOperationsModals";
 import BezelSidebar from "./bezel/BezelSidebar";
 import BezelInventoryWorkspace from "./bezel/BezelInventoryWorkspace";
@@ -53,8 +50,8 @@ export default function BezelWorkspace({
   const [operations, setOperations] = useState<BezelOperation[]>([]);
   const [invoices, setInvoices] = useState<BezelInvoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState<string>("invoices");
-  const [activeTab, setActiveTab] = useState<"stock" | "history">("stock");
+  const [activeSection, setActiveSection] = useState<string>("stock");
+  const [activeTab, setActiveTab] = useState<"stock" | "evaluation" | "history">("stock");
   const [activeModal, setActiveModal] = useState<BezelActiveModal>(null);
   const [selectedReferenceCode, setSelectedReferenceCode] = useState<string | undefined>(undefined);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -177,6 +174,18 @@ export default function BezelWorkspace({
     }
   };
 
+  const handleSelectSection = (section: string) => {
+    if (section === "records") {
+      setActiveSection("stock");
+      setActiveTab("history");
+    } else if (section === "stock") {
+      setActiveSection("stock");
+      if (activeTab === "history") setActiveTab("stock");
+    } else {
+      setActiveSection(section);
+    }
+  };
+
   const lowStockRefs = references.filter(r => (r.stock1 || 0) < 20);
 
   const getHeaderTitle = () => {
@@ -186,7 +195,10 @@ export default function BezelWorkspace({
       case "invoices":
         return "Stock 1 Incoming Invoices & Verification";
       case "operations":
-        return "Operations & Live Stock Management";
+      case "stock":
+        return activeTab === "evaluation"
+          ? "Bezel Stock Financial Evaluation"
+          : "Operations & Live Stock Management";
       case "inventory":
         return "Stock Inventory — Physical Count & Reconciliation";
       default:
@@ -201,8 +213,8 @@ export default function BezelWorkspace({
     >
       {/* Full-Height Vertical Sidebar Matching Meshes Design */}
       <BezelSidebar
-        activeSection={activeSection}
-        onSelectSection={setActiveSection}
+        activeSection={activeSection === "stock" && activeTab === "history" ? "records" : activeSection}
+        onSelectSection={handleSelectSection}
         userRole={currentUser.role}
         currentUser={currentUser}
         onBackToModules={onBackToModules}
@@ -255,8 +267,6 @@ export default function BezelWorkspace({
                 <span>STOCK INVENTORY</span>
               </button>
             )}
-
-
           </div>
         </header>
 
@@ -316,7 +326,7 @@ export default function BezelWorkspace({
               onError={(err) => showToast(err, "error")}
             />
           ) : (
-            /* Section 3: OPERATIONS & OVERVIEW */
+            /* Section 3: OPERATIONS & STOCK OVERVIEW */
             <div className="space-y-6">
               {/* 1. Live Aggregate Inventory Metrics */}
               <BezelMetrics
@@ -324,6 +334,7 @@ export default function BezelWorkspace({
                 totalStock1={totalStock1}
                 totalStock2={totalStock2}
                 totalStock={totalStock}
+                onViewEvaluation={() => setActiveTab("evaluation")}
               />
 
               {/* 2. The 5 Main Operation Action Buttons */}
@@ -351,6 +362,19 @@ export default function BezelWorkspace({
                 </button>
 
                 <button
+                  onClick={() => setActiveTab("evaluation")}
+                  id="bezel-tab-evaluation"
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === "evaluation"
+                      ? "bg-blue-600 text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  <Euro className="w-3.5 h-3.5" />
+                  <span>Stock Evaluation (€)</span>
+                </button>
+
+                <button
                   onClick={() => setActiveTab("history")}
                   id="bezel-tab-history"
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -369,6 +393,10 @@ export default function BezelWorkspace({
                 <BezelStockTable
                   references={references}
                   onOpenModal={handleOpenModal}
+                />
+              ) : activeTab === "evaluation" ? (
+                <BezelEvaluationView
+                  references={references}
                 />
               ) : (
                 <BezelHistoryTable

@@ -1,7 +1,8 @@
-import React, { useState } from "react";
-import { Search, Cpu, Send, RotateCcw, Trash2, ArrowUpDown } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Search, Cpu, Send, RotateCcw, Trash2, ArrowUpDown, Euro } from "lucide-react";
 import { BezelReference } from "../../types";
 import { BezelActiveModal } from "./BezelActionButtons";
+import { getBezelPrice } from "../../services/bezelService";
 
 interface BezelStockTableProps {
   references: BezelReference[];
@@ -13,7 +14,10 @@ export default function BezelStockTable({
   onOpenModal,
 }: BezelStockTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState<"code" | "description" | "client" | "stock1" | "stock2" | "totalStock">("code");
+  const [showValuation, setShowValuation] = useState(false);
+  const [sortField, setSortField] = useState<
+    "code" | "description" | "client" | "price" | "stock1" | "stock2" | "totalStock" | "valuation"
+  >("code");
   const [sortAsc, setSortAsc] = useState(true);
 
   const q = (searchTerm || "").toLowerCase().trim();
@@ -32,12 +36,24 @@ export default function BezelStockTable({
       const valB = (b[sortField] || "").toString();
       return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
     }
+    if (sortField === "price") {
+      const pA = getBezelPrice(a);
+      const pB = getBezelPrice(b);
+      return sortAsc ? pA - pB : pB - pA;
+    }
+    if (sortField === "valuation") {
+      const vA = ((a.stock1 || 0) + (a.stock2 || 0)) * getBezelPrice(a);
+      const vB = ((b.stock1 || 0) + (b.stock2 || 0)) * getBezelPrice(b);
+      return sortAsc ? vA - vB : vB - vA;
+    }
     const valA = (a as any)[sortField] || 0;
     const valB = (b as any)[sortField] || 0;
     return sortAsc ? valA - valB : valB - valA;
   });
 
-  const toggleSort = (field: "code" | "description" | "client" | "stock1" | "stock2" | "totalStock") => {
+  const toggleSort = (
+    field: "code" | "description" | "client" | "price" | "stock1" | "stock2" | "totalStock" | "valuation"
+  ) => {
     if (sortField === field) {
       setSortAsc(!sortAsc);
     } else {
@@ -46,9 +62,40 @@ export default function BezelStockTable({
     }
   };
 
+  const totals = useMemo(() => {
+    let s1 = 0;
+    let s2 = 0;
+    let s1Val = 0;
+    let s2Val = 0;
+    references.forEach((r) => {
+      const price = getBezelPrice(r);
+      const q1 = r.stock1 || 0;
+      const q2 = r.stock2 || 0;
+      s1 += q1;
+      s2 += q2;
+      s1Val += q1 * price;
+      s2Val += q2 * price;
+    });
+    return {
+      stock1: s1,
+      stock2: s2,
+      total: s1 + s2,
+      stock1Val: s1Val,
+      stock2Val: s2Val,
+      totalVal: s1Val + s2Val,
+    };
+  }, [references]);
+
+  const formatEuro = (amount: number) => {
+    return `€ ${amount.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`;
+  };
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-      {/* Table Header & Search */}
+      {/* Table Header & Controls */}
       <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
@@ -59,15 +106,33 @@ export default function BezelStockTable({
           </span>
         </div>
 
-        <div className="relative w-full sm:w-64">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search reference, description, client..."
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
-          />
+        <div className="flex items-center gap-2.5">
+          {/* Valuation Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowValuation(!showValuation)}
+            className={`px-3 py-1.5 rounded-lg border text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${
+              showValuation
+                ? "bg-blue-600 border-blue-600 text-white"
+                : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+            }`}
+            title="Toggle monetary valuation (€)"
+          >
+            <Euro className="w-3.5 h-3.5" />
+            <span>{showValuation ? "Evaluation ON" : "Evaluation (€)"}</span>
+          </button>
+
+          {/* Search */}
+          <div className="relative w-full sm:w-56">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search reference, client..."
+              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
+            />
+          </div>
         </div>
       </div>
 
@@ -103,6 +168,19 @@ export default function BezelStockTable({
                   <ArrowUpDown className="w-3 h-3 text-slate-400" />
                 </div>
               </th>
+
+              {showValuation && (
+                <th
+                  onClick={() => toggleSort("price")}
+                  className="py-3 px-4 text-right cursor-pointer hover:text-slate-900 select-none"
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    <span>Price</span>
+                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                  </div>
+                </th>
+              )}
+
               <th
                 onClick={() => toggleSort("stock1")}
                 className="py-3 px-4 text-right cursor-pointer hover:text-slate-900 select-none"
@@ -112,6 +190,7 @@ export default function BezelStockTable({
                   <ArrowUpDown className="w-3 h-3 text-slate-400" />
                 </div>
               </th>
+
               <th
                 onClick={() => toggleSort("stock2")}
                 className="py-3 px-4 text-right cursor-pointer hover:text-slate-900 select-none"
@@ -121,6 +200,7 @@ export default function BezelStockTable({
                   <ArrowUpDown className="w-3 h-3 text-slate-400" />
                 </div>
               </th>
+
               <th
                 onClick={() => toggleSort("totalStock")}
                 className="py-3 px-4 text-right cursor-pointer hover:text-slate-900 select-none"
@@ -130,13 +210,26 @@ export default function BezelStockTable({
                   <ArrowUpDown className="w-3 h-3 text-slate-400" />
                 </div>
               </th>
+
+              {showValuation && (
+                <th
+                  onClick={() => toggleSort("valuation")}
+                  className="py-3 px-4 text-right cursor-pointer hover:text-slate-900 select-none text-slate-900"
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    <span>Valuation</span>
+                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                  </div>
+                </th>
+              )}
+
               <th className="py-3 px-4 text-center">Quick Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-slate-400">
+                <td colSpan={showValuation ? 9 : 7} className="py-10 text-center text-slate-400">
                   {references.length === 0
                     ? "No Bezel references registered yet."
                     : "No matching references found."}
@@ -145,6 +238,11 @@ export default function BezelStockTable({
             ) : (
               sorted.map((ref) => {
                 const total = (ref.stock1 || 0) + (ref.stock2 || 0);
+                const price = getBezelPrice(ref);
+                const s1Val = (ref.stock1 || 0) * price;
+                const s2Val = (ref.stock2 || 0) * price;
+                const totalVal = total * price;
+
                 return (
                   <tr
                     key={ref.code}
@@ -173,21 +271,52 @@ export default function BezelStockTable({
                       )}
                     </td>
 
-                    <td className="py-3 px-4 text-right font-mono font-bold text-amber-900">
-                      <span className="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200">
-                        {ref.stock1 || 0}
-                      </span>
+                    {showValuation && (
+                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">
+                        € {price.toFixed(2)}
+                      </td>
+                    )}
+
+                    <td className="py-3 px-4 text-right font-mono">
+                      <div className="font-bold text-amber-900">
+                        <span className="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200">
+                          {(ref.stock1 || 0).toLocaleString()}
+                        </span>
+                      </div>
+                      {showValuation && (
+                        <div className="text-[10px] text-amber-800/80 mt-1">
+                          {formatEuro(s1Val)}
+                        </div>
+                      )}
                     </td>
 
-                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-900">
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200">
-                        {ref.stock2 || 0}
-                      </span>
+                    <td className="py-3 px-4 text-right font-mono">
+                      <div className="font-bold text-emerald-900">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200">
+                          {(ref.stock2 || 0).toLocaleString()}
+                        </span>
+                      </div>
+                      {showValuation && (
+                        <div className="text-[10px] text-emerald-800/80 mt-1">
+                          {formatEuro(s2Val)}
+                        </div>
+                      )}
                     </td>
 
                     <td className="py-3 px-4 text-right font-mono font-extrabold text-slate-900">
-                      {total}
+                      <div>{total.toLocaleString()}</div>
+                      {showValuation && (
+                        <div className="text-[10px] text-slate-500 font-normal mt-1">
+                          pcs
+                        </div>
+                      )}
                     </td>
+
+                    {showValuation && (
+                      <td className="py-3 px-4 text-right font-mono font-black text-slate-900">
+                        {formatEuro(totalVal)}
+                      </td>
+                    )}
 
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-1.5">
@@ -237,6 +366,41 @@ export default function BezelStockTable({
               })
             )}
           </tbody>
+          {/* Summary Row */}
+          <tfoot>
+            <tr className="bg-slate-100/90 font-bold border-t-2 border-slate-200 text-slate-800 text-[11px] font-mono">
+              <td className="py-2.5 px-4 uppercase">TOTAL</td>
+              <td className="py-2.5 px-4 hidden sm:table-cell text-slate-400 font-normal">
+                {references.length} References
+              </td>
+              <td className="py-2.5 px-4"></td>
+              {showValuation && <td className="py-2.5 px-4 text-right text-slate-400">—</td>}
+              <td className="py-2.5 px-4 text-right text-amber-900">
+                <div>{totals.stock1.toLocaleString()}</div>
+                {showValuation && (
+                  <div className="text-[10px] text-amber-800">{formatEuro(totals.stock1Val)}</div>
+                )}
+              </td>
+              <td className="py-2.5 px-4 text-right text-emerald-900">
+                <div>{totals.stock2.toLocaleString()}</div>
+                {showValuation && (
+                  <div className="text-[10px] text-emerald-800">{formatEuro(totals.stock2Val)}</div>
+                )}
+              </td>
+              <td className="py-2.5 px-4 text-right text-slate-900 font-black">
+                <div>{totals.total.toLocaleString()}</div>
+                {showValuation && (
+                  <div className="text-[10px] text-slate-500 font-normal">pcs</div>
+                )}
+              </td>
+              {showValuation && (
+                <td className="py-2.5 px-4 text-right font-black text-slate-900">
+                  {formatEuro(totals.totalVal)}
+                </td>
+              )}
+              <td className="py-2.5 px-4"></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
