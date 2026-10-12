@@ -767,14 +767,8 @@ export default function DailyProductionWorkspace({
 
         {/* Table content */}
         {filteredRows.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 font-mono text-xs flex flex-col items-center justify-center">
-            <FileText className="w-10 h-10 text-slate-300 mb-2 stroke-[1.5]" />
-            <p className="font-bold text-slate-600 text-sm">
-              Daily Intake at Point Zero (Ready)
-            </p>
-            <p className="text-[11px] text-slate-400 mt-1 max-w-sm">
-              Drop an Excel, CSV, or PDF delivery file, click Paste, or add rows manually to stage daily production for Stock 3 validation.
-            </p>
+          <div className="py-12 text-center text-slate-400 font-mono text-xs flex flex-col items-center justify-center">
+            <FileText className="w-8 h-8 text-slate-300 stroke-[1.5]" />
           </div>
         ) : (
           <div className="overflow-x-auto border border-slate-100 rounded-2xl">
