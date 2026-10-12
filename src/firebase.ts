@@ -4,9 +4,7 @@ import { getAuth } from "firebase/auth";
 import { 
   initializeFirestore, 
   getFirestore, 
-  doc, 
-  getDoc,
-  persistentLocalCache,
+  persistentLocalCache, 
   persistentMultipleTabManager 
 } from "firebase/firestore";
 // Built-in production Firebase configuration for Steering Wheel Stock Control System
@@ -43,16 +41,13 @@ export const auth = getAuth(app);
 let db: any;
 const firestoreDbId = firebaseConfig.firestoreDatabaseId;
 
-// Enable long-polling on cloud-run preview iframes where WebSocket proxies might disconnect, while allowing standard fast WebSockets on production Vercel
-const isCloudRunPreview = typeof window !== "undefined" && (
-  window.location.hostname.includes("run.app")
-);
+
 
 try {
   db = initializeFirestore(
     app,
     {
-      experimentalForceLongPolling: isCloudRunPreview,
+      experimentalAutoDetectLongPolling: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
       })
@@ -65,27 +60,6 @@ try {
   } catch (err) {
     db = getFirestore(app);
   }
-}
-
-// Non-blocking, fault-tolerant connection check that does not throw or trigger code=unavailable
-async function testConnection() {
-  try {
-    // Graceful ping that works seamlessly with local cache and does not fail on network warmup
-    await getDoc(doc(db, "test", "connection"));
-  } catch (error: any) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (msg.includes("offline") || msg.includes("unavailable")) {
-      console.info("Firestore client operating with local cache / background synchronization.");
-    } else {
-      console.warn("Firestore connection check notice:", msg);
-    }
-  }
-}
-
-if (typeof window !== "undefined") {
-  setTimeout(() => {
-    testConnection();
-  }, 1000);
 }
 
 export { db };
