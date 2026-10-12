@@ -57,6 +57,15 @@ export default function BezelWorkspace({
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
 
+  const isOperator = currentUser.role === "operator";
+
+  // Prevent operators from accessing evaluation tab
+  useEffect(() => {
+    if (isOperator && activeTab === "evaluation") {
+      setActiveTab("stock");
+    }
+  }, [isOperator, activeTab]);
+
   // Show Toast with auto-dismiss
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
@@ -196,7 +205,7 @@ export default function BezelWorkspace({
         return "Stock 1 Incoming Invoices & Verification";
       case "operations":
       case "stock":
-        return activeTab === "evaluation"
+        return (!isOperator && activeTab === "evaluation")
           ? "Bezel Stock Financial Evaluation"
           : "Operations & Live Stock Management";
       case "inventory":
@@ -334,7 +343,8 @@ export default function BezelWorkspace({
                 totalStock1={totalStock1}
                 totalStock2={totalStock2}
                 totalStock={totalStock}
-                onViewEvaluation={() => setActiveTab("evaluation")}
+                userRole={currentUser.role}
+                onViewEvaluation={!isOperator ? () => setActiveTab("evaluation") : undefined}
               />
 
               {/* 2. The 5 Main Operation Action Buttons */}
@@ -361,18 +371,20 @@ export default function BezelWorkspace({
                   <span>Live Stock Overview ({references.length})</span>
                 </button>
 
-                <button
-                  onClick={() => setActiveTab("evaluation")}
-                  id="bezel-tab-evaluation"
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    activeTab === "evaluation"
-                      ? "bg-blue-600 text-white shadow-2xs"
-                      : "text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  <Euro className="w-3.5 h-3.5" />
-                  <span>Stock Evaluation (€)</span>
-                </button>
+                {!isOperator && (
+                  <button
+                    onClick={() => setActiveTab("evaluation")}
+                    id="bezel-tab-evaluation"
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      activeTab === "evaluation"
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <Euro className="w-3.5 h-3.5" />
+                    <span>Stock Evaluation (€)</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => setActiveTab("history")}
@@ -389,12 +401,13 @@ export default function BezelWorkspace({
               </div>
 
               {/* 4. Tab Content */}
-              {activeTab === "stock" ? (
+              {activeTab === "stock" || (isOperator && activeTab === "evaluation") ? (
                 <BezelStockTable
                   references={references}
                   onOpenModal={handleOpenModal}
+                  userRole={currentUser.role}
                 />
-              ) : activeTab === "evaluation" ? (
+              ) : activeTab === "evaluation" && !isOperator ? (
                 <BezelEvaluationView
                   references={references}
                 />

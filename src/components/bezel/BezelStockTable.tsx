@@ -1,20 +1,25 @@
 import React, { useState, useMemo } from "react";
 import { Search, Cpu, Send, RotateCcw, Trash2, ArrowUpDown, Euro } from "lucide-react";
-import { BezelReference } from "../../types";
+import { BezelReference, UserRole } from "../../types";
 import { BezelActiveModal } from "./BezelActionButtons";
 import { getBezelPrice } from "../../services/bezelService";
 
 interface BezelStockTableProps {
   references: BezelReference[];
   onOpenModal: (modal: BezelActiveModal, referenceCode?: string) => void;
+  userRole?: UserRole;
 }
 
 export default function BezelStockTable({
   references,
   onOpenModal,
+  userRole
 }: BezelStockTableProps) {
+  const isOperator = userRole === "operator";
   const [searchTerm, setSearchTerm] = useState("");
   const [showValuation, setShowValuation] = useState(false);
+  const isValuationActive = !isOperator && showValuation;
+
   const [sortField, setSortField] = useState<
     "code" | "description" | "client" | "price" | "stock1" | "stock2" | "totalStock" | "valuation"
   >("code");
@@ -62,40 +67,37 @@ export default function BezelStockTable({
     }
   };
 
-  const totals = useMemo(() => {
-    let s1 = 0;
-    let s2 = 0;
-    let s1Val = 0;
-    let s2Val = 0;
-    references.forEach((r) => {
-      const price = getBezelPrice(r);
-      const q1 = r.stock1 || 0;
-      const q2 = r.stock2 || 0;
-      s1 += q1;
-      s2 += q2;
-      s1Val += q1 * price;
-      s2Val += q2 * price;
-    });
-    return {
-      stock1: s1,
-      stock2: s2,
-      total: s1 + s2,
-      stock1Val: s1Val,
-      stock2Val: s2Val,
-      totalVal: s1Val + s2Val,
-    };
-  }, [references]);
-
   const formatEuro = (amount: number) => {
     return `€ ${amount.toLocaleString("en-US", {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     })}`;
   };
 
+  // Grand totals across filtered references
+  const totals = useMemo(() => {
+    return sorted.reduce(
+      (acc, r) => {
+        const s1 = r.stock1 || 0;
+        const s2 = r.stock2 || 0;
+        const tot = s1 + s2;
+        const p = getBezelPrice(r);
+        return {
+          stock1: acc.stock1 + s1,
+          stock2: acc.stock2 + s2,
+          total: acc.total + tot,
+          stock1Val: acc.stock1Val + s1 * p,
+          stock2Val: acc.stock2Val + s2 * p,
+          totalVal: acc.totalVal + tot * p,
+        };
+      },
+      { stock1: 0, stock2: 0, total: 0, stock1Val: 0, stock2Val: 0, totalVal: 0 }
+    );
+  }, [sorted]);
+
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-      {/* Table Header & Controls */}
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      {/* Table Header Controls */}
       <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
@@ -107,20 +109,22 @@ export default function BezelStockTable({
         </div>
 
         <div className="flex items-center gap-2.5">
-          {/* Valuation Toggle */}
-          <button
-            type="button"
-            onClick={() => setShowValuation(!showValuation)}
-            className={`px-3 py-1.5 rounded-lg border text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${
-              showValuation
-                ? "bg-blue-600 border-blue-600 text-white"
-                : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-            }`}
-            title="Toggle monetary valuation (€)"
-          >
-            <Euro className="w-3.5 h-3.5" />
-            <span>{showValuation ? "Evaluation ON" : "Evaluation (€)"}</span>
-          </button>
+          {/* Valuation Toggle (Hidden for operators) */}
+          {!isOperator && (
+            <button
+              type="button"
+              onClick={() => setShowValuation(!showValuation)}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${
+                showValuation
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+              }`}
+              title="Toggle monetary valuation (€)"
+            >
+              <Euro className="w-3.5 h-3.5" />
+              <span>{showValuation ? "Evaluation ON" : "Evaluation (€)"}</span>
+            </button>
+          )}
 
           {/* Search */}
           <div className="relative w-full sm:w-56">
@@ -169,7 +173,7 @@ export default function BezelStockTable({
                 </div>
               </th>
 
-              {showValuation && (
+              {isValuationActive && (
                 <th
                   onClick={() => toggleSort("price")}
                   className="py-3 px-4 text-right cursor-pointer hover:text-slate-900 select-none"
@@ -211,7 +215,7 @@ export default function BezelStockTable({
                 </div>
               </th>
 
-              {showValuation && (
+              {isValuationActive && (
                 <th
                   onClick={() => toggleSort("valuation")}
                   className="py-3 px-4 text-right cursor-pointer hover:text-slate-900 select-none text-slate-900"
@@ -229,7 +233,7 @@ export default function BezelStockTable({
           <tbody className="divide-y divide-slate-100">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={showValuation ? 9 : 7} className="py-10 text-center text-slate-400">
+                <td colSpan={isValuationActive ? 9 : 7} className="py-10 text-center text-slate-400">
                   {references.length === 0
                     ? "No Bezel references registered yet."
                     : "No matching references found."}
@@ -245,25 +249,18 @@ export default function BezelStockTable({
 
                 return (
                   <tr
-                    key={ref.code}
+                    key={ref.id}
                     className="hover:bg-slate-50/80 transition-colors group"
                   >
                     <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                      <div className="flex items-center gap-1.5">
-                        <span>{ref.code}</span>
-                      </div>
-                      <div className="sm:hidden text-[10px] font-normal text-slate-500 truncate max-w-[140px]">
-                        {ref.description}
-                      </div>
+                      {ref.code}
                     </td>
-
-                    <td className="py-3 px-4 hidden sm:table-cell text-slate-600 max-w-xs truncate">
-                      {ref.description}
+                    <td className="py-3 px-4 text-slate-600 hidden sm:table-cell font-medium max-w-[200px] truncate" title={ref.description}>
+                      {ref.description || "—"}
                     </td>
-
                     <td className="py-3 px-4">
                       {ref.client ? (
-                        <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-blue-50 text-blue-700 border border-blue-200">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-slate-100 text-slate-700 border border-slate-200">
                           {ref.client}
                         </span>
                       ) : (
@@ -271,7 +268,7 @@ export default function BezelStockTable({
                       )}
                     </td>
 
-                    {showValuation && (
+                    {isValuationActive && (
                       <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">
                         € {price.toFixed(2)}
                       </td>
@@ -283,7 +280,7 @@ export default function BezelStockTable({
                           {(ref.stock1 || 0).toLocaleString()}
                         </span>
                       </div>
-                      {showValuation && (
+                      {isValuationActive && (
                         <div className="text-[10px] text-amber-800/80 mt-1">
                           {formatEuro(s1Val)}
                         </div>
@@ -296,7 +293,7 @@ export default function BezelStockTable({
                           {(ref.stock2 || 0).toLocaleString()}
                         </span>
                       </div>
-                      {showValuation && (
+                      {isValuationActive && (
                         <div className="text-[10px] text-emerald-800/80 mt-1">
                           {formatEuro(s2Val)}
                         </div>
@@ -305,14 +302,14 @@ export default function BezelStockTable({
 
                     <td className="py-3 px-4 text-right font-mono font-extrabold text-slate-900">
                       <div>{total.toLocaleString()}</div>
-                      {showValuation && (
+                      {isValuationActive && (
                         <div className="text-[10px] text-slate-500 font-normal mt-1">
                           pcs
                         </div>
                       )}
                     </td>
 
-                    {showValuation && (
+                    {isValuationActive && (
                       <td className="py-3 px-4 text-right font-mono font-black text-slate-900">
                         {formatEuro(totalVal)}
                       </td>
@@ -323,41 +320,37 @@ export default function BezelStockTable({
                         {/* Quick Assemblage */}
                         <button
                           onClick={() => onOpenModal("assemblage", ref.code)}
-                          disabled={(ref.stock1 || 0) <= 0}
-                          className="p-1.5 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                          title="Assemble (Stock 1 → Stock 2)"
+                          className="p-1.5 rounded-md text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900 transition-colors cursor-pointer"
+                          title="Assemble (Move Stock 1 -> Stock 2)"
                         >
-                          <Cpu className="w-3.5 h-3.5" />
+                          <Cpu className="w-4 h-4" />
                         </button>
 
                         {/* Quick Delivery */}
                         <button
                           onClick={() => onOpenModal("delivery", ref.code)}
-                          disabled={(ref.stock2 || 0) <= 0}
-                          className="p-1.5 rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                          title="Deliver (Stock 2 → OUT)"
+                          className="p-1.5 rounded-md text-purple-700 hover:bg-purple-50 hover:text-purple-900 transition-colors cursor-pointer"
+                          title="Delivery / Dispatch (Ship Stock 2)"
                         >
-                          <Send className="w-3.5 h-3.5" />
+                          <Send className="w-4 h-4" />
                         </button>
 
                         {/* Quick Return */}
                         <button
                           onClick={() => onOpenModal("return", ref.code)}
-                          disabled={(ref.stock2 || 0) <= 0}
-                          className="p-1.5 rounded-md bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                          title="Return (Stock 2 → Stock 1)"
+                          className="p-1.5 rounded-md text-amber-700 hover:bg-amber-50 hover:text-amber-900 transition-colors cursor-pointer"
+                          title="Return (Move Stock 2 -> Stock 1)"
                         >
-                          <RotateCcw className="w-3.5 h-3.5" />
+                          <RotateCcw className="w-4 h-4" />
                         </button>
 
                         {/* Quick Scrap */}
                         <button
                           onClick={() => onOpenModal("scrap", ref.code)}
-                          disabled={total <= 0}
-                          className="p-1.5 rounded-md bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                          title="Scrap / NOK"
+                          className="p-1.5 rounded-md text-rose-700 hover:bg-rose-50 hover:text-rose-900 transition-colors cursor-pointer"
+                          title="Scrap / NOK Defect Entry"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -366,7 +359,6 @@ export default function BezelStockTable({
               })
             )}
           </tbody>
-          {/* Summary Row */}
           <tfoot>
             <tr className="bg-slate-100/90 font-bold border-t-2 border-slate-200 text-slate-800 text-[11px] font-mono">
               <td className="py-2.5 px-4 uppercase">TOTAL</td>
@@ -374,26 +366,26 @@ export default function BezelStockTable({
                 {references.length} References
               </td>
               <td className="py-2.5 px-4"></td>
-              {showValuation && <td className="py-2.5 px-4 text-right text-slate-400">—</td>}
+              {isValuationActive && <td className="py-2.5 px-4 text-right text-slate-400">—</td>}
               <td className="py-2.5 px-4 text-right text-amber-900">
                 <div>{totals.stock1.toLocaleString()}</div>
-                {showValuation && (
+                {isValuationActive && (
                   <div className="text-[10px] text-amber-800">{formatEuro(totals.stock1Val)}</div>
                 )}
               </td>
               <td className="py-2.5 px-4 text-right text-emerald-900">
                 <div>{totals.stock2.toLocaleString()}</div>
-                {showValuation && (
+                {isValuationActive && (
                   <div className="text-[10px] text-emerald-800">{formatEuro(totals.stock2Val)}</div>
                 )}
               </td>
               <td className="py-2.5 px-4 text-right text-slate-900 font-black">
                 <div>{totals.total.toLocaleString()}</div>
-                {showValuation && (
+                {isValuationActive && (
                   <div className="text-[10px] text-slate-500 font-normal">pcs</div>
                 )}
               </td>
-              {showValuation && (
+              {isValuationActive && (
                 <td className="py-2.5 px-4 text-right font-black text-slate-900">
                   {formatEuro(totals.totalVal)}
                 </td>

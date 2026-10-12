@@ -1,6 +1,6 @@
 import React from "react";
 import { Layers, Warehouse, Factory, ArrowUpRight } from "lucide-react";
-import { BezelReference } from "../../types";
+import { BezelReference, UserRole } from "../../types";
 import { getBezelPrice } from "../../services/bezelService";
 
 interface BezelMetricsProps {
@@ -9,6 +9,7 @@ interface BezelMetricsProps {
   totalStock2: number;
   totalStock: number;
   onViewEvaluation?: () => void;
+  userRole?: UserRole;
 }
 
 export default function BezelMetrics({
@@ -16,8 +17,11 @@ export default function BezelMetrics({
   totalStock1,
   totalStock2,
   totalStock,
-  onViewEvaluation
+  onViewEvaluation,
+  userRole
 }: BezelMetricsProps) {
+  const isOperator = userRole === "operator";
+
   const stock1Valuation = references.reduce(
     (sum, r) => sum + (r.stock1 || 0) * getBezelPrice(r),
     0
@@ -61,19 +65,26 @@ export default function BezelMetrics({
           </div>
           <span className="text-xs text-slate-500 font-medium font-mono">units</span>
         </div>
-        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-baseline justify-between font-mono">
-          <span className="text-[11px] font-bold uppercase text-slate-400">
-            Valuation
-          </span>
-          <div className="text-right">
-            <span className="text-xs font-bold text-amber-800">
-              {formatEuro(stock1Valuation)}
+        {!isOperator ? (
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-baseline justify-between font-mono">
+            <span className="text-[11px] font-bold uppercase text-slate-400">
+              Valuation
             </span>
-            <span className="text-[10px] text-slate-400 ml-1.5 font-medium">
-              ({s1Share.toFixed(0)}%)
-            </span>
+            <div className="text-right">
+              <span className="text-xs font-bold text-amber-800">
+                {formatEuro(stock1Valuation)}
+              </span>
+              <span className="text-[10px] text-slate-400 ml-1.5 font-medium">
+                ({s1Share.toFixed(0)}%)
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between font-mono text-[11px] text-slate-500">
+            <span className="font-semibold uppercase text-slate-400">Type</span>
+            <span className="font-bold text-amber-800">Raw Materials</span>
+          </div>
+        )}
       </div>
 
       {/* Stock 2 Card */}
@@ -100,19 +111,26 @@ export default function BezelMetrics({
           </div>
           <span className="text-xs text-slate-500 font-medium font-mono">units</span>
         </div>
-        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-baseline justify-between font-mono">
-          <span className="text-[11px] font-bold uppercase text-slate-400">
-            Valuation
-          </span>
-          <div className="text-right">
-            <span className="text-xs font-bold text-emerald-800">
-              {formatEuro(stock2Valuation)}
+        {!isOperator ? (
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-baseline justify-between font-mono">
+            <span className="text-[11px] font-bold uppercase text-slate-400">
+              Valuation
             </span>
-            <span className="text-[10px] text-slate-400 ml-1.5 font-medium">
-              ({s2Share.toFixed(0)}%)
-            </span>
+            <div className="text-right">
+              <span className="text-xs font-bold text-emerald-800">
+                {formatEuro(stock2Valuation)}
+              </span>
+              <span className="text-[10px] text-slate-400 ml-1.5 font-medium">
+                ({s2Share.toFixed(0)}%)
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between font-mono text-[11px] text-slate-500">
+            <span className="font-semibold uppercase text-slate-400">Type</span>
+            <span className="font-bold text-emerald-800">Ready to Dispatch</span>
+          </div>
+        )}
       </div>
 
       {/* Total Bezel Inventory */}
@@ -129,7 +147,7 @@ export default function BezelMetrics({
               TOTAL BEZEL STOCK
             </span>
           </div>
-          {onViewEvaluation && (
+          {!isOperator && onViewEvaluation && (
             <button
               onClick={onViewEvaluation}
               className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center gap-1 cursor-pointer transition-colors"
@@ -146,14 +164,21 @@ export default function BezelMetrics({
           </div>
           <span className="text-xs text-slate-500 font-medium font-mono">{references.length} refs</span>
         </div>
-        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-baseline justify-between font-mono">
-          <span className="text-[11px] font-bold uppercase text-slate-400">
-            Total Valuation
-          </span>
-          <span className="text-xs font-black text-indigo-900">
-            {formatEuro(totalValuation)}
-          </span>
-        </div>
+        {!isOperator ? (
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-baseline justify-between font-mono">
+            <span className="text-[11px] font-bold uppercase text-slate-400">
+              Total Valuation
+            </span>
+            <span className="text-xs font-black text-indigo-900">
+              {formatEuro(totalValuation)}
+            </span>
+          </div>
+        ) : (
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between font-mono text-[11px] text-slate-500">
+            <span className="font-semibold uppercase text-slate-400">Status</span>
+            <span className="font-bold text-indigo-900">Live Inventory Active</span>
+          </div>
+        )}
       </div>
     </div>
   );
