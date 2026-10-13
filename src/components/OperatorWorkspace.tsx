@@ -6,6 +6,7 @@ import {
   Scan, Check, AlertCircle, RefreshCw, FileText, User as UserIcon, Sparkles, ArrowRight, Layers, Box as BoxIcon, RotateCcw, Eraser, Trash2, CheckCircle2, XCircle, Edit3, Save, X, PlusCircle, Search, Barcode, AlertTriangle, Clock, Truck
 } from "lucide-react";
 import { CustomReferenceSelect } from "./CustomReferenceSelect";
+import IncomingReceiptModal from "./IncomingReceiptModal";
 import Swal from "sweetalert2";
 import { formatSystemTime } from "../utils/timeUtils";
 import { executeProtectedStockOperation, executeProtectedTransfer } from "../services/protectionLayer";
@@ -51,8 +52,25 @@ export default function OperatorWorkspace({
     } catch (e) {}
   }, []);
   
-  // Operation Mode: TRANSFER (Pegadas) vs RETURN vs INCOMPLETA
-  const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER" | "RETURN" | "INCOMPLETA">("TRANSFER");
+  // Operation Mode: INTAKE (New Truck) vs TRANSFER (Pegadas) vs RETURN vs INCOMPLETA
+  const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER" | "RETURN" | "INCOMPLETA">(() => {
+    try {
+      const saved = localStorage.getItem("op_selected_mode");
+      if (saved === "INTAKE" || saved === "TRANSFER" || saved === "RETURN" || saved === "INCOMPLETA") {
+        return saved;
+      }
+    } catch (e) {}
+    return "INTAKE";
+  });
+
+  // Modal for quick multi-reference Incoming Receipt (Stock IN)
+  const [isIncomingModalOpen, setIsIncomingModalOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("op_selected_mode", opMode);
+    } catch (e) {}
+  }, [opMode]);
 
   // Local optimistic pending invoice for instant (0ms) UI updates during rapid scanning (INTAKE mode)
   const [localPendingInvoice, setLocalPendingInvoice] = useState<ReceivingInvoice | null>(null);
@@ -1104,6 +1122,17 @@ export default function OperatorWorkspace({
         </div>
         
         <div className="flex items-center gap-2 self-start sm:self-auto font-mono text-xs">
+          <button
+            type="button"
+            onClick={() => setIsIncomingModalOpen(true)}
+            id="operator-banner-new-truck-btn"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer shadow-2xs active:scale-95"
+            title="Open Incoming Receipt (Stock IN) Modal"
+          >
+            <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span>+ New Truck</span>
+          </button>
+
           {lowStockCount > 0 && (
             <button
               type="button"
@@ -1133,7 +1162,7 @@ export default function OperatorWorkspace({
             <div>
               <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                 {opMode === "INTAKE" 
-                  ? "New Truck Intake (Stock 1)" 
+                  ? "New Truck Intake (Stock IN)" 
                   : opMode === "TRANSFER" 
                   ? "Transfer to Pegadas (Stock 1 → Stock 2)" 
                   : opMode === "RETURN"
@@ -1142,20 +1171,53 @@ export default function OperatorWorkspace({
               </h3>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleClearInputs}
-            title="Reset fields (ESC)"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-200/80"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-            <span>Reset</span>
-            <span className="text-[10px] font-mono text-slate-400 bg-slate-200/80 px-1.5 py-0.2 rounded">ESC</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {opMode === "INTAKE" && (
+              <button
+                type="button"
+                onClick={() => setIsIncomingModalOpen(true)}
+                title="Open Incoming Receipt (Stock IN) Modal"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-blue-200"
+                id="op-quick-open-receipt-modal-btn"
+              >
+                <Truck className="w-3.5 h-3.5 text-blue-600" />
+                <span>Receipt Form</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleClearInputs}
+              title="Reset fields (ESC)"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-200/80"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+              <span>Reset</span>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-200/80 px-1.5 py-0.2 rounded">ESC</span>
+            </button>
+          </div>
         </div>
 
         {/* Operation Mode Selector Tabs */}
-        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 font-mono">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 font-mono">
+          <button
+            type="button"
+            onClick={() => {
+              setOpMode("INTAKE");
+              setErrorMsg("");
+              setSuccessMsg("");
+              setAutoCorrectNotice("");
+              setTimeout(() => invoiceRef.current?.focus() || referenceRef.current?.focus(), 50);
+            }}
+            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer truncate ${
+              opMode === "INTAKE"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+            }`}
+            id="op-tab-intake"
+          >
+            <span>🚛</span>
+            <span className="truncate">New Truck</span>
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -1165,7 +1227,7 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => referenceRef.current?.focus(), 50);
             }}
-            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
+            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer truncate ${
               opMode === "TRANSFER"
                 ? "bg-slate-900 text-white shadow-xs"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
@@ -1184,7 +1246,7 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => referenceRef.current?.focus(), 50);
             }}
-            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
+            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer truncate ${
               opMode === "RETURN"
                 ? "bg-slate-900 text-white shadow-xs"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
@@ -1203,7 +1265,7 @@ export default function OperatorWorkspace({
               setAutoCorrectNotice("");
               setTimeout(() => referenceRef.current?.focus(), 50);
             }}
-            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
+            className={`py-2 px-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer truncate ${
               opMode === "INCOMPLETA"
                 ? "bg-rose-900 text-white shadow-xs"
                 : "text-rose-700 hover:text-rose-900 hover:bg-white/60"
@@ -2167,6 +2229,18 @@ export default function OperatorWorkspace({
         )}
 
       </div>
+
+      {/* Incoming Receipt (Stock IN) Modal */}
+      <IncomingReceiptModal
+        isOpen={isIncomingModalOpen}
+        onClose={() => setIsIncomingModalOpen(false)}
+        references={references}
+        currentUser={currentUser}
+        onSuccess={(msg) => {
+          setSuccessMsg(msg);
+          playSuccessBeep();
+        }}
+      />
 
     </div>
   );
