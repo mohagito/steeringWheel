@@ -264,6 +264,14 @@
     "/bezel_operations/{opId}": {
       "schema": "BezelOperation",
       "description": "Collection of Bezel inventory movements and audit logs"
+    },
+    "/blue_material_settings/{settingId}": {
+      "schema": "BlueMaterialSettings",
+      "description": "Collection of Blue Material global parameters (coverage per roll, available rolls)"
+    },
+    "/blue_material_movements/{movementId}": {
+      "schema": "BlueMaterialMovement",
+      "description": "Historical audit log of Blue Material receipts and movements"
     }
   }
 }

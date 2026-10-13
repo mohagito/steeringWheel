@@ -34,6 +34,7 @@ import BezelSidebar from "./bezel/BezelSidebar";
 import BezelInventoryWorkspace from "./bezel/BezelInventoryWorkspace";
 import BezelInvoicesWorkspace from "./bezel/BezelInvoicesWorkspace";
 import BezelDeliveriesWorkspace from "./bezel/BezelDeliveriesWorkspace";
+import BlueMaterialWorkspace from "./BlueMaterialWorkspace";
 
 interface BezelWorkspaceProps {
   currentUser: User;
@@ -210,6 +211,8 @@ export default function BezelWorkspace({
           : "Operations & Live Stock Management";
       case "inventory":
         return "Stock Inventory — Physical Count & Reconciliation";
+      case "blue-material":
+        return "Blue Material Management";
       default:
         return "Bezel Management Workspace";
     }
@@ -333,6 +336,10 @@ export default function BezelWorkspace({
               currentUser={currentUser}
               onSuccess={(msg) => showToast(msg, "success")}
               onError={(err) => showToast(err, "error")}
+            />
+          ) : activeSection === "blue-material" ? (
+            <BlueMaterialWorkspace
+              currentUser={currentUser}
             />
           ) : (
             /* Section 3: OPERATIONS & STOCK OVERVIEW */

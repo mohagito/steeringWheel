@@ -307,7 +307,7 @@ export async function parseZdfReturnPDF(
   } else if (genericInvMatch) {
     containerOrInvoiceNumber = (genericInvMatch[1] || genericInvMatch[0]).trim();
   } else {
-    containerOrInvoiceNumber = `ZDF-${Date.now().toString().slice(-6)}`;
+    containerOrInvoiceNumber = `ZF-${Date.now().toString().slice(-6)}`;
   }
 
   // 2. Identify Document Date
@@ -611,7 +611,7 @@ export async function parseZdfReturnPDF(
       id: `zdf-${Date.now()}-${items.length + 1}-${Math.random().toString(36).substring(2, 6)}`,
       client,
       docReference: ref,
-      description: desc || "ZDF Return Component",
+      description: desc || "ZF Return Component",
       meshReference,
       quantity: qty,
       targetStock,

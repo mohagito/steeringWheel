@@ -107,6 +107,17 @@ service cloud.firestore {
       allow create, update, delete: if isValidId(invoiceId);
     }
 
+    // Blue Material Module: Settings & History Tracking
+    match /blue_material_settings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if isValidId(settingId);
+    }
+
+    match /blue_material_movements/{movementId} {
+      allow read: if true;
+      allow create, update, delete: if isValidId(movementId);
+    }
+
     // Google Sheets Backup Metadata & Health Status
     match /backup_metadata/{metaId} {
       allow read: if true;

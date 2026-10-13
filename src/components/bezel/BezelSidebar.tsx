@@ -6,7 +6,8 @@ import {
   ClipboardCheck, 
   History,
   ArrowLeft, 
-  LogOut 
+  LogOut,
+  Layers
 } from "lucide-react";
 import { User, UserRole } from "../../types";
 
@@ -69,6 +70,11 @@ export default function BezelSidebar({
       id: "deliveries",
       label: "Deliveries",
       icon: Truck
+    },
+    {
+      id: "blue-material",
+      label: "BLUE MATERIAL",
+      icon: Layers
     },
     {
       id: "records",

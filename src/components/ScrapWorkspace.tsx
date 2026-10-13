@@ -6,7 +6,8 @@ import {
   formatSystemTime,
   compareTimestampsDesc,
   getISOWeekCode,
-  getScrapWeekCode
+  getScrapWeekCode,
+  parseTimestampMs
 } from "../utils/timeUtils";
 import { 
   Trash2, Calendar, Hash, AlertTriangle, CheckCircle2, 
@@ -385,7 +386,7 @@ export default function ScrapWorkspace({
   const filteredScraps = useMemo(() => {
     const q = (searchTerm || "").toLowerCase().trim();
     return scraps
-      .filter(s => {
+      .filter((s) => {
         if (!q) return true;
         const matchesSearch = 
           (s.reference || "").toLowerCase().includes(q) ||
@@ -393,12 +394,96 @@ export default function ScrapWorkspace({
           (s.operatorName || "").toLowerCase().includes(q) ||
           (s.invoiceNumber || "").toLowerCase().includes(q) ||
           (s.notes || "").toLowerCase().includes(q) ||
-          (s.date || "").toLowerCase().includes(q);
+          (s.date || "").toLowerCase().includes(q) ||
+          getScrapWeekCode(s).toLowerCase().includes(q);
         
         return matchesSearch;
       })
       .sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
   }, [scraps, searchTerm]);
+
+  // Week Grouping & Filter for Scrap History
+  const [selectedWeekFilter, setSelectedWeekFilter] = useState<string>("ALL");
+  const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
+
+  const availableWeeks = useMemo(() => {
+    const set = new Set<string>();
+    scraps.forEach((s) => {
+      set.add(getScrapWeekCode(s));
+    });
+    return Array.from(set).sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, ""), 10) || 0;
+      const numB = parseInt(b.replace(/\D/g, ""), 10) || 0;
+      return numB - numA;
+    });
+  }, [scraps]);
+
+  const groupedScrapWeeks = useMemo(() => {
+    const map = new Map<string, ScrapEntry[]>();
+
+    filteredScraps.forEach((s) => {
+      const wk = getScrapWeekCode(s);
+      if (selectedWeekFilter !== "ALL" && wk !== selectedWeekFilter) {
+        return;
+      }
+      if (!map.has(wk)) {
+        map.set(wk, []);
+      }
+      map.get(wk)!.push(s);
+    });
+
+    const groups: {
+      weekCode: string;
+      totalQuantity: number;
+      items: ScrapEntry[];
+      uniqueReferences: string[];
+      latestTimestamp: number;
+    }[] = [];
+
+    map.forEach((items, weekCode) => {
+      const totalQuantity = items.reduce((sum, it) => sum + (it.quantity || 0), 0);
+      const uniqueReferences = Array.from(new Set(items.map((it) => it.reference)));
+      const latestTimestamp = items.reduce((max, it) => {
+        const ms = parseTimestampMs(it.timestamp) || 0;
+        return ms > max ? ms : max;
+      }, 0);
+
+      groups.push({
+        weekCode,
+        totalQuantity,
+        items,
+        uniqueReferences,
+        latestTimestamp
+      });
+    });
+
+    groups.sort((a, b) => {
+      const numA = parseInt(a.weekCode.replace(/\D/g, ""), 10) || 0;
+      const numB = parseInt(b.weekCode.replace(/\D/g, ""), 10) || 0;
+      if (numB !== numA) return numB - numA;
+      return (b.latestTimestamp || 0) - (a.latestTimestamp || 0);
+    });
+
+    return groups;
+  }, [filteredScraps, selectedWeekFilter]);
+
+  const toggleWeek = (weekCode: string) => {
+    setExpandedWeeks((prev) => ({
+      ...prev,
+      [weekCode]: prev[weekCode] === undefined ? false : !prev[weekCode]
+    }));
+  };
+
+  const toggleAllWeeks = () => {
+    const allExpanded = groupedScrapWeeks.every(
+      (g) => expandedWeeks[g.weekCode] !== false
+    );
+    const next: Record<string, boolean> = {};
+    groupedScrapWeeks.forEach((g) => {
+      next[g.weekCode] = !allExpanded;
+    });
+    setExpandedWeeks(next);
+  };
 
   return (
     <div className="space-y-6">
@@ -838,165 +923,240 @@ export default function ScrapWorkspace({
           </form>
         </div>
 
-        {/* SCRAP HISTORY TABLE */}
-        <div className="lg:col-span-7 bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-sm flex flex-col space-y-4">
+        {/* SCRAP HISTORY (COLLECTED BY WEEKS) */}
+        <div className="lg:col-span-7 bg-white p-5 sm:p-7 rounded-3xl border border-slate-200 shadow-sm flex flex-col space-y-4">
           
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-            <div>
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-slate-700" />
-                <span>Scrap History</span>
-              </h3>
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <FileText className="w-4.5 h-4.5 text-slate-700" />
+              <span>Scrap History</span>
+            </h3>
 
             <div className="flex items-center gap-2">
-              <div className="text-xs font-mono font-bold px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl">
-                {filteredScraps.length} Records
+              <div className="text-xs font-mono font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg">
+                {filteredScraps.length} entries • {groupedScrapWeeks.length} {groupedScrapWeeks.length === 1 ? "week" : "weeks"}
               </div>
+
+              {groupedScrapWeeks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleAllWeeks}
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  {groupedScrapWeeks.every((g) => expandedWeeks[g.weekCode] !== false)
+                    ? "Collapse all"
+                    : "Expand all"}
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Search Toolbar */}
-          <div className="relative w-full">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 rounded-xl text-xs focus:outline-none transition-all"
-            />
-          </div>
+          {/* Search Toolbar & Week Selector */}
+          <div className="flex flex-col sm:flex-row gap-2 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search reference, invoice, operator..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/10 rounded-xl text-xs focus:outline-none transition-all"
+              />
+            </div>
 
-          {/* Table Area */}
-          <div className="flex-1 overflow-x-auto min-h-[350px]">
-            {filteredScraps.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-2">
-                <Trash2 className="w-10 h-10 text-slate-300" />
-                <div className="text-sm font-semibold text-slate-600">No scrap records</div>
-                <div className="text-xs max-w-xs">
-                  {searchTerm ? "No results matching search." : "Recorded scrap will appear here."}
-                </div>
-              </div>
-            ) : (
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-3 px-3">W</th>
-                    <th className="py-3 px-3">Reference</th>
-                    <th className="py-3 px-3 text-right">Qty</th>
-                    <th className="py-3 px-3">Invoice #</th>
-                    <th className="py-3 px-3">Stock</th>
-                    <th className="py-3 px-3">Cola</th>
-                    <th className="py-3 px-3">Operator</th>
-                    {(onDeleteScrap || onUpdateScrap) && <th className="py-3 px-3 text-right">Actions</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
-                  {filteredScraps.map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-3 font-mono text-slate-600 font-semibold whitespace-nowrap">
-                        <div>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 font-bold font-mono text-xs border border-rose-200/80">
-                            {getScrapWeekCode(s)}
-                          </span>
-                        </div>
-                        {s.timestamp && (
-                          <div className="text-[10px] text-slate-400 font-normal mt-0.5">{formatSystemTime(s.timestamp)}</div>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
-                        {s.reference}
-                      </td>
-                      <td className="py-3 px-3 font-mono font-black text-rose-600 text-right text-sm whitespace-nowrap">
-                        -{s.quantity} PCS
-                      </td>
-                      <td className="py-3 px-3 font-mono text-xs whitespace-nowrap">
-                        {s.invoiceNumber ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-800 rounded-md font-bold text-[11px] border border-slate-200/80">
-                            <FileText className="w-3 h-3 text-rose-600 shrink-0" />
-                            {s.invoiceNumber}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-[11px] italic">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 font-mono text-[11px] whitespace-nowrap text-slate-600">
-                        <span className="font-bold text-slate-800">{s.stockDeductedFrom}</span>
-                        <span className="text-slate-400 ml-1">({s.stockBefore}➔{s.stockAfter})</span>
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        {s.cola === "CON_COLA" || s.colaStatus === "CON_COLA" || s.condition === "CON COLA" ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
-                            CON COLA
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-300">
-                            SIN COLA
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-slate-700 font-medium whitespace-nowrap">
-                        {s.supervisorName}
-                      </td>
-                      {(onDeleteScrap || onUpdateScrap) && (
-                        <td className="py-3 px-3 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1">
-                            {onUpdateScrap && (
-                              <button
-                                onClick={() => handleOpenEdit(s)}
-                                title="Modify scrap entry"
-                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                            {onDeleteScrap && (
-                              <button
-                                onClick={async () => {
-                                  const result = await Swal.fire({
-                                    title: "Revert Scrap Entry?",
-                                    text: `Revert scrap entry for ${s.reference} (-${s.quantity} PCS)? This will restore ${s.quantity} PCS back to ${s.stockDeductedFrom}.`,
-                                    icon: "warning",
-                                    showCancelButton: true,
-                                    confirmButtonColor: "#dc2626",
-                                    cancelButtonColor: "#64748b",
-                                    confirmButtonText: "Yes, Revert & Restore Stock",
-                                    cancelButtonText: "Cancel"
-                                  });
-
-                                  if (result.isConfirmed) {
-                                    try {
-                                      await onDeleteScrap(s.id, "Reverted by operator");
-                                      await Swal.fire({
-                                        title: "Scrap Entry Reverted",
-                                        text: `Successfully restored ${s.quantity} PCS to ${s.stockDeductedFrom} for ${s.reference}.`,
-                                        icon: "success",
-                                        timer: 1800,
-                                        showConfirmButton: false
-                                      });
-                                    } catch (err: any) {
-                                      console.error(err);
-                                      await Swal.fire("Error", err?.message || "Failed to revert scrap entry.", "error");
-                                    }
-                                  }
-                                }}
-                                title="Delete and restore stock"
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      )}
-                    </tr>
+            {availableWeeks.length > 0 && (
+              <div className="w-full sm:w-auto flex items-center shrink-0">
+                <select
+                  value={selectedWeekFilter}
+                  onChange={(e) => setSelectedWeekFilter(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-1.5 text-xs font-mono font-bold rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                >
+                  <option value="ALL">All Weeks ({availableWeeks.length})</option>
+                  {availableWeeks.map((wk) => (
+                    <option key={wk} value={wk}>
+                      {wk}
+                    </option>
                   ))}
-                </tbody>
-              </table>
+                </select>
+              </div>
             )}
           </div>
 
+          {/* Week Grouped History List */}
+          <div className="flex-1 space-y-2.5 overflow-y-auto max-h-[620px] pr-0.5">
+            {groupedScrapWeeks.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center p-12 text-center text-slate-400 space-y-2">
+                <Trash2 className="w-8 h-8 text-slate-300" />
+                <div className="text-xs font-semibold text-slate-600">No scrap records</div>
+              </div>
+            ) : (
+              groupedScrapWeeks.map((group) => {
+                const isExpanded = expandedWeeks[group.weekCode] !== false;
+
+                return (
+                  <div
+                    key={group.weekCode}
+                    className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs transition-all"
+                  >
+                    {/* Week Header Bar */}
+                    <button
+                      type="button"
+                      onClick={() => toggleWeek(group.weekCode)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/80 transition-colors flex items-center justify-between gap-3 text-left cursor-pointer border-b border-slate-100"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 shrink-0 ${
+                            isExpanded ? "" : "-rotate-90"
+                          }`}
+                        />
+                        <span className="px-2 py-0.5 rounded bg-rose-600 text-white font-mono font-bold text-xs tracking-wide">
+                          {group.weekCode}
+                        </span>
+                        <span className="text-xs font-mono text-slate-500">
+                          {group.items.length} {group.items.length === 1 ? "entry" : "entries"} • {group.uniqueReferences.length} refs
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs font-mono font-black text-rose-600">
+                          -{group.totalQuantity.toLocaleString()} PCS
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Week Records Table */}
+                    {isExpanded && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-50/50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                              <th className="py-2.5 px-3">Date / Time</th>
+                              <th className="py-2.5 px-3">Reference</th>
+                              <th className="py-2.5 px-3 text-right">Qty</th>
+                              <th className="py-2.5 px-3">Invoice #</th>
+                              <th className="py-2.5 px-3">Stock</th>
+                              <th className="py-2.5 px-3">Cola</th>
+                              <th className="py-2.5 px-3">Operator</th>
+                              {(onDeleteScrap || onUpdateScrap) && (
+                                <th className="py-2.5 px-3 text-right">Actions</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-xs">
+                            {group.items.map((s) => (
+                              <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="py-2.5 px-3 font-mono text-slate-500 whitespace-nowrap text-[11px]">
+                                  {s.timestamp ? formatSystemTime(s.timestamp, { format: "datetime" }) : s.date || "—"}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
+                                  {s.reference}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-black text-rose-600 text-right whitespace-nowrap">
+                                  -{s.quantity} PCS
+                                </td>
+                                <td className="py-2.5 px-3 font-mono text-xs whitespace-nowrap">
+                                  {s.invoiceNumber ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-800 rounded-md font-bold text-[11px] border border-slate-200">
+                                      <FileText className="w-3 h-3 text-rose-600 shrink-0" />
+                                      {s.invoiceNumber}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 text-[11px] italic">—</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap text-slate-600">
+                                  <span className="font-bold text-slate-800">{s.stockDeductedFrom}</span>
+                                  {s.stockBefore !== undefined && s.stockAfter !== undefined && (
+                                    <span className="text-slate-400 ml-1 text-[10px]">
+                                      ({s.stockBefore}➔{s.stockAfter})
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  {s.cola === "CON_COLA" || s.colaStatus === "CON_COLA" || s.condition === "CON COLA" ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                                      CON COLA
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-300">
+                                      SIN COLA
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-700 font-medium whitespace-nowrap">
+                                  {s.supervisorName || s.operatorName || "—"}
+                                </td>
+                                {(onDeleteScrap || onUpdateScrap) && (
+                                  <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                    <div className="flex items-center justify-end gap-1">
+                                      {onUpdateScrap && (
+                                        <button
+                                          onClick={() => handleOpenEdit(s)}
+                                          title="Modify scrap entry"
+                                          className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all cursor-pointer"
+                                        >
+                                          <Edit2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {onDeleteScrap && (
+                                        <button
+                                          onClick={async () => {
+                                            const result = await Swal.fire({
+                                              title: "Revert Scrap Entry?",
+                                              text: `Revert scrap entry for ${s.reference} (-${s.quantity} PCS)? This will restore ${s.quantity} PCS back to ${s.stockDeductedFrom}.`,
+                                              icon: "warning",
+                                              showCancelButton: true,
+                                              confirmButtonColor: "#dc2626",
+                                              cancelButtonColor: "#64748b",
+                                              confirmButtonText: "Yes, Revert & Restore Stock",
+                                              cancelButtonText: "Cancel"
+                                            });
+
+                                            if (result.isConfirmed) {
+                                              try {
+                                                await onDeleteScrap(s.id, "Reverted by operator");
+                                                await Swal.fire({
+                                                  title: "Scrap Entry Reverted",
+                                                  text: `Successfully restored ${s.quantity} PCS to ${s.stockDeductedFrom} for ${s.reference}.`,
+                                                  icon: "success",
+                                                  timer: 1800,
+                                                  showConfirmButton: false
+                                                });
+                                              } catch (err: any) {
+                                                console.error(err);
+                                                await Swal.fire("Error", err?.message || "Failed to revert scrap entry.", "error");
+                                              }
+                                            }
+                                          }}
+                                          title="Delete and restore stock"
+                                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-slate-50 font-bold border-t border-slate-200 text-slate-800 text-[11px] font-mono">
+                              <td className="py-2 px-3 uppercase text-slate-500">Subtotal {group.weekCode}</td>
+                              <td className="py-2 px-3 text-slate-500 font-normal">{group.uniqueReferences.length} refs</td>
+                              <td className="py-2 px-3 text-right font-black text-rose-600">-{group.totalQuantity.toLocaleString()} PCS</td>
+                              <td colSpan={(onDeleteScrap || onUpdateScrap) ? 5 : 4} className="py-2 px-3"></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
 
       </div>

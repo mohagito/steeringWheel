@@ -24,6 +24,7 @@ import ModuleSelection from "./components/ModuleSelection";
 import BezelWorkspace from "./components/BezelWorkspace";
 import DesassemblageWorkspace from "./components/DesassemblageWorkspace";
 import MeshInventoryWorkspace from "./components/MeshInventoryWorkspace";
+import BlueMaterialWorkspace from "./components/BlueMaterialWorkspace";
 
 import DailyProductionWorkspace from "./components/DailyProductionWorkspace";
 import { LowStockAlertModal } from "./components/LowStockAlertModal";
@@ -88,7 +89,7 @@ export default function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [stockInventoryInitialRef, setStockInventoryInitialRef] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "stock-inventory" | "invoices" | "invoice-archive" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "desassemblage" | "scrap" | "manage-references">(() => {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "stock" | "stock-inventory" | "invoices" | "invoice-archive" | "operator" | "pegadas" | "records" | "supervisor" | "admin" | "deliveries" | "production" | "daily-production-demo" | "desassemblage" | "scrap" | "manage-references" | "blue-material">(() => {
     try {
       const savedUser = sessionStorage.getItem("epp_current_user");
       const savedTab = sessionStorage.getItem("epp_active_tab") as any;
@@ -1425,6 +1426,22 @@ export default function App() {
               </div>
             </button>
 
+            {/* BLUE MATERIAL Tab */}
+            <button
+              onClick={() => setActiveTab("blue-material")}
+              id="nav-tab-blue-material"
+              className={`p-2.5 rounded-sm text-xs md:text-sm font-semibold transition-all flex items-center gap-3 cursor-pointer w-full text-left select-none border-l-2 ${
+                activeTab === "blue-material"
+                  ? "text-sky-400 font-bold bg-[#0f1e36] border-sky-400"
+                  : "text-slate-400 hover:bg-[#0f1e36]/50 hover:text-white border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Layers className="w-4 h-4 shrink-0 text-sky-400" />
+                <span>BLUE MATERIAL</span>
+              </div>
+            </button>
+
             {/* Manage References Tab (Supervisor & Admin ONLY) */}
             {(currentUser.role === "supervisor" || currentUser.role === "admin") && (
               <button
@@ -1784,6 +1801,12 @@ export default function App() {
                   onSubmitScrap={handleSubmitScrap}
                   onDeleteScrap={handleDeleteScrap}
                   onUpdateScrap={handleUpdateScrap}
+                />
+              )}
+
+              {activeTab === "blue-material" && (
+                <BlueMaterialWorkspace
+                  currentUser={currentUser}
                 />
               )}
 

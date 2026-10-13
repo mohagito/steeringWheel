@@ -1094,7 +1094,7 @@ export default function DashboardOverview({
               <Truck className="w-4 h-4 text-blue-600" />
               <span>+ Incoming</span>
             </div>
-            <span className="text-[10px] font-normal text-blue-600/80">Raw Material • Return ZDF</span>
+            <span className="text-[10px] font-normal text-blue-600/80">Raw Material • Return ZF</span>
           </button>
 
           <button
@@ -2333,7 +2333,7 @@ export default function DashboardOverview({
                 </div>
               </button>
 
-              {/* Option 2: RETURN ZDF */}
+              {/* Option 2: RETURN ZF */}
               <div className="p-4 rounded-2xl border-2 border-slate-200 bg-slate-50/50 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
@@ -2342,7 +2342,7 @@ export default function DashboardOverview({
                     </div>
                     <div>
                       <h4 className="text-sm font-extrabold text-slate-900">
-                        RETURN ZDF
+                        RETURN ZF
                       </h4>
                       <p className="text-xs text-slate-500">
                         ZF Lifetec return container / proforma shipment

@@ -238,9 +238,9 @@ export default function InvoicesWorkspace({
         const delivType = ((deliv as any).deliveryType || "").toUpperCase();
         const notes = (deliv.notes || "").toUpperCase();
         const isRedCage = delivType.includes("RED_CAGE") || notes.includes("RED CAGE") || invNum === "A905220377";
-        const isPrecosido = delivType.includes("PRECOSIDO") && (notes.includes("RETURN ZDF") || delivType.includes("RETURN_ZDF"));
+        const isPrecosido = delivType.includes("PRECOSIDO") && (notes.includes("RETURN ZDF") || notes.includes("RETURN ZF") || delivType.includes("RETURN_ZDF"));
 
-        if ((isRedCage || isPrecosido || notes.includes("RETURN ZDF")) && invNum && !seenNumbers.has(invNum)) {
+        if ((isRedCage || isPrecosido || notes.includes("RETURN ZDF") || notes.includes("RETURN ZF")) && invNum && !seenNumbers.has(invNum)) {
           seenNumbers.add(invNum);
           seenIds.add(deliv.id);
 
@@ -283,7 +283,7 @@ export default function InvoicesWorkspace({
             approvedBy: deliv.operatorName || "Manager",
             totalBoxes: (deliv as any).totalBoxes || items.length,
             totalQuantity: deliv.quantity || items.reduce((s, it) => s + (it.quantity || 0), 0),
-            notes: deliv.notes || `RETURN ZDF [${isRedCage ? "RED CAGE" : "PRECOSIDO"}] -> ${targetStock}`,
+            notes: deliv.notes || `RETURN ZF [${isRedCage ? "RED CAGE" : "PRECOSIDO"}] -> ${targetStock}`,
             sourceType,
             targetStock,
             origin: "ZDF",
@@ -300,7 +300,7 @@ export default function InvoicesWorkspace({
         const invNum = (t.invoiceNumber || "").trim().toUpperCase();
         const notes = (t.notes || "").toUpperCase();
         const move = (t.movementType || "").toUpperCase();
-        if ((notes.includes("RETURN ZDF") || move.includes("STOCK 3 IN") || invNum === "A905220377") && invNum && !seenNumbers.has(invNum)) {
+        if ((notes.includes("RETURN ZDF") || notes.includes("RETURN ZF") || move.includes("STOCK 3 IN") || invNum === "A905220377") && invNum && !seenNumbers.has(invNum)) {
           if (!zdfTransMap.has(invNum)) {
             zdfTransMap.set(invNum, []);
           }
@@ -338,7 +338,7 @@ export default function InvoicesWorkspace({
             approvedBy: first.operatorName || "Operator",
             totalBoxes: items.length,
             totalQuantity: items.reduce((s, it) => s + (it.quantity || 0), 0),
-            notes: first.notes || `RETURN ZDF [${isRedCage ? "RED CAGE" : "PRECOSIDO"}] -> ${targetStock}`,
+            notes: first.notes || `RETURN ZF [${isRedCage ? "RED CAGE" : "PRECOSIDO"}] -> ${targetStock}`,
             sourceType,
             targetStock,
             origin: "ZDF",
@@ -361,7 +361,7 @@ export default function InvoicesWorkspace({
         status: "approved",
         approvedAt: new Date().toISOString(),
         approvedBy: currentUser?.fullName || "MANAGER",
-        notes: "RETURN ZDF [RED CAGE] -> Stock 3 (Container: A905220377)",
+        notes: "RETURN ZF [RED CAGE] -> Stock 3 (Container: A905220377)",
         sourceType: "RETURN_ZDF_RED_CAGE",
         targetStock: "Stock 3",
         origin: "ZDF",
@@ -460,6 +460,7 @@ export default function InvoicesWorkspace({
           const matchesOp = (inv.operator || "").toLowerCase().includes(query);
           const matchesNotes = (inv.notes || "").toLowerCase().includes(query);
           const matchesSource = (inv.sourceType || "").toLowerCase().includes(query) ||
+            (query.includes("zf") && (inv.sourceType === "RETURN_ZDF_RED_CAGE" || inv.sourceType === "RETURN_ZDF_PRECOSIDO")) ||
             (query.includes("red cage") && inv.sourceType === "RETURN_ZDF_RED_CAGE") ||
             (query.includes("precosido") && inv.sourceType === "RETURN_ZDF_PRECOSIDO") ||
             (query.includes("stock 1") && (!inv.sourceType || inv.sourceType === "RAW_MATERIAL"));
@@ -1030,11 +1031,11 @@ export default function InvoicesWorkspace({
           </div>
         </div>
 
-        {/* Red Cage (ZDF S3) */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between" id="kpi-red-cage-zdf">
+        {/* Red Cage (ZF S3) */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between" id="kpi-red-cage-zf">
           <div>
             <div className="text-[10px] font-bold text-rose-600 uppercase tracking-wider font-mono">
-              RED CAGE (ZDF S3)
+              RED CAGE (ZF S3)
             </div>
             <div className="text-2xl font-extrabold text-rose-700 mt-1 font-mono">
               {stats.redCageQty.toLocaleString()} <span className="text-xs font-semibold text-rose-600">PCS</span>
@@ -1045,11 +1046,11 @@ export default function InvoicesWorkspace({
           </div>
         </div>
 
-        {/* Precosido (ZDF S2) */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between" id="kpi-precosido-zdf">
+        {/* Precosido (ZF S2) */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between" id="kpi-precosido-zf">
           <div>
             <div className="text-[10px] font-bold text-teal-600 uppercase tracking-wider font-mono">
-              PRECOSIDO (ZDF S2)
+              PRECOSIDO (ZF S2)
             </div>
             <div className="text-2xl font-extrabold text-teal-700 mt-1 font-mono">
               {stats.precosidoQty.toLocaleString()} <span className="text-xs font-semibold text-teal-600">PCS</span>
@@ -1099,8 +1100,8 @@ export default function InvoicesWorkspace({
               {([
                 { id: "ALL", label: "All" },
                 { id: "RAW_MATERIAL", label: "Stock 1 (MP)" },
-                { id: "RETURN_ZDF_PRECOSIDO", label: "Precosido (ZDF S2)" },
-                { id: "RETURN_ZDF_RED_CAGE", label: "Red Cage (ZDF S3)" }
+                { id: "RETURN_ZDF_PRECOSIDO", label: "Precosido (ZF S2)" },
+                { id: "RETURN_ZDF_RED_CAGE", label: "Red Cage (ZF S3)" }
               ] as const).map(src => (
                 <button
                   key={src.id}
@@ -1175,7 +1176,7 @@ export default function InvoicesWorkspace({
             <span>{filteredInvoices.length} of {unifiedInvoices.length} records</span>
             {sourceFilter !== "ALL" && (
               <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-[11px] font-mono font-bold">
-                {sourceFilter === "RAW_MATERIAL" ? "Stock 1 (MP)" : sourceFilter === "RETURN_ZDF_RED_CAGE" ? "Red Cage (ZDF S3)" : "Precosido (ZDF S2)"}
+                {sourceFilter === "RAW_MATERIAL" ? "Stock 1 (MP)" : sourceFilter === "RETURN_ZDF_RED_CAGE" ? "Red Cage (ZF S3)" : "Precosido (ZF S2)"}
               </span>
             )}
             {shiftFilter !== "ALL" && (
@@ -1208,9 +1209,9 @@ export default function InvoicesWorkspace({
               {sourceFilter === "RAW_MATERIAL"
                 ? "Stock 1 (MP) Raw Material Invoices Register"
                 : sourceFilter === "RETURN_ZDF_RED_CAGE"
-                ? "Red Cage (Return ZDF → Stock 3) Register"
+                ? "Red Cage (Return ZF → Stock 3) Register"
                 : sourceFilter === "RETURN_ZDF_PRECOSIDO"
-                ? "Precosido (Return ZDF → Stock 2) Register"
+                ? "Precosido (Return ZF → Stock 2) Register"
                 : "Incoming Invoices & Returns Register"}
             </h2>
           </div>
@@ -1354,13 +1355,13 @@ export default function InvoicesWorkspace({
                               </span>
                               {inv.invoiceNumber === "A905220377" && (
                                 <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-black bg-rose-100 text-rose-800 border border-rose-300">
-                                  ZDF RED CAGE
+                                  ZF RED CAGE
                                 </span>
                               )}
                             </div>
                             {inv.notes && (
                               <div className="text-[10px] text-slate-400 font-sans font-normal truncate max-w-[170px]">
-                                {inv.notes}
+                                {inv.notes.replace(/ZDF/g, "ZF")}
                               </div>
                             )}
                           </div>
@@ -1547,7 +1548,7 @@ export default function InvoicesWorkspace({
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-base sm:text-lg font-bold font-mono text-white">
-                        {selectedInvoice.sourceType === "RETURN_ZDF_RED_CAGE" ? "RETURN ZDF:" : "INVOICE:"} {selectedInvoice.invoiceNumber}
+                        {selectedInvoice.sourceType === "RETURN_ZDF_RED_CAGE" ? "RETURN ZF:" : "INVOICE:"} {selectedInvoice.invoiceNumber}
                       </h2>
                       {selectedInvoice.status === "approved" && (
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${

@@ -226,7 +226,7 @@ export default function ReturnZdfModal({
         actualQty: item.quantity,
         operatorName,
         timestamp: now,
-        notes: `RETURN ZDF [${category}] (${item.docReference} -> ${item.meshReference}) Container: ${cleanContainer}${note ? ` - ${note}` : ""}`
+        notes: `RETURN ZF [${category}] (${item.docReference} -> ${item.meshReference}) Container: ${cleanContainer}${note ? ` - ${note}` : ""}`
       }));
 
       const deliveryId = `deliv-zdf-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -235,7 +235,7 @@ export default function ReturnZdfModal({
         operationType: "INCOMING_RECEIPT",
         deltas,
         operatorName,
-        reason: `RETURN ZDF [${category}]: ${cleanContainer} -> ${targetStock} (${includedItems.length} items, ${totalIncludedPcs} pcs)`,
+        reason: `RETURN ZF [${category}]: ${cleanContainer} -> ${targetStock} (${includedItems.length} items, ${totalIncludedPcs} pcs)`,
         transactions,
         additionalWrites: (transaction, timestamp) => {
           // 1. Record container summary in deliveries collection
@@ -258,7 +258,7 @@ export default function ReturnZdfModal({
             operatorName,
             status: "approved",
             totalBoxes: includedItems.length,
-            notes: note ? `RETURN ZDF (${category}): ${note}` : `RETURN ZDF (${category})`,
+            notes: note ? `RETURN ZF (${category}): ${note}` : `RETURN ZF (${category})`,
             items: includedItems.map((it, i) => ({
               id: `item-${deliveryId}-${i + 1}`,
               reference: it.meshReference.trim().toUpperCase(),
@@ -283,7 +283,7 @@ export default function ReturnZdfModal({
               originalRef: it.docReference,
               description: it.description,
               quantity: it.quantity,
-              customer: it.client || (category === "RED_CAGE" ? "ZDF RED CAGE" : "ZDF PRECOSIDO"),
+              customer: it.client || (category === "RED_CAGE" ? "ZF RED CAGE" : "ZF PRECOSIDO"),
               deliveryType: category === "RED_CAGE" ? "RETURN_ZDF_RED_CAGE" : "RETURN_ZDF_PRECOSIDO",
               deliveryCategory: category === "RED_CAGE" ? "STEERING WHEELS" : "PRECOSIDO",
               targetStock,
@@ -294,7 +294,7 @@ export default function ReturnZdfModal({
               registeredBy: operatorName,
               operatorName,
               status: "approved",
-              notes: `RETURN ZDF [${category}] (${it.docReference} -> ${it.meshReference}) Container: ${cleanContainer}`
+              notes: `RETURN ZF [${category}] (${it.docReference} -> ${it.meshReference}) Container: ${cleanContainer}`
             });
           });
 
@@ -312,7 +312,7 @@ export default function ReturnZdfModal({
             approvedBy: operatorName,
             totalBoxes: includedItems.length,
             totalQuantity: totalIncludedPcs,
-            notes: `RETURN ZDF [${category}] -> ${targetStock}${note ? ` - ${note}` : ""}`,
+            notes: `RETURN ZF [${category}] -> ${targetStock}${note ? ` - ${note}` : ""}`,
             sourceType: category === "RED_CAGE" ? "RETURN_ZDF_RED_CAGE" : "RETURN_ZDF_PRECOSIDO",
             targetStock,
             origin: "ZDF",
@@ -324,7 +324,7 @@ export default function ReturnZdfModal({
               boxBarcode: cleanContainer,
               destinationStock: targetStock,
               description: it.description || (it.docReference ? `${it.docReference} -> ${it.meshReference}` : ""),
-              notes: `RETURN ZDF [${category}] (${it.docReference} -> ${it.meshReference})`
+              notes: `RETURN ZF [${category}] (${it.docReference} -> ${it.meshReference})`
             }))
           });
         }
@@ -376,12 +376,12 @@ export default function ReturnZdfModal({
                 ? "bg-teal-600 text-white shadow-teal-500/20"
                 : "bg-slate-900 text-white"
             }`}>
-              ZDF
+              ZF
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-extrabold text-slate-900 tracking-tight truncate">
-                  RETURN ZDF
+                  RETURN ZF
                 </h2>
                 {category && (
                   <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full uppercase border ${
@@ -423,7 +423,7 @@ export default function ReturnZdfModal({
             <div className="space-y-4 max-w-xl mx-auto py-4">
               <div className="text-center space-y-1 mb-6">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">
-                  Select Return ZDF Category
+                  Select Return ZF Category
                 </h3>
                 <p className="text-xs text-slate-400">
                   Choose where the returned parts must be added

@@ -414,4 +414,24 @@ export interface ArchivedInvoice {
   notes?: string;
 }
 
+export interface BlueMaterialSettings {
+  coveragePerRoll: number;
+  totalAvailableRolls: number;
+  updatedAt?: string | any;
+  updatedBy?: string;
+}
+
+export interface BlueMaterialMovement {
+  id: string;
+  operationId: string;
+  type: "RECEIPT" | "CONSUMPTION" | "ADJUSTMENT";
+  rolls: number;
+  receivedDate: string;
+  operatorName: string;
+  userId?: string;
+  timestamp: string | any;
+  createdAt?: string | any;
+  notes?: string;
+}
+
 
