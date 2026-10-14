@@ -1,6 +1,7 @@
 import {
   doc,
   getDoc,
+  getDocFromCache,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -1294,8 +1295,8 @@ export async function executeProtectedDeleteScrap(
   }
 
   if (!scrapToDel) {
-    const snap = await getDoc(doc(db, "scraps", typeof scrapIdOrData === "string" ? scrapIdOrData : ""));
-    if (snap.exists()) {
+    const snap = await fastGetDoc("scraps", typeof scrapIdOrData === "string" ? scrapIdOrData : "");
+    if (snap && snap.exists()) {
       scrapToDel = snap.data() as ScrapEntry;
     }
   }
@@ -1485,8 +1486,8 @@ export async function executeProtectedDeleteProduction(
   }
 
   if (!prodData) {
-    const snap = await getDoc(doc(db, "productions", typeof prodIdOrData === "string" ? prodIdOrData : ""));
-    if (snap.exists()) {
+    const snap = await fastGetDoc("productions", typeof prodIdOrData === "string" ? prodIdOrData : "");
+    if (snap && snap.exists()) {
       prodData = snap.data() as Production;
     }
   }
@@ -1848,8 +1849,8 @@ export async function executeProtectedDeleteDelivery(
   }
 
   if (!delData) {
-    const snap = await getDoc(doc(db, "deliveries", typeof delIdOrData === "string" ? delIdOrData : ""));
-    if (snap.exists()) {
+    const snap = await fastGetDoc("deliveries", typeof delIdOrData === "string" ? delIdOrData : "");
+    if (snap && snap.exists()) {
       delData = snap.data() as Delivery;
     }
   }
@@ -2381,7 +2382,33 @@ export async function executeProtectedUpdateInvoice(
 }
 
 /**
- * Resiliently finds a document in a collection across various ID prefix formats
+ * Fast document fetcher:
+ * Tries local Firestore persistent cache first (<1-2ms), falling back to network getDoc
+ */
+async function fastGetDoc(collectionName: string, docId: string) {
+  if (!docId) return null;
+  const docRef = doc(db, collectionName, docId);
+  try {
+    const cacheSnap = await getDocFromCache(docRef);
+    if (cacheSnap && cacheSnap.exists()) {
+      return cacheSnap;
+    }
+  } catch {
+    // Cache miss or offline cache unavailable
+  }
+  try {
+    const netSnap = await getDoc(docRef);
+    if (netSnap && netSnap.exists()) {
+      return netSnap;
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Resilient & high-speed document finder across ID prefix variants
+ * 1. Checks exact ID and candidate IDs in local cache first (<1ms)
+ * 2. If not found in cache, queries candidates in parallel across network
  */
 async function findFirestoreDoc(collectionName: string, id: string) {
   if (!id) return null;
@@ -2399,17 +2426,32 @@ async function findFirestoreDoc(collectionName: string, id: string) {
     }
   }
 
-  for (const cand of candidates) {
-    if (!cand) continue;
+  const candidateList = Array.from(candidates).filter(Boolean);
+
+  // Phase 1: Fast cache check across all candidate variants (0-2ms total)
+  for (const cand of candidateList) {
     try {
-      const snap = await getDoc(doc(db, collectionName, cand));
-      if (snap.exists()) {
-        return snap;
+      const cacheSnap = await getDocFromCache(doc(db, collectionName, cand));
+      if (cacheSnap && cacheSnap.exists()) {
+        return cacheSnap;
       }
     } catch {
-      // Continue searching
+      // Not yet cached
     }
   }
+
+  // Phase 2: Parallel network lookup fallback
+  try {
+    const promises = candidateList.map((cand) =>
+      getDoc(doc(db, collectionName, cand))
+        .then((s) => (s && s.exists() ? s : null))
+        .catch(() => null)
+    );
+    const snaps = await Promise.all(promises);
+    const found = snaps.find((s) => s !== null);
+    if (found) return found;
+  } catch {}
+
   return null;
 }
 
@@ -2538,12 +2580,13 @@ export async function executeProtectedEditOperation(
     };
   } else if (category === "production") {
     let targetColl = "productions";
-    let prodSnap = await findFirestoreDoc("productions", opId);
-    if (!prodSnap || !prodSnap.exists()) {
-      prodSnap = await findFirestoreDoc("daily_productions", opId);
-      if (prodSnap && prodSnap.exists()) {
-        targetColl = "daily_productions";
-      }
+    const [pSnap, dpSnap] = await Promise.all([
+      findFirestoreDoc("productions", opId),
+      findFirestoreDoc("daily_productions", opId)
+    ]);
+    const prodSnap = (pSnap && pSnap.exists()) ? pSnap : dpSnap;
+    if (prodSnap && prodSnap.exists()) {
+      targetColl = (pSnap && pSnap.exists()) ? "productions" : "daily_productions";
     }
     if (!prodSnap || !prodSnap.exists()) {
       throw new Error("Production record not found");
@@ -2865,12 +2908,13 @@ export async function executeProtectedDeleteOrReverseOperation(
     }
   } else if (category === "production") {
     let targetColl = "productions";
-    let prodSnap = await findFirestoreDoc("productions", opId);
-    if (!prodSnap || !prodSnap.exists()) {
-      prodSnap = await findFirestoreDoc("daily_productions", opId);
-      if (prodSnap && prodSnap.exists()) {
-        targetColl = "daily_productions";
-      }
+    const [pSnap, dpSnap] = await Promise.all([
+      findFirestoreDoc("productions", opId),
+      findFirestoreDoc("daily_productions", opId)
+    ]);
+    const prodSnap = (pSnap && pSnap.exists()) ? pSnap : dpSnap;
+    if (prodSnap && prodSnap.exists()) {
+      targetColl = (pSnap && pSnap.exists()) ? "productions" : "daily_productions";
     }
     if (!prodSnap || !prodSnap.exists()) {
       throw new Error("Production record not found");
@@ -3097,8 +3141,8 @@ export async function executeProtectedDeleteBox(
 ) {
   let box = boxData;
   if (!box) {
-    const snap = await getDoc(doc(db, "boxes", boxId));
-    if (snap.exists()) {
+    const snap = await fastGetDoc("boxes", boxId);
+    if (snap && snap.exists()) {
       box = snap.data() as Box;
     }
   }

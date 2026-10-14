@@ -1260,3 +1260,375 @@ export async function clearAllBezelInvoices(): Promise<void> {
   }
 }
 
+/**
+ * 8. DELETE BEZEL OPERATION
+ * Permanently removes a Bezel operation record and reverts its impact from reference stock.
+ * - NEW_TRUCK: removes incoming material from destinationStock (Stock 1 or Stock 2).
+ * - BEZEL_ASSEMBLAGE: reverses S1 -> S2 (S2 - qty, S1 + qty).
+ * - BEZEL_DELIVERY: restores material to Stock 2 (S2 + qty).
+ * - BEZEL_RETURN: reverses S2 -> S1 (S1 - qty, S2 + qty).
+ * - BEZEL_SCRAP: restores material back to sourceStock (S1 or S2 + qty).
+ * - PHYSICAL_INVENTORY: restores stock to pre-inventory system stock (stock1Before / stock2Before).
+ * If the operation is already 'reversed', its stock impact was already undone, so only the document is deleted.
+ * Executed in one atomic Firestore transaction.
+ */
+export async function deleteBezelOperation(params: {
+  operationId: string;
+  operatorName: string;
+  reason?: string;
+}): Promise<void> {
+  const nowIso = new Date().toISOString();
+
+  await runTransaction(db, async (transaction) => {
+    const opDocRef = doc(db, "bezel_operations", params.operationId);
+    const opSnap = await transaction.get(opDocRef);
+
+    if (!opSnap.exists()) {
+      throw new Error("Operation not found.");
+    }
+
+    const opData = opSnap.data() as BezelOperation;
+
+    // If not already reversed, we must revert its effect from the reference stock
+    if (opData.status !== "reversed") {
+      const refDocRef = doc(db, "bezel_references", opData.reference);
+      const refSnap = await transaction.get(refDocRef);
+
+      if (!refSnap.exists()) {
+        throw new Error(`Associated reference ${opData.reference} not found.`);
+      }
+
+      const refData = refSnap.data() as BezelReference;
+      let s1 = refData.stock1 || 0;
+      let s2 = refData.stock2 || 0;
+      const qty = opData.quantity;
+
+      switch (opData.operationType) {
+        case "NEW_TRUCK":
+          if (opData.destinationStock === "STOCK 1") {
+            if (s1 < qty) {
+              throw new Error(`Cannot delete: Stock 1 is now ${s1}, less than operation quantity ${qty}.`);
+            }
+            s1 -= qty;
+          } else {
+            if (s2 < qty) {
+              throw new Error(`Cannot delete: Stock 2 is now ${s2}, less than operation quantity ${qty}.`);
+            }
+            s2 -= qty;
+          }
+          break;
+
+        case "BEZEL_ASSEMBLAGE":
+          if (s2 < qty) {
+            throw new Error(`Cannot delete: Stock 2 is now ${s2}, less than assembled quantity ${qty}.`);
+          }
+          s2 -= qty;
+          s1 += qty;
+          break;
+
+        case "BEZEL_DELIVERY":
+          s2 += qty;
+          break;
+
+        case "BEZEL_RETURN":
+          if (s1 < qty) {
+            throw new Error(`Cannot delete: Stock 1 is now ${s1}, less than returned quantity ${qty}.`);
+          }
+          s1 -= qty;
+          s2 += qty;
+          break;
+
+        case "BEZEL_SCRAP":
+          if (opData.sourceStock === "STOCK 1") {
+            s1 += qty;
+          } else {
+            s2 += qty;
+          }
+          break;
+
+        case "PHYSICAL_INVENTORY":
+          if (opData.sourceStock === "STOCK 1") {
+            s1 = opData.stock1Before ?? s1;
+          } else {
+            s2 = opData.stock2Before ?? s2;
+          }
+          break;
+
+        default:
+          break;
+      }
+
+      transaction.update(refDocRef, cleanData({
+        stock1: s1,
+        stock2: s2,
+        totalStock: s1 + s2,
+        updatedAt: nowIso,
+        lastOperation: `DELETED_${opData.operationType}`,
+        serverTimestamp: serverTimestamp()
+      }));
+    }
+
+    // Delete the operation document
+    transaction.delete(opDocRef);
+  });
+}
+
+export interface EditBezelOperationParams {
+  operationId: string;
+  operatorName: string;
+  newQuantity: number;
+  newReference?: string;
+  newDestinationStock?: "STOCK 1" | "STOCK 2";
+  newSourceStock?: "STOCK 1" | "STOCK 2";
+  newInvoiceNumber?: string;
+  newReason?: string;
+  newNotes?: string;
+}
+
+/**
+ * 9. EDIT BEZEL OPERATION
+ * Atomically modifies a Bezel operation record and adjusts the reference stock accordingly.
+ * Reverts the old operation's effect from stock, and applies the new parameters.
+ * Validates stock availability and guarantees non-negative stock.
+ */
+export async function editBezelOperation(params: EditBezelOperationParams): Promise<void> {
+  const newQty = Number(params.newQuantity);
+  if (isNaN(newQty) || newQty <= 0) {
+    throw new Error("Quantity must be a positive number.");
+  }
+
+  const nowIso = new Date().toISOString();
+
+  await runTransaction(db, async (transaction) => {
+    const opDocRef = doc(db, "bezel_operations", params.operationId);
+    const opSnap = await transaction.get(opDocRef);
+
+    if (!opSnap.exists()) {
+      throw new Error("Operation not found.");
+    }
+
+    const opData = opSnap.data() as BezelOperation;
+    const oldQty = opData.quantity;
+    const oldRefCode = opData.reference;
+    const newRefCode = params.newReference ? params.newReference.trim().toUpperCase() : oldRefCode;
+    const newDestStock = params.newDestinationStock || opData.destinationStock;
+    const newSrcStock = params.newSourceStock || opData.sourceStock;
+
+    // If operation is already reversed, update metadata only (stock was already detached)
+    if (opData.status === "reversed") {
+      transaction.update(opDocRef, cleanData({
+        invoiceNumber: params.newInvoiceNumber !== undefined ? params.newInvoiceNumber.trim() : opData.invoiceNumber,
+        reason: params.newReason !== undefined ? params.newReason.trim() : opData.reason,
+        notes: params.newNotes !== undefined ? params.newNotes.trim() : opData.notes,
+        updatedAt: nowIso,
+        lastEditedBy: params.operatorName
+      }));
+      return;
+    }
+
+    // If reference is unchanged:
+    if (oldRefCode === newRefCode) {
+      const refDocRef = doc(db, "bezel_references", oldRefCode);
+      const refSnap = await transaction.get(refDocRef);
+
+      if (!refSnap.exists()) {
+        throw new Error(`Reference ${oldRefCode} not found.`);
+      }
+
+      const refData = refSnap.data() as BezelReference;
+      let s1 = refData.stock1 || 0;
+      let s2 = refData.stock2 || 0;
+
+      // 1. Revert old operation effect from stock
+      switch (opData.operationType) {
+        case "NEW_TRUCK":
+          if (opData.destinationStock === "STOCK 1") s1 -= oldQty;
+          else s2 -= oldQty;
+          break;
+        case "BEZEL_ASSEMBLAGE":
+          s2 -= oldQty;
+          s1 += oldQty;
+          break;
+        case "BEZEL_DELIVERY":
+          s2 += oldQty;
+          break;
+        case "BEZEL_RETURN":
+          s1 -= oldQty;
+          s2 += oldQty;
+          break;
+        case "BEZEL_SCRAP":
+          if (opData.sourceStock === "STOCK 1") s1 += oldQty;
+          else s2 += oldQty;
+          break;
+        case "PHYSICAL_INVENTORY":
+          if (opData.sourceStock === "STOCK 1") s1 = opData.stock1Before ?? s1;
+          else s2 = opData.stock2Before ?? s2;
+          break;
+      }
+
+      // 2. Apply new operation effect to stock
+      switch (opData.operationType) {
+        case "NEW_TRUCK":
+          if (newDestStock === "STOCK 1") s1 += newQty;
+          else s2 += newQty;
+          break;
+        case "BEZEL_ASSEMBLAGE":
+          if (s1 < newQty) throw new Error(`Insufficient Stock 1 (${s1}) for assemblage of ${newQty}.`);
+          s1 -= newQty;
+          s2 += newQty;
+          break;
+        case "BEZEL_DELIVERY":
+          if (s2 < newQty) throw new Error(`Insufficient Stock 2 (${s2}) for delivery of ${newQty}.`);
+          s2 -= newQty;
+          break;
+        case "BEZEL_RETURN":
+          if (s2 < newQty) throw new Error(`Insufficient Stock 2 (${s2}) for return of ${newQty}.`);
+          s2 -= newQty;
+          s1 += newQty;
+          break;
+        case "BEZEL_SCRAP":
+          if (newSrcStock === "STOCK 1") {
+            if (s1 < newQty) throw new Error(`Insufficient Stock 1 (${s1}) for scrap of ${newQty}.`);
+            s1 -= newQty;
+          } else {
+            if (s2 < newQty) throw new Error(`Insufficient Stock 2 (${s2}) for scrap of ${newQty}.`);
+            s2 -= newQty;
+          }
+          break;
+        case "PHYSICAL_INVENTORY":
+          if (newSrcStock === "STOCK 1") s1 = newQty;
+          else s2 = newQty;
+          break;
+      }
+
+      if (s1 < 0) throw new Error(`Stock 1 cannot be negative (${s1}).`);
+      if (s2 < 0) throw new Error(`Stock 2 cannot be negative (${s2}).`);
+
+      transaction.update(refDocRef, cleanData({
+        stock1: s1,
+        stock2: s2,
+        totalStock: s1 + s2,
+        updatedAt: nowIso,
+        lastOperation: `EDIT_${opData.operationType}`,
+        serverTimestamp: serverTimestamp()
+      }));
+    } else {
+      // Reference code changed:
+      const oldRefDocRef = doc(db, "bezel_references", oldRefCode);
+      const newRefDocRef = doc(db, "bezel_references", newRefCode);
+
+      const [oldSnap, newSnap] = await Promise.all([
+        transaction.get(oldRefDocRef),
+        transaction.get(newRefDocRef)
+      ]);
+
+      if (!oldSnap.exists()) throw new Error(`Original reference ${oldRefCode} not found.`);
+      if (!newSnap.exists()) throw new Error(`Target reference ${newRefCode} not found.`);
+
+      const oldRefData = oldSnap.data() as BezelReference;
+      const newRefData = newSnap.data() as BezelReference;
+
+      let oldS1 = oldRefData.stock1 || 0;
+      let oldS2 = oldRefData.stock2 || 0;
+      let newS1 = newRefData.stock1 || 0;
+      let newS2 = newRefData.stock2 || 0;
+
+      // 1. Revert on old ref
+      switch (opData.operationType) {
+        case "NEW_TRUCK":
+          if (opData.destinationStock === "STOCK 1") oldS1 -= oldQty;
+          else oldS2 -= oldQty;
+          break;
+        case "BEZEL_ASSEMBLAGE":
+          oldS2 -= oldQty;
+          oldS1 += oldQty;
+          break;
+        case "BEZEL_DELIVERY":
+          oldS2 += oldQty;
+          break;
+        case "BEZEL_RETURN":
+          oldS1 -= oldQty;
+          oldS2 += oldQty;
+          break;
+        case "BEZEL_SCRAP":
+          if (opData.sourceStock === "STOCK 1") oldS1 += oldQty;
+          else oldS2 += oldQty;
+          break;
+        case "PHYSICAL_INVENTORY":
+          if (opData.sourceStock === "STOCK 1") oldS1 = opData.stock1Before ?? oldS1;
+          else oldS2 = opData.stock2Before ?? oldS2;
+          break;
+      }
+
+      // 2. Apply on new ref
+      switch (opData.operationType) {
+        case "NEW_TRUCK":
+          if (newDestStock === "STOCK 1") newS1 += newQty;
+          else newS2 += newQty;
+          break;
+        case "BEZEL_ASSEMBLAGE":
+          if (newS1 < newQty) throw new Error(`Insufficient Stock 1 (${newS1}) on ${newRefCode} for assemblage.`);
+          newS1 -= newQty;
+          newS2 += newQty;
+          break;
+        case "BEZEL_DELIVERY":
+          if (newS2 < newQty) throw new Error(`Insufficient Stock 2 (${newS2}) on ${newRefCode} for delivery.`);
+          newS2 -= newQty;
+          break;
+        case "BEZEL_RETURN":
+          if (newS2 < newQty) throw new Error(`Insufficient Stock 2 (${newS2}) on ${newRefCode} for return.`);
+          newS2 -= newQty;
+          newS1 += newQty;
+          break;
+        case "BEZEL_SCRAP":
+          if (newSrcStock === "STOCK 1") {
+            if (newS1 < newQty) throw new Error(`Insufficient Stock 1 (${newS1}) on ${newRefCode} for scrap.`);
+            newS1 -= newQty;
+          } else {
+            if (newS2 < newQty) throw new Error(`Insufficient Stock 2 (${newS2}) on ${newRefCode} for scrap.`);
+            newS2 -= newQty;
+          }
+          break;
+        case "PHYSICAL_INVENTORY":
+          if (newSrcStock === "STOCK 1") newS1 = newQty;
+          else newS2 = newQty;
+          break;
+      }
+
+      if (oldS1 < 0 || oldS2 < 0) throw new Error(`Reverting from ${oldRefCode} causes negative stock.`);
+      if (newS1 < 0 || newS2 < 0) throw new Error(`Applying to ${newRefCode} causes negative stock.`);
+
+      transaction.update(oldRefDocRef, cleanData({
+        stock1: oldS1,
+        stock2: oldS2,
+        totalStock: oldS1 + oldS2,
+        updatedAt: nowIso,
+        lastOperation: `EDIT_MOVED_FROM_${opData.operationType}`,
+        serverTimestamp: serverTimestamp()
+      }));
+
+      transaction.update(newRefDocRef, cleanData({
+        stock1: newS1,
+        stock2: newS2,
+        totalStock: newS1 + newS2,
+        updatedAt: nowIso,
+        lastOperation: `EDIT_MOVED_TO_${opData.operationType}`,
+        serverTimestamp: serverTimestamp()
+      }));
+    }
+
+    // Update the operation document
+    transaction.update(opDocRef, cleanData({
+      quantity: newQty,
+      reference: newRefCode,
+      destinationStock: newDestStock,
+      sourceStock: newSrcStock,
+      invoiceNumber: params.newInvoiceNumber !== undefined ? params.newInvoiceNumber.trim() : opData.invoiceNumber,
+      reason: params.newReason !== undefined ? params.newReason.trim() : opData.reason,
+      notes: params.newNotes !== undefined ? params.newNotes.trim() : opData.notes,
+      updatedAt: nowIso,
+      lastEditedBy: params.operatorName
+    }));
+  });
+}
+

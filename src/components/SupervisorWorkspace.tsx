@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import Swal from "sweetalert2";
 import { Box, Adjustment, Delivery, Production, ScrapEntry, InventoryTransaction, User, ReceivingInvoice, Reference } from "../types";
 import { CustomSelect } from "./CustomSelect";
 import { LowStockAlertModal } from "./LowStockAlertModal";
@@ -157,6 +158,8 @@ export default function SupervisorWorkspace({
     }
   };
 
+  const [optimisticDeletedIds, setOptimisticDeletedIds] = useState<Set<string>>(() => new Set());
+
   const handleExecuteDelete = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deleteOp) return;
@@ -164,20 +167,34 @@ export default function SupervisorWorkspace({
       setActionError("A reason for deletion or reversal is required.");
       return;
     }
+    const targetOp = deleteOp;
+    const targetReason = deleteReason;
+    const targetMode = deleteMode;
+
+    // Optimistically remove from view immediately (instant UI response)
+    setOptimisticDeletedIds((prev) => new Set(prev).add(targetOp.id).add(targetOp.rawId));
+    setDeleteOp(null);
+    setDeleteReason("");
+
     try {
-      setActionLoading(true);
-      setActionError(null);
-      if (deleteMode === "reverse" && onReverseOperation) {
-        await onReverseOperation(deleteOp.rawId, deleteOp.category, deleteReason);
+      if (targetMode === "reverse" && onReverseOperation) {
+        await onReverseOperation(targetOp.rawId, targetOp.category, targetReason);
       } else if (onDeleteOperation) {
-        await onDeleteOperation(deleteOp.rawId, deleteOp.category, deleteReason);
+        await onDeleteOperation(targetOp.rawId, targetOp.category, targetReason);
       }
-      setDeleteOp(null);
-      setDeleteReason("");
     } catch (err: any) {
-      setActionError(err.message || "Failed to process operation.");
-    } finally {
-      setActionLoading(false);
+      // Revert optimistic removal on error
+      setOptimisticDeletedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetOp.id);
+        next.delete(targetOp.rawId);
+        return next;
+      });
+      Swal.fire({
+        icon: "error",
+        title: "Action Failed",
+        text: err?.message || "Failed to process operation."
+      });
     }
   };
 
@@ -458,8 +475,9 @@ export default function SupervisorWorkspace({
     // Sort strictly descending by exact timestamp
     list.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
 
-    return list;
-  }, [invoices, deliveries, productions, scraps, adjustments, transactions]);
+    if (optimisticDeletedIds.size === 0) return list;
+    return list.filter(op => !optimisticDeletedIds.has(op.id) && !optimisticDeletedIds.has(op.rawId));
+  }, [invoices, deliveries, productions, scraps, adjustments, transactions, optimisticDeletedIds]);
 
   const filteredOperations = useMemo(() => {
     const q = (operationsSearch || "").toLowerCase().trim();

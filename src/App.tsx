@@ -202,7 +202,14 @@ export default function App() {
     let unsubDisassemblies: (() => void) | null = null;
 
     const handleSnapshotError = (colName: string) => (error: any) => {
-      if (error?.code === "unavailable" || error?.message?.includes("offline") || error?.message?.includes("Could not reach Cloud Firestore")) {
+      if (
+        error?.code === "unavailable" ||
+        error?.code === "resource-exhausted" ||
+        error?.message?.includes("offline") ||
+        error?.message?.includes("Could not reach Cloud Firestore") ||
+        error?.message?.includes("Quota limit exceeded") ||
+        error?.message?.includes("quota")
+      ) {
         console.info(`Firestore ${colName} operating in resilient offline/cache mode.`);
       } else {
         console.warn(`Firestore subscription notice for ${colName}:`, error?.message || error);

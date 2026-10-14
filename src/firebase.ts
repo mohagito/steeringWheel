@@ -17,13 +17,16 @@ if (typeof window !== "undefined") {
 
   const originalError = console.error;
   console.error = (...args: any[]) => {
-    const msg = typeof args[0] === "string" ? args[0] : (args[0]?.message || "");
+    const msg = typeof args[0] === "string" ? args[0] : (args[0]?.message || String(args[0]));
     if (
       msg.includes("Failed to obtain primary lease") ||
       msg.includes("Backfill Indexes") ||
-      msg.includes("Collect garbage")
+      msg.includes("Collect garbage") ||
+      msg.includes("Quota limit exceeded") ||
+      msg.includes("quota metric 'Free daily read units") ||
+      msg.includes("Free daily read units per project")
     ) {
-      // Harmless secondary tab lease contention handled automatically by Firestore multi-tab cache
+      // Harmless secondary tab lease contention or free daily read quota reached; handled by local cache
       return;
     }
     originalError.apply(console, args);

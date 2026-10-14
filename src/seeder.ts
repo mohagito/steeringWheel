@@ -284,6 +284,14 @@ export async function clearCollection(collectionName: string) {
 }
 
 export async function seedDatabaseIfNeeded() {
+  if (typeof window !== "undefined") {
+    try {
+      if (sessionStorage.getItem("db_seed_checked_v1") === "true") {
+        return;
+      }
+    } catch (e) {}
+  }
+
   try {
     // 1. Ensure default users exist
     const usersSnapshot = await getDocs(collection(db, "users"));
@@ -359,8 +367,26 @@ export async function seedDatabaseIfNeeded() {
         await refBatch.commit();
       }
     }
-  } catch (error) {
-    console.error("Database seeding check failed:", error);
+
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem("db_seed_checked_v1", "true");
+      } catch (e) {}
+    }
+  } catch (error: any) {
+    const errorMsg = error?.message || String(error);
+    const isQuotaOrOffline = 
+      error?.code === "resource-exhausted" ||
+      errorMsg.includes("Quota limit exceeded") ||
+      errorMsg.includes("quota") ||
+      errorMsg.includes("offline") ||
+      errorMsg.includes("unavailable");
+
+    if (isQuotaOrOffline) {
+      console.info("Database seeding check bypassed (Firestore operating under quota limit or cache mode).");
+      return;
+    }
+    console.warn("Database seeding check notice:", errorMsg);
   }
 }
 

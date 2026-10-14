@@ -315,6 +315,9 @@ export interface BezelOperation {
   reversedAt?: string | any;
   reversedBy?: string;
   notes?: string;
+  updatedAt?: string | any;
+  lastEditedBy?: string;
+  editReason?: string;
 }
 
 export interface BezelTruckItem {

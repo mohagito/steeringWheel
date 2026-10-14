@@ -421,6 +421,7 @@ export default function BezelWorkspace({
               ) : (
                 <BezelHistoryTable
                   operations={operations}
+                  references={references}
                   userRole={currentUser.role}
                   operatorName={currentUser.fullName}
                   onSuccess={(msg) => showToast(msg, "success")}
