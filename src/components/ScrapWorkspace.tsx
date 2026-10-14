@@ -470,14 +470,14 @@ export default function ScrapWorkspace({
   const toggleWeek = (weekCode: string) => {
     setExpandedWeeks((prev) => ({
       ...prev,
-      [weekCode]: prev[weekCode] === undefined ? false : !prev[weekCode]
+      [weekCode]: !prev[weekCode]
     }));
   };
 
   const toggleAllWeeks = () => {
-    const allExpanded = groupedScrapWeeks.every(
-      (g) => expandedWeeks[g.weekCode] !== false
-    );
+    const allExpanded =
+      groupedScrapWeeks.length > 0 &&
+      groupedScrapWeeks.every((g) => !!expandedWeeks[g.weekCode]);
     const next: Record<string, boolean> = {};
     groupedScrapWeeks.forEach((g) => {
       next[g.weekCode] = !allExpanded;
@@ -943,7 +943,7 @@ export default function ScrapWorkspace({
                   onClick={toggleAllWeeks}
                   className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
                 >
-                  {groupedScrapWeeks.every((g) => expandedWeeks[g.weekCode] !== false)
+                  {groupedScrapWeeks.length > 0 && groupedScrapWeeks.every((g) => !!expandedWeeks[g.weekCode])
                     ? "Collapse all"
                     : "Expand all"}
                 </button>
@@ -991,7 +991,7 @@ export default function ScrapWorkspace({
               </div>
             ) : (
               groupedScrapWeeks.map((group) => {
-                const isExpanded = expandedWeeks[group.weekCode] !== false;
+                const isExpanded = !!expandedWeeks[group.weekCode];
 
                 return (
                   <div
