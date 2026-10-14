@@ -258,9 +258,7 @@ export default function App() {
           boxesList.sort((a, b) => a.barcode.localeCompare(b.barcode));
           setBoxes(boxesList);
         },
-        (error) => {
-          console.error("Error subscribing to boxes:", error);
-        }
+        handleSnapshotError("boxes")
       );
 
       // Sort adjustments by timestamp descending
@@ -274,9 +272,7 @@ export default function App() {
           adjList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setAdjustments(adjList);
         },
-        (error) => {
-          console.error("Error subscribing to adjustments:", error);
-        }
+        handleSnapshotError("adjustments")
       );
 
       unsubReferences = onSnapshot(
@@ -289,9 +285,7 @@ export default function App() {
           refList.sort((a, b) => a.code.localeCompare(b.code));
           setReferences(refList);
         },
-        (error) => {
-          console.error("Error subscribing to references:", error);
-        }
+        handleSnapshotError("references")
       );
 
       // Subscribing to Deliveries collection
@@ -306,9 +300,7 @@ export default function App() {
           delList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setDeliveries(delList);
         },
-        (error) => {
-          console.error("Error subscribing to deliveries:", error);
-        }
+        handleSnapshotError("deliveries")
       );
 
       // Subscribing to Productions collection
@@ -327,9 +319,7 @@ export default function App() {
           });
           setProductions(prodList);
         },
-        (error) => {
-          console.error("Error subscribing to productions:", error);
-        }
+        handleSnapshotError("productions")
       );
 
       // Subscribing to Daily Productions collection (Isolated workspace)
@@ -347,9 +337,7 @@ export default function App() {
           });
           setDailyProductions(dList);
         },
-        (error) => {
-          console.error("Error subscribing to daily_productions:", error);
-        }
+        handleSnapshotError("daily_productions")
       );
 
       unsubTransactions = onSnapshot(
@@ -362,9 +350,7 @@ export default function App() {
           transList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setTransactions(transList);
         },
-        (error) => {
-          console.error("Error subscribing to transactions:", error);
-        }
+        handleSnapshotError("transactions")
       );
 
       unsubScraps = onSnapshot(
@@ -377,9 +363,7 @@ export default function App() {
           scrapList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setScraps(scrapList);
         },
-        (error) => {
-          console.error("Error subscribing to scraps:", error);
-        }
+        handleSnapshotError("scraps")
       );
 
       unsubInvoices = onSnapshot(
@@ -392,9 +376,7 @@ export default function App() {
           invList.sort((a, b) => compareTimestampsDesc(a.createdAt, b.createdAt));
           setInvoices(invList);
         },
-        (error) => {
-          console.error("Error subscribing to invoices:", error);
-        }
+        handleSnapshotError("invoices")
       );
 
       // Subscribing to Archived Invoices repository
@@ -419,9 +401,7 @@ export default function App() {
           });
           setDisassemblies(dList);
         },
-        (error) => {
-          console.error("Error subscribing to disassemblies:", error);
-        }
+        handleSnapshotError("disassemblies")
       );
 
     } catch (err) {

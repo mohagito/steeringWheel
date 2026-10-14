@@ -1239,11 +1239,13 @@ export default function InvoicesWorkspace({
               <FileText className="w-7 h-7 stroke-1.5" />
             </div>
             <div className="text-sm font-semibold text-slate-700">No records found matching criteria</div>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              {searchQuery || dateFilter !== "all" || sourceFilter !== "ALL"
-                ? "Try adjusting your search keywords, flow filter, or date filter to view existing records."
-                : "No incoming stock invoices or return records have been recorded yet."}
-            </p>
+            {!(sourceFilter === "RETURN_ZDF_PRECOSIDO" || sourceFilter === "RETURN_ZDF_RED_CAGE") && (
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                {searchQuery || dateFilter !== "all" || sourceFilter !== "ALL"
+                  ? "Try adjusting your search keywords, flow filter, or date filter to view existing records."
+                  : "No incoming stock invoices or return records have been recorded yet."}
+              </p>
+            )}
             {(searchQuery || dateFilter !== "all" || sourceFilter !== "ALL") && (
               <button
                 onClick={() => {
