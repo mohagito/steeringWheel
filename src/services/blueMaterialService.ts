@@ -227,3 +227,121 @@ export async function updateCoveragePerRoll(
     );
   });
 }
+
+/**
+ * Updates an existing Blue Material movement record.
+ * Atomically adjusts total available rolls in settings by the difference (newRolls - oldRolls).
+ * Restricted to supervisor or admin roles.
+ */
+export async function updateBlueMaterialMovement(params: {
+  movementId: string;
+  rolls: number;
+  receivedDate: string;
+  currentUser: User;
+}): Promise<void> {
+  const { movementId, rolls, receivedDate, currentUser } = params;
+
+  if (currentUser.role !== "admin" && currentUser.role !== "supervisor") {
+    throw new Error("Unauthorized. Only management can edit blue material records.");
+  }
+
+  if (!rolls || rolls <= 0 || !Number.isFinite(rolls)) {
+    throw new Error("Number of rolls must be a positive number.");
+  }
+
+  const movementRef = doc(MOVEMENTS_COL_REF, movementId);
+
+  await runTransaction(db, async (transaction) => {
+    const movementSnap = await transaction.get(movementRef);
+    if (!movementSnap.exists()) {
+      throw new Error("Movement record not found.");
+    }
+
+    const oldData = movementSnap.data();
+    const oldRolls = Number(oldData.rolls) || 0;
+    const diff = Math.round(rolls) - oldRolls;
+
+    const settingsSnap = await transaction.get(SETTINGS_DOC_REF);
+    let currentRolls = 0;
+    let coverage = 5000;
+
+    if (settingsSnap.exists()) {
+      const data = settingsSnap.data();
+      currentRolls = Number(data.totalAvailableRolls) || 0;
+      coverage = Number(data.coveragePerRoll) || 5000;
+    }
+
+    const newTotal = Math.max(0, currentRolls + diff);
+
+    transaction.set(
+      SETTINGS_DOC_REF,
+      {
+        totalAvailableRolls: newTotal,
+        coveragePerRoll: coverage,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.fullName,
+      },
+      { merge: true }
+    );
+
+    transaction.update(movementRef, {
+      rolls: Math.round(rolls),
+      receivedDate: receivedDate || oldData.receivedDate || new Date().toISOString().slice(0, 10),
+      updatedAt: serverTimestamp(),
+      updatedBy: currentUser.fullName,
+    });
+  });
+}
+
+/**
+ * Deletes a Blue Material movement record.
+ * Atomically decrements total available rolls in settings by the deleted record's rolls.
+ * Restricted to supervisor or admin roles.
+ */
+export async function deleteBlueMaterialMovement(params: {
+  movementId: string;
+  currentUser: User;
+}): Promise<void> {
+  const { movementId, currentUser } = params;
+
+  if (currentUser.role !== "admin" && currentUser.role !== "supervisor") {
+    throw new Error("Unauthorized. Only management can delete blue material records.");
+  }
+
+  const movementRef = doc(MOVEMENTS_COL_REF, movementId);
+
+  await runTransaction(db, async (transaction) => {
+    const movementSnap = await transaction.get(movementRef);
+    if (!movementSnap.exists()) {
+      return;
+    }
+
+    const oldData = movementSnap.data();
+    const oldRolls = Number(oldData.rolls) || 0;
+
+    const settingsSnap = await transaction.get(SETTINGS_DOC_REF);
+    let currentRolls = 0;
+    let coverage = 5000;
+
+    if (settingsSnap.exists()) {
+      const data = settingsSnap.data();
+      currentRolls = Number(data.totalAvailableRolls) || 0;
+      coverage = Number(data.coveragePerRoll) || 5000;
+    }
+
+    const newTotal = Math.max(0, currentRolls - oldRolls);
+
+    transaction.set(
+      SETTINGS_DOC_REF,
+      {
+        totalAvailableRolls: newTotal,
+        coveragePerRoll: coverage,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.fullName,
+      },
+      { merge: true }
+    );
+
+    transaction.delete(movementRef);
+  });
+}
