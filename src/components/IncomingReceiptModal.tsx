@@ -230,7 +230,15 @@ export default function IncomingReceiptModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs font-sans">
+        <form 
+          onSubmit={handleSubmit} 
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+              e.preventDefault();
+            }
+          }}
+          className="space-y-4 text-xs font-sans"
+        >
           {/* Destination Stock Selection */}
           <div>
             <label className="block text-slate-700 font-bold mb-1.5 text-xs font-mono uppercase tracking-wider">

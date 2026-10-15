@@ -237,7 +237,7 @@ export default function InvoicesWorkspace({
 
         const delivType = ((deliv as any).deliveryType || "").toUpperCase();
         const notes = (deliv.notes || "").toUpperCase();
-        const isRedCage = delivType.includes("RED_CAGE") || notes.includes("RED CAGE") || invNum === "A905220377";
+        const isRedCage = delivType.includes("RED_CAGE") || notes.includes("RED CAGE");
         const isPrecosido = delivType.includes("PRECOSIDO") && (notes.includes("RETURN ZDF") || notes.includes("RETURN ZF") || delivType.includes("RETURN_ZDF"));
 
         if ((isRedCage || isPrecosido || notes.includes("RETURN ZDF") || notes.includes("RETURN ZF")) && invNum && !seenNumbers.has(invNum)) {
@@ -300,7 +300,7 @@ export default function InvoicesWorkspace({
         const invNum = (t.invoiceNumber || "").trim().toUpperCase();
         const notes = (t.notes || "").toUpperCase();
         const move = (t.movementType || "").toUpperCase();
-        if ((notes.includes("RETURN ZDF") || notes.includes("RETURN ZF") || move.includes("STOCK 3 IN") || invNum === "A905220377") && invNum && !seenNumbers.has(invNum)) {
+        if ((notes.includes("RETURN ZDF") || notes.includes("RETURN ZF") || move.includes("STOCK 3 IN")) && invNum && !seenNumbers.has(invNum)) {
           if (!zdfTransMap.has(invNum)) {
             zdfTransMap.set(invNum, []);
           }
@@ -312,7 +312,7 @@ export default function InvoicesWorkspace({
         if (!seenNumbers.has(invNum) && !isDeleted(`trans-inv-${invNum}`, invNum)) {
           seenNumbers.add(invNum);
           const first = transList[0];
-          const isRedCage = transList.some(t => (t.notes || "").toUpperCase().includes("RED CAGE") || t.stock === "Stock 3" || t.destinationStock === "Stock 3") || invNum === "A905220377";
+          const isRedCage = transList.some(t => (t.notes || "").toUpperCase().includes("RED CAGE") || t.stock === "Stock 3" || t.destinationStock === "Stock 3");
           const targetStock: "Stock 2" | "Stock 3" = isRedCage ? "Stock 3" : "Stock 2";
           const sourceType: InvoiceSourceType = isRedCage ? "RETURN_ZDF_RED_CAGE" : "RETURN_ZDF_PRECOSIDO";
 
@@ -345,66 +345,6 @@ export default function InvoicesWorkspace({
             items
           });
         }
-      });
-    }
-
-    // 4. Traceable history record guarantee for A905220377 (Return ZDF Red Cage)
-    // Only synthesize if NOT deleted by user
-    if (!seenNumbers.has("A905220377") && !isDeleted("inv-zdf-a905220377-traceable", "A905220377")) {
-      seenNumbers.add("A905220377");
-      result.push({
-        id: "inv-zdf-a905220377-traceable",
-        invoiceNumber: "A905220377",
-        operator: currentUser?.fullName || "MANAGER",
-        operatorId: currentUser?.id || "user_gonzalo",
-        createdAt: new Date().toISOString(),
-        status: "approved",
-        approvedAt: new Date().toISOString(),
-        approvedBy: currentUser?.fullName || "MANAGER",
-        notes: "RETURN ZF [RED CAGE] -> Stock 3 (Container: A905220377)",
-        sourceType: "RETURN_ZDF_RED_CAGE",
-        targetStock: "Stock 3",
-        origin: "ZDF",
-        totalBoxes: 3,
-        totalQuantity: 158,
-        items: [
-          {
-            id: "box-zdf-a905220377-1",
-            reference: "A025M750B",
-            expectedQty: 60,
-            quantity: 60,
-            difference: 0,
-            scannedAt: new Date().toISOString(),
-            boxBarcode: "A905220377",
-            destinationStock: "Stock 3",
-            description: "R001H669A (P2QO MCM HTD) -> A025M750B",
-            notes: "RED CAGE Reconditioned Return"
-          },
-          {
-            id: "box-zdf-a905220377-2",
-            reference: "34316011B",
-            expectedQty: 50,
-            quantity: 50,
-            difference: 0,
-            scannedAt: new Date().toISOString(),
-            boxBarcode: "A905220377",
-            destinationStock: "Stock 3",
-            description: "R002A667A (P33B TEP HTD MY26) -> 34316011B",
-            notes: "RED CAGE Reconditioned Return"
-          },
-          {
-            id: "box-zdf-a905220377-3",
-            reference: "34340681C",
-            expectedQty: 48,
-            quantity: 48,
-            difference: 0,
-            scannedAt: new Date().toISOString(),
-            boxBarcode: "A905220377",
-            destinationStock: "Stock 3",
-            description: "34355954C (C519 TEP HEATED) -> 34340681C",
-            notes: "RED CAGE Reconditioned Return"
-          }
-        ]
       });
     }
 
@@ -1074,7 +1014,7 @@ export default function InvoicesWorkspace({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search invoices or container (e.g. A905220377, Red Cage)..."
+              placeholder="Search invoices, reference, or container (e.g. Red Cage)..."
               className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
               id="invoices-search-input"
             />
@@ -1355,11 +1295,6 @@ export default function InvoicesWorkspace({
                               <span className="text-slate-900 font-extrabold group-hover:text-blue-600 transition-colors">
                                 {inv.invoiceNumber}
                               </span>
-                              {inv.invoiceNumber === "A905220377" && (
-                                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-black bg-rose-100 text-rose-800 border border-rose-300">
-                                  ZF RED CAGE
-                                </span>
-                              )}
                             </div>
                             {inv.notes && (
                               <div className="text-[10px] text-slate-400 font-sans font-normal truncate max-w-[170px]">

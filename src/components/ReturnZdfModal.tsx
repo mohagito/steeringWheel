@@ -13,6 +13,7 @@ import {
 import { executeProtectedStockOperation } from "../services/protectionLayer";
 import { doc } from "firebase/firestore";
 import { db } from "../firebase";
+import { getMoroccoTodayDateString } from "../utils/timeUtils";
 
 interface ReturnZdfModalProps {
   isOpen: boolean;
@@ -194,6 +195,7 @@ export default function ReturnZdfModal({
     try {
       const operatorName = currentUser?.fullName || "Manager";
       const now = new Date().toISOString();
+      const moroccoToday = getMoroccoTodayDateString();
 
       // Aggregate quantities by mesh reference
       const meshTotals: Record<string, number> = {};
@@ -251,7 +253,7 @@ export default function ReturnZdfModal({
             deliveryCategory: category === "RED_CAGE" ? "STEERING WHEELS" : "PRECOSIDO",
             targetStock,
             destinationStock: targetStock,
-            date: now.slice(0, 10),
+            date: moroccoToday,
             createdAt: timestamp,
             timestamp: now,
             registeredBy: operatorName,
@@ -288,7 +290,7 @@ export default function ReturnZdfModal({
               deliveryCategory: category === "RED_CAGE" ? "STEERING WHEELS" : "PRECOSIDO",
               targetStock,
               destinationStock: targetStock,
-              date: now.slice(0, 10),
+              date: moroccoToday,
               createdAt: timestamp,
               timestamp: now,
               registeredBy: operatorName,

@@ -66,7 +66,7 @@ export default function BezelOperationsModals({
       id="bezel-modal-overlay"
       className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto animate-in fade-in duration-150"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && activeModal !== "new_truck") onClose();
       }}
     >
       {activeModal === "new_truck" && (
@@ -260,7 +260,15 @@ function NewTruckModal({
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+      <form 
+        onSubmit={handleSubmit} 
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+            e.preventDefault();
+          }
+        }}
+        className="mt-4 space-y-4"
+      >
         <div>
           <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
             Truck / Invoice / Delivery Note # (Optional)

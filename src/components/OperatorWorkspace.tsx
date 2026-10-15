@@ -39,18 +39,16 @@ export default function OperatorWorkspace({
   onNavigateToTab
 }: OperatorWorkspaceProps) {
   
-  // Persisted Invoice Input (Used only for INTAKE mode) - initialized strictly empty
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-
-  // Clean any old auto-generated invoice strings from previous sessions on mount
-  useEffect(() => {
+  // Persisted Invoice Input (Used only for INTAKE mode)
+  const [invoiceNumber, setInvoiceNumber] = useState<string>(() => {
     try {
       const saved = localStorage.getItem("op_invoice");
-      if (saved && (saved.startsWith("INV-20") || saved.startsWith("INV-"))) {
-        localStorage.removeItem("op_invoice");
+      if (saved && !saved.startsWith("INV-20") && !saved.startsWith("INV-")) {
+        return saved.trim().toUpperCase();
       }
     } catch (e) {}
-  }, []);
+    return "";
+  });
   
   // Operation Mode: INTAKE (New Truck) vs TRANSFER (Pegadas) vs RETURN vs INCOMPLETA
   const [opMode, setOpMode] = useState<"INTAKE" | "TRANSFER" | "RETURN" | "INCOMPLETA">(() => {
@@ -139,12 +137,11 @@ export default function OperatorWorkspace({
   }, [references]);
   const lowStockCount = lowStockReferences.length;
 
-  // Sync Invoice to localStorage (or clear if empty)
+  // Sync Invoice to localStorage (preserve session across refreshes)
   useEffect(() => {
-    if (invoiceNumber.trim()) {
-      localStorage.setItem("op_invoice", invoiceNumber.trim().toUpperCase());
-    } else {
-      localStorage.removeItem("op_invoice");
+    const clean = invoiceNumber.trim().toUpperCase();
+    if (clean) {
+      localStorage.setItem("op_invoice", clean);
     }
   }, [invoiceNumber]);
 
@@ -244,8 +241,11 @@ export default function OperatorWorkspace({
 
   // Merge remote and optimistic local state
   const activePendingInvoice = useMemo(() => {
-    if (localPendingInvoice && localPendingInvoice.invoiceNumber.toUpperCase() === invoiceNumber.trim().toUpperCase() && localPendingInvoice.status === "pending") {
-      if (remotePendingInvoice && remotePendingInvoice.items.length >= localPendingInvoice.items.length) {
+    const cleanInv = invoiceNumber.trim().toUpperCase();
+    if (!cleanInv) return null;
+
+    if (localPendingInvoice && localPendingInvoice.invoiceNumber.toUpperCase() === cleanInv && localPendingInvoice.status === "pending") {
+      if (remotePendingInvoice && remotePendingInvoice.items && localPendingInvoice.items && remotePendingInvoice.items.length >= localPendingInvoice.items.length) {
         return remotePendingInvoice;
       }
       return localPendingInvoice;
@@ -283,12 +283,23 @@ export default function OperatorWorkspace({
     );
   }, [invoices, invoiceNumber]);
 
-  // Sync localPendingInvoice when remote invoice arrives or changes
+  // Sync localPendingInvoice when remote invoice arrives or changes - NEVER wipe local boxes
   useEffect(() => {
     if (remotePendingInvoice) {
-      setLocalPendingInvoice(remotePendingInvoice);
+      setLocalPendingInvoice((prevLocal) => {
+        if (!prevLocal) return remotePendingInvoice;
+        const currentClean = invoiceNumber.trim().toUpperCase();
+        if (prevLocal.invoiceNumber.toUpperCase() !== currentClean) {
+          return remotePendingInvoice;
+        }
+        // Protect local scanned boxes: if local has more items than remote, preserve local
+        if (prevLocal.items && remotePendingInvoice.items && prevLocal.items.length > remotePendingInvoice.items.length) {
+          return prevLocal;
+        }
+        return remotePendingInvoice;
+      });
     }
-  }, [remotePendingInvoice]);
+  }, [remotePendingInvoice, invoiceNumber]);
 
   // Total Pegadas PCS
   const totalPegadasQty = useMemo(() => {
@@ -628,17 +639,19 @@ export default function OperatorWorkspace({
           destinationStock: chosenDest
         };
 
-        const existingItems = activePendingInvoice ? activePendingInvoice.items : [];
-        const updatedItems = [newBoxItem, ...existingItems];
+        const baseItems = (localPendingInvoice?.items && localPendingInvoice.invoiceNumber.toUpperCase() === cleanInvoice && localPendingInvoice.items.length >= (activePendingInvoice?.items?.length || 0))
+          ? localPendingInvoice.items
+          : (activePendingInvoice?.items || []);
+        const updatedItems = [newBoxItem, ...baseItems];
         const totalBoxes = updatedItems.length;
         const totalQuantity = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
 
         const updatedInvoice: ReceivingInvoice = {
-          id: activePendingInvoice ? activePendingInvoice.id : `inv-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          id: activePendingInvoice ? activePendingInvoice.id : (localPendingInvoice?.id || `inv-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`),
           invoiceNumber: cleanInvoice,
           operator: currentUser.fullName,
           operatorId: currentUser.id,
-          createdAt: activePendingInvoice ? activePendingInvoice.createdAt : timestamp,
+          createdAt: activePendingInvoice ? activePendingInvoice.createdAt : (localPendingInvoice?.createdAt || timestamp),
           status: "pending",
           items: updatedItems,
           totalBoxes,
@@ -646,6 +659,9 @@ export default function OperatorWorkspace({
         };
 
         setLocalPendingInvoice(updatedInvoice);
+        try {
+          localStorage.setItem(`op_truck_draft_${cleanInvoice}`, JSON.stringify(updatedInvoice));
+        } catch (e) {}
 
         if (onSavePendingInvoice) {
           await onSavePendingInvoice(updatedInvoice);
