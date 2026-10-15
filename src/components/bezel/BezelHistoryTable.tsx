@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Filter,
@@ -7,9 +7,7 @@ import {
   Send,
   RotateCcw,
   Trash2,
-  Undo2,
   Clock,
-  AlertTriangle,
   ClipboardCheck,
   Edit2,
   X,
@@ -18,7 +16,6 @@ import {
 import { BezelOperation, BezelOperationType, BezelReference, UserRole } from "../../types";
 import { formatSystemTime } from "../../utils/timeUtils";
 import {
-  reverseBezelOperation,
   deleteBezelOperation,
   editBezelOperation
 } from "../../services/bezelService";
@@ -43,11 +40,6 @@ export default function BezelHistoryTable({
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState<string>("ALL");
 
-  // Reversal dialog state
-  const [reversingOpId, setReversingOpId] = useState<string | null>(null);
-  const [reversalReason, setReversalReason] = useState("");
-  const [isSubmittingReversal, setIsSubmittingReversal] = useState(false);
-
   // Delete dialog state
   const [deletingOp, setDeletingOp] = useState<BezelOperation | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
@@ -63,6 +55,23 @@ export default function BezelHistoryTable({
   const [editReason, setEditReason] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (deletingOp && !isSubmittingDelete) {
+          setDeletingOp(null);
+          setDeleteReason("");
+        }
+        if (editingOp && !isSubmittingEdit) {
+          setEditingOp(null);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [deletingOp, isSubmittingDelete, editingOp, isSubmittingEdit]);
 
   const isManager = userRole === "admin" || userRole === "supervisor";
 
@@ -125,27 +134,6 @@ export default function BezelHistoryTable({
           label: type,
           className: "bg-slate-50 text-slate-800 border-slate-200"
         };
-    }
-  };
-
-  const handleConfirmReversal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reversingOpId) return;
-
-    setIsSubmittingReversal(true);
-    try {
-      await reverseBezelOperation({
-        operationId: reversingOpId,
-        reason: reversalReason.trim() || "Operational correction",
-        operatorName
-      });
-      onSuccess(`Operation ${reversingOpId} has been successfully reversed.`);
-      setReversingOpId(null);
-      setReversalReason("");
-    } catch (err: any) {
-      onError(err.message || "Failed to reverse operation.");
-    } finally {
-      setIsSubmittingReversal(false);
     }
   };
 
@@ -368,12 +356,12 @@ export default function BezelHistoryTable({
 
                     {isManager && (
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                        <div className="flex items-center justify-center gap-1.5">
                           {/* Edit button */}
                           <button
                             type="button"
                             onClick={() => handleStartEdit(op)}
-                            className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
                             title="Edit record & adjust stock"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
@@ -383,23 +371,11 @@ export default function BezelHistoryTable({
                           <button
                             type="button"
                             onClick={() => setDeletingOp(op)}
-                            className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Delete record & remove from stock"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-
-                          {/* Reverse button (if not already reversed) */}
-                          {!isReversed && (
-                            <button
-                              type="button"
-                              onClick={() => setReversingOpId(op.id)}
-                              className="p-1.5 rounded-md text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
-                              title="Reverse operation (Undo stock movement)"
-                            >
-                              <Undo2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
                         </div>
                       </td>
                     )}
@@ -413,7 +389,15 @@ export default function BezelHistoryTable({
 
       {/* Delete Confirmation Dialog */}
       {deletingOp && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSubmittingDelete) {
+              setDeletingOp(null);
+              setDeleteReason("");
+            }
+          }}
+        >
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-200">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
@@ -490,7 +474,14 @@ export default function BezelHistoryTable({
 
       {/* Edit Record Dialog */}
       {editingOp && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSubmittingEdit) {
+              setEditingOp(null);
+            }
+          }}
+        >
           <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2.5">
@@ -671,67 +662,6 @@ export default function BezelHistoryTable({
                   className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
                 >
                   {isSubmittingEdit ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Reversal Confirmation Dialog */}
-      {reversingOpId && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-200">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <h4 className="text-sm font-bold text-slate-900">
-                  Reverse Operation
-                </h4>
-                <p className="text-[11px] text-slate-500 font-mono truncate">
-                  ID: {reversingOpId}
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed mb-3">
-              Reversing this operation will restore reference stock levels to their state prior to this transaction.
-            </p>
-
-            <form onSubmit={handleConfirmReversal} className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Reason for Reversal *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={reversalReason}
-                  onChange={(e) => setReversalReason(e.target.value)}
-                  placeholder="e.g. Duplicate truck entry"
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReversingOpId(null);
-                    setReversalReason("");
-                  }}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingReversal || !reversalReason.trim()}
-                  className="px-3.5 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
-                >
-                  {isSubmittingReversal ? "Reversing..." : "Confirm Reversal"}
                 </button>
               </div>
             </form>

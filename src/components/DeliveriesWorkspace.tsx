@@ -379,14 +379,37 @@ export default function DeliveriesWorkspace({
     }
   };
 
+  // Strictly filter only legitimate customer deliveries / dispatches (never incoming returns)
+  const isActualDelivery = (d: Delivery) => {
+    const invNum = (d.invoiceNumber || "").trim().toUpperCase();
+    const delType = (d.deliveryType || "").toUpperCase();
+    const docId = (d.id || "").toLowerCase();
+    const notes = (d.notes || "").toUpperCase();
+
+    if (
+      invNum === "A905220396" ||
+      delType.includes("RETURN") ||
+      docId.startsWith("deliv-zdf") ||
+      notes.includes("RETURN ZF") ||
+      notes.includes("RETURN ZDF")
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const legitimateDeliveries = useMemo(() => {
+    return deliveries.filter(isActualDelivery);
+  }, [deliveries]);
+
   // Delivery stats computations
   const stats = useMemo(() => {
-    const totalQtyDelivered = deliveries.reduce((sum, d) => sum + d.quantity, 0);
-    const totalShipments = new Set(deliveries.map((d) => d.invoiceNumber)).size;
+    const totalQtyDelivered = legitimateDeliveries.reduce((sum, d) => sum + d.quantity, 0);
+    const totalShipments = new Set(legitimateDeliveries.map((d) => d.invoiceNumber)).size;
     
     // Group by customer
     const customerMap: Record<string, number> = {};
-    deliveries.forEach((d) => {
+    legitimateDeliveries.forEach((d) => {
       const cust = d.customer || "GENERAL";
       customerMap[cust] = (customerMap[cust] || 0) + d.quantity;
     });
@@ -396,11 +419,11 @@ export default function DeliveriesWorkspace({
       totalShipments,
       customerShares: Object.entries(customerMap).map(([name, val]) => ({ name, val }))
     };
-  }, [deliveries]);
+  }, [legitimateDeliveries]);
 
   // Pre-filtered deliveries list sorted by system timestamp descending
   const filteredDeliveries = useMemo(() => {
-    return deliveries.filter((d) => {
+    return legitimateDeliveries.filter((d) => {
       const q = (searchQuery || "").toLowerCase().trim();
       const matchesSearch = !q ? true : (
         (d.invoiceNumber || "").toLowerCase().includes(q) ||
@@ -413,13 +436,13 @@ export default function DeliveriesWorkspace({
       const matchesCustomer = customerFilter === "All" || (d.customer || "") === customerFilter;
       return matchesSearch && matchesCustomer;
     }).sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
-  }, [deliveries, searchQuery, customerFilter]);
+  }, [legitimateDeliveries, searchQuery, customerFilter]);
 
   // Unique list of customers in deliveries
   const uniqueCustomers = useMemo(() => {
-    const customers = new Set(deliveries.map((d) => d.customer));
+    const customers = new Set(legitimateDeliveries.map((d) => d.customer));
     return Array.from(customers).filter(Boolean);
-  }, [deliveries]);
+  }, [legitimateDeliveries]);
 
   // Group deliveries by invoice number for cleaner ledger viewing
   const groupedDeliveries = useMemo(() => {

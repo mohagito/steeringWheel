@@ -1306,23 +1306,14 @@ export async function deleteBezelOperation(params: {
       switch (opData.operationType) {
         case "NEW_TRUCK":
           if (opData.destinationStock === "STOCK 1") {
-            if (s1 < qty) {
-              throw new Error(`Cannot delete: Stock 1 is now ${s1}, less than operation quantity ${qty}.`);
-            }
-            s1 -= qty;
+            s1 = Math.max(0, s1 - qty);
           } else {
-            if (s2 < qty) {
-              throw new Error(`Cannot delete: Stock 2 is now ${s2}, less than operation quantity ${qty}.`);
-            }
-            s2 -= qty;
+            s2 = Math.max(0, s2 - qty);
           }
           break;
 
         case "BEZEL_ASSEMBLAGE":
-          if (s2 < qty) {
-            throw new Error(`Cannot delete: Stock 2 is now ${s2}, less than assembled quantity ${qty}.`);
-          }
-          s2 -= qty;
+          s2 = Math.max(0, s2 - qty);
           s1 += qty;
           break;
 
@@ -1331,10 +1322,7 @@ export async function deleteBezelOperation(params: {
           break;
 
         case "BEZEL_RETURN":
-          if (s1 < qty) {
-            throw new Error(`Cannot delete: Stock 1 is now ${s1}, less than returned quantity ${qty}.`);
-          }
-          s1 -= qty;
+          s1 = Math.max(0, s1 - qty);
           s2 += qty;
           break;
 
@@ -1501,8 +1489,8 @@ export async function editBezelOperation(params: EditBezelOperationParams): Prom
           break;
       }
 
-      if (s1 < 0) throw new Error(`Stock 1 cannot be negative (${s1}).`);
-      if (s2 < 0) throw new Error(`Stock 2 cannot be negative (${s2}).`);
+      s1 = Math.max(0, s1);
+      s2 = Math.max(0, s2);
 
       transaction.update(refDocRef, cleanData({
         stock1: s1,
@@ -1595,8 +1583,10 @@ export async function editBezelOperation(params: EditBezelOperationParams): Prom
           break;
       }
 
-      if (oldS1 < 0 || oldS2 < 0) throw new Error(`Reverting from ${oldRefCode} causes negative stock.`);
-      if (newS1 < 0 || newS2 < 0) throw new Error(`Applying to ${newRefCode} causes negative stock.`);
+      oldS1 = Math.max(0, oldS1);
+      oldS2 = Math.max(0, oldS2);
+      newS1 = Math.max(0, newS1);
+      newS2 = Math.max(0, newS2);
 
       transaction.update(oldRefDocRef, cleanData({
         stock1: oldS1,

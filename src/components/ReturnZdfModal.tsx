@@ -240,67 +240,7 @@ export default function ReturnZdfModal({
         reason: `RETURN ZF [${category}]: ${cleanContainer} -> ${targetStock} (${includedItems.length} items, ${totalIncludedPcs} pcs)`,
         transactions,
         additionalWrites: (transaction, timestamp) => {
-          // 1. Record container summary in deliveries collection
-          const delivRef = doc(db, "deliveries", deliveryId);
-          transaction.set(delivRef, {
-            id: deliveryId,
-            deliveryId,
-            invoiceNumber: cleanContainer,
-            reference: includedItems[0]?.meshReference.trim().toUpperCase() || "RED_CAGE",
-            quantity: totalIncludedPcs,
-            totalQuantity: totalIncludedPcs,
-            deliveryType: category === "RED_CAGE" ? "RETURN_ZDF_RED_CAGE" : "RETURN_ZDF_PRECOSIDO",
-            deliveryCategory: category === "RED_CAGE" ? "STEERING WHEELS" : "PRECOSIDO",
-            targetStock,
-            destinationStock: targetStock,
-            date: moroccoToday,
-            createdAt: timestamp,
-            timestamp: now,
-            registeredBy: operatorName,
-            operatorName,
-            status: "approved",
-            totalBoxes: includedItems.length,
-            notes: note ? `RETURN ZF (${category}): ${note}` : `RETURN ZF (${category})`,
-            items: includedItems.map((it, i) => ({
-              id: `item-${deliveryId}-${i + 1}`,
-              reference: it.meshReference.trim().toUpperCase(),
-              originalRef: it.docReference,
-              description: it.description,
-              quantity: it.quantity,
-              client: it.client,
-              targetStock
-            }))
-          });
-
-          // 2. Also record line-item entries in deliveries collection for complete ledger traceability
-          includedItems.forEach((it, i) => {
-            const itemDelivId = `deliv-zdf-item-${deliveryId}-${i + 1}`;
-            const itemRef = doc(db, "deliveries", itemDelivId);
-            transaction.set(itemRef, {
-              id: itemDelivId,
-              deliveryId: itemDelivId,
-              parentDeliveryId: deliveryId,
-              invoiceNumber: cleanContainer,
-              reference: it.meshReference.trim().toUpperCase(),
-              originalRef: it.docReference,
-              description: it.description,
-              quantity: it.quantity,
-              customer: it.client || (category === "RED_CAGE" ? "ZF RED CAGE" : "ZF PRECOSIDO"),
-              deliveryType: category === "RED_CAGE" ? "RETURN_ZDF_RED_CAGE" : "RETURN_ZDF_PRECOSIDO",
-              deliveryCategory: category === "RED_CAGE" ? "STEERING WHEELS" : "PRECOSIDO",
-              targetStock,
-              destinationStock: targetStock,
-              date: moroccoToday,
-              createdAt: timestamp,
-              timestamp: now,
-              registeredBy: operatorName,
-              operatorName,
-              status: "approved",
-              notes: `RETURN ZF [${category}] (${it.docReference} -> ${it.meshReference}) Container: ${cleanContainer}`
-            });
-          });
-
-          // 3. Atomically record incoming invoice in invoices collection for complete traceability in Invoices workspace
+          // Record incoming return invoice in invoices collection for complete traceability in Invoices workspace (never in deliveries)
           const invoiceDocId = `inv-zdf-${cleanContainer}-${deliveryId}`;
           const invRef = doc(db, "invoices", invoiceDocId);
           transaction.set(invRef, {

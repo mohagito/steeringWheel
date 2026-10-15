@@ -221,12 +221,44 @@ export default function App() {
       setLoading(false);
     }, 1000);
 
-    // 1. Run background seeding asynchronously without blocking listeners
+    // 1. Run background seeding and rogue records audit asynchronously without blocking listeners
     (async () => {
       try {
         await seedDatabaseIfNeeded();
       } catch (err) {
         console.warn("Background seed notice:", err);
+      }
+
+      // Purge any rogue return documents mistakenly written into the deliveries collection
+      try {
+        const delivSnap = await getDocs(collection(db, "deliveries"));
+        const batch = writeBatch(db);
+        let count = 0;
+        delivSnap.forEach((docSnap) => {
+          const data = docSnap.data();
+          const invNum = String(data.invoiceNumber || "").trim().toUpperCase();
+          const delType = String(data.deliveryType || "").toUpperCase();
+          const docId = docSnap.id.toLowerCase();
+          const notes = String(data.notes || "").toUpperCase();
+
+          const isRogueReturn =
+            invNum === "A905220396" ||
+            delType.includes("RETURN") ||
+            docId.startsWith("deliv-zdf") ||
+            notes.includes("RETURN ZF") ||
+            notes.includes("RETURN ZDF");
+
+          if (isRogueReturn) {
+            batch.delete(docSnap.ref);
+            count++;
+          }
+        });
+        if (count > 0) {
+          await batch.commit();
+          console.info(`Purged ${count} rogue return records from deliveries collection.`);
+        }
+      } catch (err) {
+        console.warn("Notice running deliveries audit:", err);
       }
     })();
 
@@ -300,9 +332,36 @@ export default function App() {
         collection(db, "deliveries"),
         (snapshot) => {
           const delList: Delivery[] = [];
-          snapshot.forEach((doc) => {
-            delList.push({ id: doc.id, ...normalizeDocTimestamps(doc.data()) } as Delivery);
+          const rogueRefs: any[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            const invNum = String(data.invoiceNumber || "").trim().toUpperCase();
+            const delType = String(data.deliveryType || "").toUpperCase();
+            const docId = docSnap.id.toLowerCase();
+            const notes = String(data.notes || "").toUpperCase();
+
+            const isRogueReturn =
+              invNum === "A905220396" ||
+              delType.includes("RETURN") ||
+              docId.startsWith("deliv-zdf") ||
+              notes.includes("RETURN ZF") ||
+              notes.includes("RETURN ZDF");
+
+            if (isRogueReturn) {
+              rogueRefs.push(docSnap.ref);
+              return; // Do NOT include in deliveries state!
+            }
+
+            delList.push({ id: docSnap.id, ...normalizeDocTimestamps(data) } as Delivery);
           });
+
+          // Asynchronously purge any rogue records from Firestore
+          if (rogueRefs.length > 0) {
+            rogueRefs.forEach((ref) => {
+              deleteDoc(ref).catch((err) => console.info("Notice purging rogue delivery doc:", err));
+            });
+          }
+
           // Sort deliveries descending by timestamp
           delList.sort((a, b) => compareTimestampsDesc(a.timestamp, b.timestamp));
           setDeliveries(delList);
