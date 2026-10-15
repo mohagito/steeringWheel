@@ -2,14 +2,15 @@ import React, { useState, useMemo } from "react";
 import { ArchivedInvoice, Delivery, Reference, User } from "../types";
 import { 
   FileText, Search, ExternalLink, Eye, 
-  Trash2, X, RefreshCw
+  Trash2, X, RefreshCw, Edit2
 } from "lucide-react";
 import Swal from "sweetalert2";
 import PdfViewerModal from "./PdfViewerModal";
 import { 
   resolveInvoicePdfUrl, 
   deleteArchivedInvoice,
-  clearAllArchivedInvoices
+  clearAllArchivedInvoices,
+  renameArchivedInvoice
 } from "../services/invoiceArchiveService";
 
 interface InvoiceArchiveWorkspaceProps {
@@ -167,6 +168,57 @@ export default function InvoiceArchiveWorkspace({
           icon: "error",
           title: "Delete Failed",
           text: err?.message || "Could not delete invoice."
+        });
+      }
+    }
+  };
+
+  const handleRenameInvoice = async (inv: ArchivedInvoice) => {
+    if (currentUser.role === "operator") {
+      Swal.fire({
+        icon: "warning",
+        title: "Access Restricted",
+        text: "Only supervisors or managers can rename archived invoice records."
+      });
+      return;
+    }
+
+    const { value: newNumber } = await Swal.fire({
+      title: "Rename Invoice",
+      input: "text",
+      inputValue: inv.invoiceNumber,
+      inputPlaceholder: "e.g. MPT2340",
+      showCancelButton: true,
+      confirmButtonText: "Save",
+      confirmButtonColor: "#2563eb",
+      cancelButtonText: "Cancel",
+      inputValidator: (val) => {
+        if (!val || !val.trim()) {
+          return "Invoice number cannot be empty";
+        }
+        return null;
+      }
+    });
+
+    if (newNumber && newNumber.trim() && newNumber.trim().toUpperCase() !== inv.invoiceNumber.trim().toUpperCase()) {
+      const clean = newNumber.trim().toUpperCase();
+      try {
+        await renameArchivedInvoice(inv.id, inv.invoiceNumber, clean);
+        if (selectedInvoice?.id === inv.id) {
+          setSelectedInvoice((prev) => prev ? { ...prev, invoiceNumber: clean, id: `INV_${clean}` } : null);
+        }
+        Swal.fire({
+          icon: "success",
+          title: "Renamed",
+          text: `Invoice renamed to ${clean}`,
+          timer: 1200,
+          showConfirmButton: false
+        });
+      } catch (err: any) {
+        Swal.fire({
+          icon: "error",
+          title: "Rename Failed",
+          text: err?.message || "Could not rename invoice."
         });
       }
     }
@@ -368,7 +420,7 @@ export default function InvoiceArchiveWorkspace({
                     <tr
                       key={inv.id}
                       onClick={() => setSelectedInvoice(inv)}
-                      className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                      className="group hover:bg-slate-50/80 transition-colors cursor-pointer"
                     >
                       {/* Invoice # */}
                       <td className="py-3 px-4 whitespace-nowrap">
@@ -376,6 +428,19 @@ export default function InvoiceArchiveWorkspace({
                           <span className="font-black text-slate-900 text-xs">
                             {inv.invoiceNumber}
                           </span>
+                          {currentUser.role !== "operator" && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRenameInvoice(inv);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-all cursor-pointer"
+                              title="Rename invoice"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          )}
                           {hasPdf && (
                             <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200">
                               PDF
@@ -476,6 +541,16 @@ export default function InvoiceArchiveWorkspace({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+                          {currentUser.role !== "operator" && (
+                            <button
+                              type="button"
+                              onClick={() => handleRenameInvoice(inv)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
+                              title="Rename invoice"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
                           {hasPdf && (
                             <button
                               type="button"
@@ -523,6 +598,16 @@ export default function InvoiceArchiveWorkspace({
                     <h3 className="text-base sm:text-lg font-black text-slate-900 font-mono tracking-tight">
                       Invoice #{selectedInvoice.invoiceNumber}
                     </h3>
+                    {currentUser.role !== "operator" && (
+                      <button
+                        type="button"
+                        onClick={() => handleRenameInvoice(selectedInvoice)}
+                        className="p-1 rounded-md hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                        title="Rename invoice"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     {(selectedInvoice.hasPdf || selectedInvoice.pdfDataUrl) && (
                       <span className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-rose-50 text-rose-700 border border-rose-200">
                         Original PDF Available

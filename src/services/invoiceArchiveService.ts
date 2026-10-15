@@ -1,6 +1,7 @@
 import { 
   collection, 
   doc, 
+  getDoc,
   setDoc, 
   deleteDoc, 
   getDocs,
@@ -200,8 +201,72 @@ export async function resolveInvoicePdfUrl(invoice: ArchivedInvoice): Promise<st
   if (invoice.pdfDataUrl) {
     return invoice.pdfDataUrl;
   }
-  const localUrl = await getPdfFromLocalDb(invoice.invoiceNumber);
+  let localUrl = await getPdfFromLocalDb(invoice.invoiceNumber);
+  if (!localUrl && invoice.invoiceNumber.startsWith("MPT")) {
+    const withoutMpt = invoice.invoiceNumber.replace(/^MPT/i, "");
+    localUrl = await getPdfFromLocalDb(withoutMpt);
+  }
   return localUrl || null;
+}
+
+/**
+ * Renames an archived invoice number in Firestore and IndexedDB.
+ */
+export async function renameArchivedInvoice(
+  oldId: string,
+  oldNumber: string,
+  newNumber: string
+): Promise<string> {
+  const cleanOld = oldNumber.trim().toUpperCase();
+  const cleanNew = newNumber.trim().toUpperCase();
+  if (!cleanNew) {
+    throw new Error("Invoice number cannot be empty.");
+  }
+  if (cleanOld === cleanNew) {
+    return oldId;
+  }
+
+  const newDocId = getInvoiceDocId(cleanNew);
+  const oldDocRef = doc(db, "archived_invoices", oldId);
+  const oldSnap = await getDoc(oldDocRef);
+
+  if (oldSnap.exists()) {
+    const data = oldSnap.data();
+    const updatedData = removeUndefinedDeep({
+      ...data,
+      id: newDocId,
+      invoiceNumber: cleanNew,
+      pdfFileName: data.pdfFileName ? data.pdfFileName.replace(cleanOld, cleanNew) : `${cleanNew}.pdf`
+    });
+    await setDoc(doc(db, "archived_invoices", newDocId), updatedData);
+    if (oldId !== newDocId) {
+      await deleteDoc(oldDocRef);
+    }
+  }
+
+  // Update IndexedDB PDF cache key if present
+  try {
+    const idb = await openDb();
+    const tx = idb.transaction(IDB_STORE, "readwrite");
+    const store = tx.objectStore(IDB_STORE);
+    const existing = await new Promise<any>((resolve) => {
+      const req = store.get(cleanOld);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+    if (existing) {
+      store.put({
+        ...existing,
+        invoiceNumber: cleanNew,
+        fileName: `${cleanNew}.pdf`
+      });
+      store.delete(cleanOld);
+    }
+  } catch (e) {
+    // Non-fatal
+  }
+
+  return newDocId;
 }
 
 /**
