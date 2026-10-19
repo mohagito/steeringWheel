@@ -438,6 +438,10 @@ export default function SupervisorWorkspace({
         category = "adjustment";
         typeLabel = "INCOMPLETA";
         affectedStock = "Stock 1 (Warehouse)";
+      } else if (tx.movementType === "PHYSICAL_INVENTORY" || tx.operationType === "PHYSICAL_INVENTORY") {
+        category = "adjustment";
+        typeLabel = "PHYSICAL_INVENTORY";
+        affectedStock = tx.stock || "Physical Stock";
       } else if (isReversal) {
         category = "admin";
         if (tx.notes?.toLowerCase().includes("invoice") || tx.movementType?.includes("INVOICE")) {
@@ -500,6 +504,7 @@ export default function SupervisorWorkspace({
         (operationsTypeFilter === "S3 OUT" && op.type === "S3 OUT") ||
         (operationsTypeFilter === "S1 RETURN" && op.type === "S1 RETURN") ||
         (operationsTypeFilter === "INCOMPLETA" && op.type === "INCOMPLETA") ||
+        (operationsTypeFilter === "PHYSICAL_INVENTORY" && op.type === "PHYSICAL_INVENTORY") ||
         (operationsTypeFilter === "DELETED" && (op.type.includes("DELETED") || op.type.includes("CANCELLED") || op.category === "admin" || op.type === "REVERSAL"));
 
       return matchesSearch && matchesType;
@@ -531,6 +536,8 @@ export default function SupervisorWorkspace({
         return "bg-cyan-100 text-cyan-900 border-cyan-300 font-black";
       case "INCOMPLETA":
         return "bg-rose-100 text-rose-900 border-rose-300 font-black";
+      case "PHYSICAL_INVENTORY":
+        return "bg-teal-100 text-teal-900 border-teal-300 font-black";
       case "DELETED INVOICE":
       case "CANCELLED DELIVERY":
       case "CANCELLED PROD":
@@ -678,6 +685,7 @@ export default function SupervisorWorkspace({
                   { value: "S3 OUT", label: "S3 OUT (SW DELIVERY / SCRAP)" },
                   { value: "S1 RETURN", label: "S1 RETURN" },
                   { value: "INCOMPLETA", label: "INCOMPLETA (STOCK 1 OUT)" },
+                  { value: "PHYSICAL_INVENTORY", label: "PHYSICAL_INVENTORY" },
                   { value: "DELETED", label: "DELETED / CANCELLED" }
                 ]}
                 className="w-56"
