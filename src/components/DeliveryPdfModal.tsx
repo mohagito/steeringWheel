@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ParsedDeliveryDocument, ParsedDeliveryLineItem } from "../services/deliveryPdfParser";
 import { Delivery, Reference, User } from "../types";
-import { CheckCircle2, AlertCircle, ArrowRight, X, FileText, Layers, RefreshCw, Archive, CheckSquare, Square } from "lucide-react";
+import { CheckCircle2, AlertCircle, ArrowRight, X, FileText, Layers, RefreshCw, Archive, CheckSquare, Square, Edit2 } from "lucide-react";
 import Swal from "sweetalert2";
 import { saveArchivedInvoice } from "../services/invoiceArchiveService";
 
@@ -33,6 +33,7 @@ export default function DeliveryPdfModal({
   const [isApplying, setIsApplying] = useState(false);
   const [isArchivingOnly, setIsArchivingOnly] = useState(false);
   const [items, setItems] = useState<ParsedDeliveryLineItem[]>([]);
+  const [invoiceNumber, setInvoiceNumber] = useState<string>(() => parsedDoc?.invoiceNumber || "");
 
   useEffect(() => {
     if (parsedDoc?.items) {
@@ -40,7 +41,12 @@ export default function DeliveryPdfModal({
     } else {
       setItems([]);
     }
+    if (parsedDoc?.invoiceNumber) {
+      setInvoiceNumber(parsedDoc.invoiceNumber);
+    }
   }, [parsedDoc]);
+
+  const effectiveInvoiceNumber = invoiceNumber.trim() || parsedDoc?.invoiceNumber || "";
 
   if (!isOpen || !parsedDoc) return null;
 
@@ -82,7 +88,7 @@ export default function DeliveryPdfModal({
     }));
 
     return {
-      invoiceNumber: parsedDoc.invoiceNumber,
+      invoiceNumber: effectiveInvoiceNumber,
       invoiceDate: parsedDoc.invoiceDate || new Date().toISOString().slice(0, 10),
       deliveryType: parsedDoc.deliveryType,
       targetStock: parsedDoc.targetStock,
@@ -101,13 +107,22 @@ export default function DeliveryPdfModal({
       })),
       meshItems: meshDeductions,
       hasPdf: Boolean(pdfDataUrl),
-      pdfFileName: pdfFileName || `${parsedDoc.invoiceNumber}.pdf`,
+      pdfFileName: pdfFileName || `${effectiveInvoiceNumber}.pdf`,
       pdfFileSize: pdfFileSize ?? null,
       notes: status === "applied" ? "Stock deducted and archived" : "Archived without stock deduction"
     };
   };
 
   const handleConfirmApply = async () => {
+    if (!effectiveInvoiceNumber) {
+      Swal.fire({
+        icon: "warning",
+        title: "Invoice Number Required",
+        text: "Please enter an invoice number before applying delivery."
+      });
+      return;
+    }
+
     if (meshItems.length === 0) {
       Swal.fire({
         icon: "warning",
@@ -137,12 +152,12 @@ export default function DeliveryPdfModal({
         const catRef = references.find((r) => r.code === item.associatedMeshRef);
         const customer = item.customer || catRef?.customer?.trim() || "";
         return {
-          invoiceNumber: parsedDoc.invoiceNumber,
+          invoiceNumber: effectiveInvoiceNumber,
           reference: item.associatedMeshRef!,
           quantity: item.quantity,
           customer,
           deliveryType: item.targetStock === "Stock 2" ? "PRECOSIDO" : "STEERING WHEELS",
-          notes: `PDF Import [${parsedDoc.invoiceNumber}]: ${item.invoiceRef} (${item.description}) -> ${item.associatedMeshRef}`
+          notes: `PDF Import [${effectiveInvoiceNumber}]: ${item.invoiceRef} (${item.description}) -> ${item.associatedMeshRef}`
         };
       });
 
@@ -158,7 +173,7 @@ export default function DeliveryPdfModal({
       await Swal.fire({
         icon: "success",
         title: "Delivery Applied",
-        text: `Invoice #${parsedDoc.invoiceNumber}: Deducted ${totalDeductionQty.toLocaleString()} PCS across ${meshItems.length} references.`,
+        text: `Invoice #${effectiveInvoiceNumber}: Deducted ${totalDeductionQty.toLocaleString()} PCS across ${meshItems.length} references.`,
         timer: 1800,
         showConfirmButton: false
       });
@@ -177,13 +192,22 @@ export default function DeliveryPdfModal({
   };
 
   const handleArchiveOnly = async () => {
+    if (!effectiveInvoiceNumber) {
+      Swal.fire({
+        icon: "warning",
+        title: "Invoice Number Required",
+        text: "Please enter an invoice number before archiving."
+      });
+      return;
+    }
+
     setIsArchivingOnly(true);
     try {
       await saveArchivedInvoice(buildArchiveRecord("archived"), pdfDataUrl);
       await Swal.fire({
         icon: "success",
         title: "Invoice Archived",
-        text: `Invoice #${parsedDoc.invoiceNumber} saved to Invoice Directory without deducting stock.`,
+        text: `Invoice #${effectiveInvoiceNumber} saved to Invoice Directory without deducting stock.`,
         timer: 1800,
         showConfirmButton: false
       });
@@ -203,6 +227,7 @@ export default function DeliveryPdfModal({
   const handleTransferToForm = () => {
     onLoadIntoForm({
       ...parsedDoc,
+      invoiceNumber: effectiveInvoiceNumber,
       items: activeItems
     });
     onClose();
@@ -219,10 +244,21 @@ export default function DeliveryPdfModal({
               PDF
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-slate-900 font-mono tracking-tight">
-                  Invoice #{parsedDoc.invoiceNumber}
-                </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 font-mono">
+                  <span className="text-xs sm:text-sm font-bold text-slate-700">Invoice #</span>
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      value={invoiceNumber}
+                      onChange={(e) => setInvoiceNumber(e.target.value)}
+                      placeholder="Invoice #"
+                      className="font-bold text-xs sm:text-sm text-slate-900 bg-white border border-slate-300 rounded-lg pl-2 pr-6 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 hover:border-slate-400 transition-colors w-28 sm:w-36 shadow-2xs font-mono"
+                      title="Edit invoice name / number"
+                    />
+                    <Edit2 className="w-3 h-3 text-slate-400 absolute right-1.5 pointer-events-none" />
+                  </div>
+                </div>
                 <span
                   className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono uppercase border ${
                     parsedDoc.deliveryType === "PRECOSIDO"
