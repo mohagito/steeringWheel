@@ -484,11 +484,6 @@ export default function BezelInvoicesWorkspace({
               <FileText className="w-6 h-6 stroke-1.5" />
             </div>
             <div className="text-sm font-semibold text-slate-700">No invoices in Bezel register</div>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              {searchQuery || shiftFilter !== "ALL" || timeFilter !== "all"
-                ? "No records found matching the active filters. Try clearing your search parameters."
-                : "Receive a new truck or log an invoice to populate this register."}
-            </p>
             <button
               type="button"
               onClick={onOpenNewTruckModal}
