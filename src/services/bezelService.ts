@@ -8,6 +8,7 @@ import {
   getDocs,
   serverTimestamp,
   query,
+  where,
   orderBy
 } from "firebase/firestore";
 import { db } from "../firebase";
@@ -669,36 +670,9 @@ export async function executeBezelBatchDelivery(params: {
       }), { merge: true });
     }
 
-    // 4. Record into bezel_invoices
-    invoiceId = `bz-del-inv-${cleanInvoice.replace(/[^a-zA-Z0-9_-]/g, "_")}-${Date.now().toString().slice(-4)}`;
-    const invoiceDocRef = doc(db, "bezel_invoices", invoiceId);
-
-    const invoiceData: BezelInvoice = {
-      id: invoiceId,
-      invoiceNumber: cleanInvoice,
-      date: nowIso.slice(0, 10),
-      timestamp: nowIso,
-      operator: params.operatorName,
-      shift: "SHIFT A",
-      items: params.items.map((it, idx) => ({
-        id: `it-${idx + 1}-${Date.now()}`,
-        reference: it.reference.trim().toUpperCase(),
-        quantity: Number(it.quantity) || 0,
-        destinationStock: "STOCK 2",
-        description: it.sourceSWRef ? `SW: ${it.sourceSWRef} (${it.description || ""})` : it.description
-      })),
-      totalQuantity: totalQty,
-      totalBoxes: params.items.length,
-      references: Array.from(refTotals.keys()),
-      status: "approved",
-      notes: params.notes || `Delivery Dispatch: SW -> Bezel Stock 2`,
-      createdAt: nowIso
-    };
-
-    transaction.set(invoiceDocRef, cleanData({
-      ...invoiceData,
-      serverTimestamp: serverTimestamp()
-    }));
+    // Delivery dispatches are logged authoritatively into bezel_operations.
+    // They are not incoming invoices and must not appear in the incoming invoices register.
+    invoiceId = cleanInvoice;
   });
 
   return {
@@ -1621,4 +1595,69 @@ export async function editBezelOperation(params: EditBezelOperationParams): Prom
     }));
   });
 }
+
+/**
+ * Purges any delivery (Stock 2 OUT / MPT) invoices that were mistakenly stored
+ * in the bezel_invoices collection. Delivery records belong strictly in bezel_operations.
+ */
+export async function cleanDeliveryInvoicesFromIncomingRegister(): Promise<number> {
+  try {
+    const snap = await getDocs(collection(db, "bezel_invoices"));
+    let removedCount = 0;
+    for (const d of snap.docs) {
+      const data = d.data();
+      const id = d.id.toLowerCase();
+      const invNum = String(data.invoiceNumber || "").toUpperCase();
+      const notes = String(data.notes || "").toLowerCase();
+      const hasOutItem = Array.isArray(data.items) && data.items.some((it: any) => it.destinationStock === "OUT");
+
+      if (
+        id.startsWith("bz-del-") ||
+        invNum.startsWith("MPT") ||
+        invNum.startsWith("MTP") ||
+        notes.includes("delivery dispatch") ||
+        notes.includes("sw -> bezel") ||
+        notes.includes("sw -> s2") ||
+        hasOutItem
+      ) {
+        await deleteDoc(d.ref);
+        removedCount++;
+      }
+    }
+    return removedCount;
+  } catch (err) {
+    console.error("cleanDeliveryInvoicesFromIncomingRegister error:", err);
+    return 0;
+  }
+}
+
+/**
+ * Deletes all delivery operations for a given invoice number and restores
+ * their stock back to Stock 2 atomically.
+ */
+export async function deleteBezelDeliveryInvoice(params: {
+  invoiceNumber: string;
+  operatorName: string;
+}): Promise<number> {
+  const invNumber = params.invoiceNumber.trim();
+  const q = query(
+    collection(db, "bezel_operations"),
+    where("operationType", "==", "BEZEL_DELIVERY")
+  );
+  const snap = await getDocs(q);
+  let count = 0;
+  for (const d of snap.docs) {
+    const data = d.data() as BezelOperation;
+    if ((data.invoiceNumber || "").trim().toUpperCase() === invNumber.toUpperCase()) {
+      await deleteBezelOperation({
+        operationId: d.id,
+        operatorName: params.operatorName,
+        reason: `Reversed delivery invoice ${invNumber}`
+      });
+      count++;
+    }
+  }
+  return count;
+}
+
 

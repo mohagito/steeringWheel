@@ -22,8 +22,9 @@ import {
   X,
   Printer
 } from "lucide-react";
+import { useEffect } from "react";
 import Swal from "sweetalert2";
-import { deleteBezelInvoice, clearAllBezelInvoices } from "../../services/bezelService";
+import { deleteBezelInvoice, clearAllBezelInvoices, cleanDeliveryInvoicesFromIncomingRegister } from "../../services/bezelService";
 import { formatSystemTime, getMoroccoTodayDateString } from "../../utils/timeUtils";
 
 interface BezelInvoicesWorkspaceProps {
@@ -53,6 +54,25 @@ export default function BezelInvoicesWorkspace({
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [isClearing, setIsClearing] = useState(false);
 
+  // Automatically purge legacy delivery invoices from the bezel_invoices Firestore collection
+  useEffect(() => {
+    cleanDeliveryInvoicesFromIncomingRegister().catch(console.error);
+  }, []);
+
+  // Filter out any delivery dispatches / MPT / MTP invoices so Incoming Register ONLY contains incoming truck intakes
+  const incomingInvoices = useMemo(() => {
+    return invoices.filter((inv) => {
+      const num = (inv.invoiceNumber || "").toUpperCase();
+      const id = (inv.id || "").toLowerCase();
+      const notes = (inv.notes || "").toLowerCase();
+      if (id.startsWith("bz-del-")) return false;
+      if (num.startsWith("MPT") || num.startsWith("MTP")) return false;
+      if (notes.includes("delivery dispatch") || notes.includes("sw -> bezel") || notes.includes("sw -> s2")) return false;
+      if (inv.items?.some((it: any) => it.destinationStock === "OUT")) return false;
+      return true;
+    });
+  }, [invoices]);
+
   // References lookup map for quick descriptions
   const refMap = useMemo(() => {
     const map = new Map<string, BezelReference>();
@@ -60,9 +80,9 @@ export default function BezelInvoicesWorkspace({
     return map;
   }, [references]);
 
-  // Filter & sort invoices
+  // Filter & sort incoming invoices
   const filteredInvoices = useMemo(() => {
-    let list = invoices.filter((inv) => {
+    let list = incomingInvoices.filter((inv) => {
       // 1. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -125,11 +145,11 @@ export default function BezelInvoicesWorkspace({
     });
 
     return list;
-  }, [invoices, searchQuery, shiftFilter, timeFilter, sortField, sortDirection]);
+  }, [incomingInvoices, searchQuery, shiftFilter, timeFilter, sortField, sortDirection]);
 
-  // Aggregate Metrics
-  const totalInvoicesCount = invoices.length;
-  const totalQuantitySum = invoices.reduce((sum, i) => sum + (i.totalQuantity || 0), 0);
+  // Aggregate Metrics based on incoming invoices only
+  const totalInvoicesCount = incomingInvoices.length;
+  const totalQuantitySum = incomingInvoices.reduce((sum, i) => sum + (i.totalQuantity || 0), 0);
   const totalFilteredQuantity = filteredInvoices.reduce((sum, i) => sum + (i.totalQuantity || 0), 0);
 
   const handleSort = (field: "date" | "invoiceNumber" | "totalQuantity") => {
@@ -410,7 +430,7 @@ export default function BezelInvoicesWorkspace({
         {(searchQuery || shiftFilter !== "ALL" || timeFilter !== "all") && (
           <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
             <span className="font-semibold text-slate-600">Showing:</span>
-            <span className="font-mono">{filteredInvoices.length} of {invoices.length} invoices ({totalFilteredQuantity.toLocaleString()} PCS)</span>
+            <span className="font-mono">{filteredInvoices.length} of {incomingInvoices.length} invoices ({totalFilteredQuantity.toLocaleString()} PCS)</span>
             <button
               type="button"
               onClick={() => {
@@ -442,7 +462,7 @@ export default function BezelInvoicesWorkspace({
               {filteredInvoices.length} {filteredInvoices.length === 1 ? "record" : "records"}
             </div>
 
-            {invoices.length > 0 && isManager && (
+            {incomingInvoices.length > 0 && isManager && (
               <button
                 type="button"
                 onClick={handleClearRegister}
